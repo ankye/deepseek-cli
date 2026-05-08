@@ -64,6 +64,9 @@
       "@deepseek/model-gateway": [
         "src/packages/model-gateway/src/index.ts"
       ],
+      "@deepseek/tool-intent-preflight": [
+        "src/packages/tool-intent-preflight/src/index.ts"
+      ],
       "@deepseek/observability": [
         "src/packages/observability/src/index.ts"
       ],

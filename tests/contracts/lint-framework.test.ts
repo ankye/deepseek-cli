@@ -26,16 +26,20 @@ const conventions = {
   packageManifestNames: ["package.json"],
   hostApiModules: new Set(["node:fs", "node:fs/promises", "node:process", "vscode"]),
   packageImportPrefix: "@deepseek/",
-  workspacePackageNames: new Map([
-    ["platform-contracts", "@deepseek/platform-contracts"],
-    ["runtime", "@deepseek/runtime"],
-    ["cli", "deekseek-cli"],
-    ["vscode-extension", "@deepseek/vscode-extension"]
-  ]),
-  packageDependencyPolicy: new Map([
-    ["platform-contracts", new Set()],
-    ["runtime", new Set(["@deepseek/platform-contracts"])]
-  ]),
+      workspacePackageNames: new Map([
+        ["platform-contracts", "@deepseek/platform-contracts"],
+        ["runtime", "@deepseek/runtime"],
+        ["model-gateway", "@deepseek/model-gateway"],
+        ["credential-auth-management", "@deepseek/credential-auth-management"],
+        ["cli", "deekseek-cli"],
+        ["vscode-extension", "@deepseek/vscode-extension"]
+      ]),
+      packageDependencyPolicy: new Map([
+        ["platform-contracts", new Set()],
+        ["runtime", new Set(["@deepseek/platform-contracts"])],
+        ["model-gateway", new Set(["@deepseek/platform-contracts"])],
+        ["credential-auth-management", new Set(["@deepseek/platform-contracts"])]
+      ]),
   appDependencyPolicy: new Map([
     ["cli", new Set(["@deepseek/platform-contracts"])],
     ["vscode-extension", new Set(["@deepseek/platform-contracts"])]
@@ -263,6 +267,30 @@ describe("architecture lint framework", () => {
       assert.equal(result.status, 2, result.stderr || result.stdout);
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
       assert.equal(ruleIds.has("runtime/no-legacy-direct-execution"), true);
+    });
+  });
+
+  it("rejects direct provider credential access outside credential owners and tests", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/packages/model-gateway/src/index.ts", "export const apiKey = process.env.DEEPSEEK_API_KEY;\n");
+      await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function bad(vscode) { return vscode.authentication.getSession(\"deepseek\", []); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function bad(fs) { return fs.readFileSync(\"./deepseek-api-key.txt\", \"utf8\"); }\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("provider/no-direct-credential-access"), true);
+    });
+  });
+
+  it("allows credential owner and tests to access host credential seams", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/packages/credential-auth-management/src/index.ts", "export const env = process.env.DEEPSEEK_API_KEY;\n");
+      await writeFixtureFile(root, "src/packages/model-gateway/test/provider.test.ts", "export const env = process.env.DEEPSEEK_API_KEY;\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.deepEqual(JSON.parse(result.stdout), []);
     });
   });
 });

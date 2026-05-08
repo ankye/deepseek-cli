@@ -229,3 +229,84 @@ Golden replay 必须覆盖 strict runtime kernel event order，包括 scheduler 
 - **WHEN** a deterministic built-in capability is replayed
 - **THEN** normalized events match the expected order from request accepted through scheduler queued, scheduler started, capability terminal event, scheduler terminal event, and workflow closed
 
+### Requirement: Deterministic Provider Regression
+
+The testing framework SHALL include deterministic DeepSeek provider fixtures and tests for request construction, text normalization, reasoning normalization, tool-call normalization, usage/cache normalization, provider errors, missing credentials, missing transport, and no default network access.
+
+测试框架必须包含 deterministic DeepSeek provider fixtures 和 tests，覆盖 request construction、text normalization、reasoning normalization、tool-call normalization、usage/cache normalization、provider errors、missing credentials、missing transport 和 no default network access。
+
+#### Scenario: Provider tests use fake transport
+
+- **WHEN** default tests exercise the DeepSeek provider
+- **THEN** they use injected fake transport fixtures and never require a live DeepSeek API key or network access
+
+#### Scenario: Golden provider trace is stable
+
+- **WHEN** a DeepSeek provider fixture is replayed
+- **THEN** normalized model events match a stable golden trace except for declared nondeterministic provider ids when present
+
+#### Scenario: Lint covers provider boundaries
+
+- **WHEN** architecture lint runs
+- **THEN** it includes negative tests for direct credential access and direct governed execution from provider code
+
+### Requirement: Roadmap Regression Levels / 路线图回归等级
+
+The testing framework SHALL require every roadmap node to declare the minimum regression level needed for implementation and launch.
+
+测试框架必须要求每个 roadmap node 声明 implementation 和 launch 所需的 minimum regression level。
+
+#### Scenario: Node declares test ladder / 节点声明测试阶梯
+
+- **WHEN** a roadmap node is planned
+- **THEN** it declares required unit, contract, integration, golden, e2e, matrix, compatibility, and optional live-provider tests
+- **中文** 当规划路线图节点时，必须声明必需的 unit、contract、integration、golden、e2e、matrix、compatibility 和可选 live-provider 测试。
+
+#### Scenario: Product node adds scenario coverage / 产品节点增加场景覆盖
+
+- **WHEN** a node introduces user-visible product workflow
+- **THEN** a scenario or e2e smoke test covers the host-visible workflow before beta launch
+- **中文** 当节点引入用户可见产品流程时，必须在 beta 发布前用 scenario 或 e2e smoke test 覆盖 host 可见流程。
+
+#### Scenario: Readiness and governance fixtures are declared / 声明可用性与治理 fixtures
+
+- **WHEN** a roadmap node includes local readiness, credentials, observability/privacy, code intelligence, SDK/API, or model capability governance
+- **THEN** it declares fixtures for no-live-provider execution, redacted diagnostics, credential references, compatibility schemas, fallback decisions, and deterministic replay as applicable
+- **中文** 当路线图节点包含 local readiness、credentials、observability/privacy、code intelligence、SDK/API 或 model capability governance 时，必须按需声明 no-live-provider execution、redacted diagnostics、credential references、compatibility schemas、fallback decisions 和 deterministic replay fixtures。
+
+### Requirement: Optional Live Provider Test Gate / 可选 Live Provider 测试门禁
+
+The testing framework SHALL keep live provider tests outside default test commands and SHALL expose them through an explicit optional script and environment gate.
+
+testing framework 必须把 live provider tests 排除在默认 test commands 之外，并通过明确的 optional script 和 environment gate 暴露。
+
+#### Scenario: Default tests do not run live provider / 默认测试不运行 live provider
+
+- **WHEN** `npm test` runs
+- **THEN** it does not require network access, DeepSeek credentials, provider availability, or account balance
+- **中文** 当 `npm test` 运行时，它不得要求 network access、DeepSeek credentials、provider availability 或 account balance。
+
+#### Scenario: Live smoke has structural assertions / Live smoke 使用结构断言
+
+- **WHEN** optional live smoke runs against DeepSeek
+- **THEN** it asserts normalized event structure, non-empty assistant text, redacted credential handling, and terminal completion without snapshotting exact model text
+- **中文** 当 optional live smoke 针对 DeepSeek 运行时，它必须断言 normalized event structure、non-empty assistant text、redacted credential handling 和 terminal completion，而不是 snapshot 精确模型文本。
+
+### Requirement: Local Readiness Regression / 本地可用性回归
+
+The testing framework SHALL include deterministic unit, contract, integration, and CLI smoke tests for R1 local readiness commands.
+
+testing framework 必须为 R1 local readiness commands 提供 deterministic unit、contract、integration 和 CLI smoke tests。
+
+#### Scenario: Readiness smoke covers all commands / readiness smoke 覆盖所有命令
+
+- **WHEN** readiness smoke tests run
+- **THEN** init, config, auth, doctor, privacy, and verify-install commands complete without live provider access and emit structured redacted results
+- **中文** 当 readiness smoke tests 运行时，init、config、auth、doctor、privacy 和 verify-install commands 必须在不访问 live provider 的情况下完成，并输出 structured redacted results。
+
+#### Scenario: Secret fixture is not leaked / secret fixture 不泄漏
+
+- **WHEN** tests provide fake DeepSeek credentials
+- **THEN** stdout, JSON output, traces, snapshots, and assertion messages contain only redacted references and never raw secret values
+- **中文** 当 tests 提供 fake DeepSeek credentials 时，stdout、JSON output、traces、snapshots 和 assertion messages 只能包含 redacted references，绝不能包含 raw secret values。
+

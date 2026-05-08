@@ -15,6 +15,7 @@ import { InMemoryHookSystem } from "@deepseek/hook-system";
 import { FakeMcpGateway } from "@deepseek/mcp-gateway";
 import { InMemoryCacheManager, InMemoryMemoryManager } from "@deepseek/memory-cache-management";
 import { DeterministicMockModelGateway } from "@deepseek/model-gateway";
+import { DeterministicToolIntentPreflight } from "@deepseek/tool-intent-preflight";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemoryPluginManager } from "@deepseek/plugin-system";
@@ -47,6 +48,7 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     concurrency: new DeterministicScheduler(),
     agents: new InMemoryAgentManager(),
     models: new DeterministicMockModelGateway(),
+    toolIntentPreflight: new DeterministicToolIntentPreflight(),
     capabilities: new InMemoryCapabilityRegistry(),
     commands: new InMemoryCommandSystem(),
     skills: new InMemorySkillSystem(),

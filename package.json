@@ -20,6 +20,7 @@
     "test:matrix": "tsx --test \"tests/matrix/**/*.test.ts\"",
     "test:e2e": "tsx --test \"tests/e2e/**/*.test.ts\"",
     "smoke:headless": "tsx src/apps/cli/src/index.ts -p \"smoke\" --output stream-json",
+    "smoke:live:deepseek": "tsx --test \"tests/live/deepseek-provider-live-smoke.test.ts\"",
     "acceptance:index": "node scripts/write-acceptance-index.mjs"
   },
   "devDependencies": {

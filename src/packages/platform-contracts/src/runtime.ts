@@ -15,6 +15,7 @@ import type { ExtensionManager } from "./extension.js";
 import type { HookSystem } from "./hook.js";
 import type { McpGateway } from "./mcp.js";
 import type { ModelGateway } from "./model.js";
+import type { ToolIntentPreflightService } from "./tool-intent.js";
 import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
 import type { PluginManager } from "./plugin.js";
@@ -209,6 +210,7 @@ export interface RuntimeDependencies {
   readonly concurrency: ConcurrencyOrchestrator;
   readonly agents: AgentManager;
   readonly models: ModelGateway;
+  readonly toolIntentPreflight: ToolIntentPreflightService;
   readonly capabilities: CapabilityRegistry;
   readonly commands: CommandSystem;
   readonly skills: SkillSystem;

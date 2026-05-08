@@ -44,3 +44,98 @@ The system SHALL provide a mock model adapter for tests and early framework vali
 - **WHEN** tests use the mock model adapter
 - **THEN** runtime tests complete without external network access or provider credentials
 
+### Requirement: DeepSeek AI Provider Adapter
+
+The model gateway SHALL provide a DeepSeek AI provider adapter that targets the DeepSeek OpenAI-compatible chat-completions wire protocol while exposing only provider-neutral `ModelGateway` contracts to runtime, CLI, VSCode, tests, and future hosts.
+
+model gateway 必须提供 DeepSeek AI provider adapter，面向 DeepSeek OpenAI-compatible chat-completions wire protocol，但只向 runtime、CLI、VSCode、tests 和未来 hosts 暴露 provider-neutral `ModelGateway` contracts。
+
+#### Scenario: Provider builds DeepSeek request
+
+- **WHEN** a `ModelRequest` is streamed through the DeepSeek provider with prompt, profile, tools, temperature, reasoning options, and metadata
+- **THEN** the provider sends a DeepSeek-compatible request through the injected transport without exposing DeepSeek wire fields to runtime callers
+
+#### Scenario: Default provider does not call network
+
+- **WHEN** the DeepSeek provider is constructed without an injected live transport
+- **THEN** default tests and local runtime paths receive a typed provider error rather than performing network access
+
+### Requirement: Provider Event Normalization
+
+The model gateway SHALL normalize DeepSeek text deltas, reasoning deltas, tool-call intents, usage tokens, cache hit/miss metadata, finish reasons, and provider errors into stable `ModelStreamEvent` values.
+
+model gateway 必须把 DeepSeek text deltas、reasoning deltas、tool-call intents、usage tokens、cache hit/miss metadata、finish reasons 和 provider errors 归一化为稳定的 `ModelStreamEvent` values。
+
+#### Scenario: Reasoning is normalized
+
+- **WHEN** DeepSeek returns reasoning content or thinking output
+- **THEN** the model gateway emits provider-neutral reasoning events with redaction metadata and does not mix reasoning text into assistant text deltas
+
+#### Scenario: Cache usage is normalized
+
+- **WHEN** DeepSeek usage includes cache hit or cache miss token counts
+- **THEN** the model gateway emits usage metadata with normalized cache token fields and provider metadata
+
+#### Scenario: Tool call is normalized as intent
+
+- **WHEN** DeepSeek returns a tool call
+- **THEN** the model gateway emits a tool-call intent event with id, name, and parsed JSON input without executing the tool
+
+### Requirement: Provider Boundary Enforcement
+
+Provider adapters SHALL NOT execute capabilities, commands, skills, hooks, MCP tools, plugins, sandbox work, scheduler work, workflow work, policy decisions, or runtime bus publishing directly.
+
+provider adapters 不得直接执行 capabilities、commands、skills、hooks、MCP tools、plugins、sandbox work、scheduler work、workflow work、policy decisions 或 runtime bus publishing。
+
+#### Scenario: Provider emits intent only
+
+- **WHEN** a provider response asks for a tool call
+- **THEN** the adapter emits normalized intent and leaves execution to the governed runtime pipeline
+
+#### Scenario: Lint rejects provider bypass
+
+- **WHEN** provider source code calls governed execution primitives directly
+- **THEN** architecture lint fails with a stable rule id before the code can pass tests
+
+### Requirement: Model Capability Governance Roadmap / 模型能力治理路线图
+
+The model gateway SHALL include roadmap requirements for model capability metadata, default model policy, provider feature flags, fallback decisions, migration gates, and compatibility fixtures.
+
+model gateway 必须包含 model capability metadata、default model policy、provider feature flags、fallback decisions、migration gates 和 compatibility fixtures 的路线图要求。
+
+#### Scenario: Provider capability is declared before projection / provider 能力投影前必须声明
+
+- **WHEN** a model provider or model version is used for runtime execution
+- **THEN** the gateway exposes capability metadata for tools, streaming, reasoning, context window, usage accounting, unsupported feature rejection, and fallback eligibility
+- **中文** 当 model provider 或 model version 用于 runtime execution 时，gateway 必须暴露 tools、streaming、reasoning、context window、usage accounting、unsupported feature rejection 和 fallback eligibility 的 capability metadata。
+
+#### Scenario: Model migration requires fixture evidence / 模型迁移需要 fixture 证据
+
+- **WHEN** default model policy, provider capability mapping, or model migration changes
+- **THEN** compatibility fixtures cover migration, rollback, unsupported capability rejection, and provider fallback decision recording
+- **中文** 当 default model policy、provider capability mapping 或 model migration 变化时，compatibility fixtures 必须覆盖 migration、rollback、unsupported capability rejection 和 provider fallback decision recording。
+
+### Requirement: OpenAI SDK DeepSeek Live Transport / OpenAI SDK DeepSeek Live Transport
+
+The model gateway SHALL provide an OpenAI SDK-backed transport that executes provider-neutral DeepSeek OpenAI-like chat completion requests and converts SDK completion objects or stream chunks into `ModelProviderResponseChunk` values.
+
+model gateway 必须提供基于 OpenAI SDK 的 transport，用于执行 provider-neutral DeepSeek OpenAI-like chat completion requests，并把 SDK completion objects 或 stream chunks 转换为 `ModelProviderResponseChunk` values。
+
+#### Scenario: Transport uses DeepSeek base URL / Transport 使用 DeepSeek base URL
+
+- **WHEN** the live transport receives a provider-neutral request for `https://api.deepseek.com/chat/completions`
+- **THEN** it configures the OpenAI SDK with DeepSeek base URL and API key derived from the injected credential header
+- **中文** 当 live transport 收到指向 `https://api.deepseek.com/chat/completions` 的 provider-neutral request 时，它必须用 DeepSeek base URL 和来自注入 credential header 的 API key 配置 OpenAI SDK。
+
+#### Scenario: SDK output remains provider-neutral / SDK 输出保持 provider-neutral
+
+- **WHEN** the OpenAI SDK returns a non-stream completion or stream chunks
+- **THEN** the transport yields `ModelProviderResponseChunk` values without exposing OpenAI SDK types beyond the model-gateway package boundary
+- **中文** 当 OpenAI SDK 返回 non-stream completion 或 stream chunks 时，transport 必须 yield `ModelProviderResponseChunk` values，且不得在 model-gateway package boundary 之外暴露 OpenAI SDK types。
+
+#### Scenario: Transport fails with redacted error / Transport 以脱敏错误失败
+
+- **WHEN** the SDK request fails
+- **THEN** the transport throws an error that does not include authorization headers or raw credentials
+- **中文** 当 SDK request 失败时，transport 抛出的错误不得包含 authorization headers 或 raw credentials。
+
