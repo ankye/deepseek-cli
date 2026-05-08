@@ -128,6 +128,6 @@ export const packageDependencies = {
 };
 
 export const appDependencies = {
-  cli: ["platform-contracts", "communication-protocol", "runtime", "testing-regression"],
+  cli: ["platform-contracts", "communication-protocol", "runtime", "testing-regression", "config", "credential-auth-management", "platform-abstraction", "model-gateway"],
   "vscode-extension": ["platform-contracts", "communication-protocol", "runtime"]
 };

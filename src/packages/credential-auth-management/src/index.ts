@@ -1,6 +1,25 @@
-import type { CredentialManager, CredentialRecord, CredentialRef } from "@deepseek/platform-contracts";
+import type {
+  CredentialAuthService,
+  CredentialAuditMetadata,
+  CredentialManager,
+  CredentialRecord,
+  CredentialRef,
+  CredentialSecretResult,
+  CredentialScope,
+  CredentialSecretInput,
+  CredentialStorageAdapter,
+  CredentialStorageDiagnostic,
+  ModelCredentialProvider,
+  ModelCredentialValue,
+  ModelRequest,
+  SerializableResult,
+  StoredCredentialReference
+} from "@deepseek/platform-contracts";
+import { asId } from "@deepseek/platform-contracts";
 
 export type DeepSeekCredentialEnv = Readonly<Record<"DEEPSEEK_API_KEY" | "DEEPSEEK_TOKEN", string | undefined>>;
+
+const defaultDeepSeekCredentialRef = asId<"credentialRef">("credential-deepseek-api-key");
 
 export function createDeepSeekCredentialPresenceEnv(env: Readonly<Record<string, string | undefined>> = process.env): DeepSeekCredentialEnv {
   return {
@@ -21,10 +40,185 @@ export class FakeCredentialManager implements CredentialManager {
   }
 
   redact(value: string): string {
-    return value.length <= 4 ? "****" : `${value.slice(0, 2)}****${value.slice(-2)}`;
+    return redactSecret(value);
   }
+}
+
+export class InMemoryCredentialStorageAdapter implements CredentialStorageAdapter {
+  private readonly secrets = new Map<string, CredentialSecretInput>();
+  private readonly refs = new Map<string, StoredCredentialReference>();
+
+  constructor(private readonly storageStatus: CredentialStorageDiagnostic = availableDiagnostic()) {}
+
+  async status(): Promise<CredentialStorageDiagnostic> {
+    return this.storageStatus;
+  }
+
+  async store(scope: CredentialScope, secret: CredentialSecretInput): Promise<SerializableResult<StoredCredentialReference>> {
+    if ((await this.status()).status === "unavailable") {
+      return { ok: false, error: { code: "CREDENTIAL_STORAGE_UNAVAILABLE", message: "Credential storage is unavailable.", retryable: false, redaction: { class: "public" } } };
+    }
+    const ref = credentialRefForScope(scope);
+    const reference = storedReference(ref, scope, "fake-storage", true, "store");
+    this.secrets.set(ref, secret);
+    this.refs.set(ref, reference);
+    return { ok: true, value: reference };
+  }
+
+  async resolve(ref: CredentialRef): Promise<CredentialSecretResult> {
+    const secret = this.secrets.get(ref);
+    if (!secret) {
+      return { ok: false, error: { code: "CREDENTIAL_NOT_FOUND", message: "Credential reference was not found.", retryable: false, redaction: { class: "public" }, details: { ref } } };
+    }
+    return { ok: true, value: secret };
+  }
+
+  async delete(scope: CredentialScope): Promise<SerializableResult<StoredCredentialReference>> {
+    const ref = credentialRefForScope(scope);
+    const existing = this.refs.get(ref) ?? storedReference(ref, scope, "missing", false, "delete");
+    this.secrets.delete(ref);
+    this.refs.delete(ref);
+    return { ok: true, value: { ...existing, available: false, audit: audit("delete", scope) } };
+  }
+
+  async list(scope?: Partial<CredentialScope>): Promise<readonly StoredCredentialReference[]> {
+    return [...this.refs.values()].filter((ref) => matchesScope(ref.scope, scope));
+  }
+}
+
+export class UnavailableCredentialStorageAdapter implements CredentialStorageAdapter {
+  async status(): Promise<CredentialStorageDiagnostic> {
+    return {
+      code: "CREDENTIAL_STORAGE_UNAVAILABLE",
+      status: "unavailable",
+      message: "Secure credential storage is unavailable on this host.",
+      suggestedActions: ["Use environment credentials for this session or configure a secure storage adapter."],
+      redaction: { class: "public" }
+    };
+  }
+
+  async store(): Promise<SerializableResult<StoredCredentialReference>> {
+    return { ok: false, error: { code: "CREDENTIAL_STORAGE_UNAVAILABLE", message: "Secure credential storage is unavailable.", retryable: false, redaction: { class: "public" } } };
+  }
+
+  async resolve(): Promise<CredentialSecretResult> {
+    return { ok: false, error: { code: "CREDENTIAL_STORAGE_UNAVAILABLE", message: "Secure credential storage is unavailable.", retryable: false, redaction: { class: "public" } } };
+  }
+
+  async delete(scope: CredentialScope): Promise<SerializableResult<StoredCredentialReference>> {
+    return { ok: true, value: storedReference(credentialRefForScope(scope), scope, "missing", false, "delete") };
+  }
+
+  async list(): Promise<readonly StoredCredentialReference[]> {
+    return [];
+  }
+}
+
+export class DeepSeekCredentialAuthService implements CredentialAuthService {
+  constructor(private readonly storage: CredentialStorageAdapter = new InMemoryCredentialStorageAdapter(), private readonly defaultScope: CredentialScope = defaultDeepSeekScope()) {}
+
+  async storeDeepSeekCredential(secret: CredentialSecretInput, scope: Partial<CredentialScope> = {}): Promise<SerializableResult<StoredCredentialReference>> {
+    return this.storage.store(this.scope(scope), secret);
+  }
+
+  async resolveDeepSeekCredential(ref: CredentialRef): Promise<CredentialSecretResult> {
+    return this.storage.resolve(ref);
+  }
+
+  async deleteDeepSeekCredential(scope: Partial<CredentialScope> = {}): Promise<SerializableResult<StoredCredentialReference>> {
+    return this.storage.delete(this.scope(scope));
+  }
+
+  async listDeepSeekCredentials(scope: Partial<CredentialScope> = {}): Promise<readonly StoredCredentialReference[]> {
+    return this.storage.list(this.scope(scope));
+  }
+
+  async status(): Promise<CredentialStorageDiagnostic> {
+    return this.storage.status();
+  }
+
+  private scope(scope: Partial<CredentialScope>): CredentialScope {
+    return { ...this.defaultScope, ...scope, provider: "deepseek" };
+  }
+}
+
+export class CredentialAuthModelCredentialProvider implements ModelCredentialProvider {
+  constructor(private readonly auth: CredentialAuthService) {}
+
+  async resolve(ref: CredentialRef, _request: ModelRequest): Promise<ModelCredentialValue | undefined> {
+    const resolved = await this.auth.resolveDeepSeekCredential(ref);
+    if (!resolved.ok || !resolved.value) return undefined;
+    return {
+      ref,
+      value: resolved.value.value,
+      redaction: { class: "secret" }
+    };
+  }
+}
+
+export async function createDeepSeekCredentialAuthServiceFromEnv(env: Readonly<Record<string, string | undefined>> = process.env): Promise<CredentialAuthService> {
+  const storage = new InMemoryCredentialStorageAdapter();
+  const service = new DeepSeekCredentialAuthService(storage);
+  const value = firstNonEmpty(env.DEEPSEEK_API_KEY, env.DEEPSEEK_TOKEN);
+  if (value) {
+    await service.storeDeepSeekCredential({ value, source: "environment" });
+  }
+  return service;
+}
+
+export function credentialRefForScope(scope: CredentialScope): CredentialRef {
+  if (scope.provider === "deepseek" && scope.profile === "default" && !scope.workspace) return defaultDeepSeekCredentialRef;
+  return asId<"credentialRef">(`credential-${scope.provider}-${scope.profile}${scope.workspace ? `-${scope.workspace}` : ""}`);
+}
+
+export function redactSecret(value: string): string {
+  return value.length <= 4 ? "****" : `${value.slice(0, 2)}****${value.slice(-2)}`;
+}
+
+function defaultDeepSeekScope(): CredentialScope {
+  return { provider: "deepseek", profile: "default" };
+}
+
+function storedReference(ref: CredentialRef, scope: CredentialScope, source: StoredCredentialReference["source"], available: boolean, operation: CredentialAuditMetadata["operation"]): StoredCredentialReference {
+  return {
+    ref,
+    scope,
+    source,
+    available,
+    rotation: { createdBy: "local-auth" },
+    audit: audit(operation, scope),
+    redaction: { class: "secret" }
+  };
+}
+
+function audit(operation: CredentialAuditMetadata["operation"], scope: CredentialScope): CredentialAuditMetadata {
+  return {
+    operation,
+    scope,
+    at: "1970-01-01T00:00:00.000Z",
+    redaction: { class: "internal" }
+  };
+}
+
+function matchesScope(scope: CredentialScope, filter: Partial<CredentialScope> | undefined): boolean {
+  if (!filter) return true;
+  return (!filter.provider || filter.provider === scope.provider) && (!filter.profile || filter.profile === scope.profile) && (!filter.workspace || filter.workspace === scope.workspace);
+}
+
+function availableDiagnostic(): CredentialStorageDiagnostic {
+  return {
+    code: "CREDENTIAL_STORAGE_AVAILABLE",
+    status: "available",
+    message: "Credential storage is available.",
+    suggestedActions: [],
+    redaction: { class: "public" }
+  };
 }
 
 function hasValue(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function firstNonEmpty(...values: readonly (string | undefined)[]): string | undefined {
+  return values.find(hasValue)?.trim();
 }

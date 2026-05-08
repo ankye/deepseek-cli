@@ -28,6 +28,8 @@ export interface ModelReasoningOptions extends JsonObject {
 export interface ModelRequest {
   readonly profile: ModelProfile;
   readonly prompt: string;
+  readonly credentialRef?: CredentialRef;
+  readonly timeoutMs?: number;
   readonly tools?: readonly JsonObject[];
   readonly reasoning?: ModelReasoningOptions;
   readonly metadata?: JsonObject;
@@ -93,4 +95,25 @@ export type ModelStreamEvent =
 export interface ModelGateway {
   stream(request: ModelRequest): AsyncIterable<ModelStreamEvent>;
   countTokens(text: string, profile?: ModelProfile): Promise<number>;
+  verify?(request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult>;
+}
+
+export interface ModelLiveVerificationRequest {
+  readonly profile: ModelProfile;
+  readonly credentialRef?: CredentialRef;
+  readonly prompt: string;
+  readonly timeoutMs?: number;
+}
+
+export interface ModelLiveVerificationResult extends JsonObject {
+  readonly ok: boolean;
+  readonly provider: ModelProviderEventMetadata;
+  readonly reachable: boolean;
+  readonly terminalStatus: "completed" | "failed" | "missing-credential" | "unsupported";
+  readonly latencyMs?: number;
+  readonly eventKinds: readonly string[];
+  readonly usage?: ModelUsageMetadata;
+  readonly error?: RedactedError;
+  readonly diagnostics: readonly RedactedError[];
+  readonly redaction: RedactionMetadata;
 }

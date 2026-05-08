@@ -9,7 +9,8 @@ import {
   defaultDeepSeekProfile,
   normalizeDeepSeekChunk
 } from "../src/index.js";
-import type { ModelStreamEvent } from "@deepseek/platform-contracts";
+import { asId } from "@deepseek/platform-contracts";
+import type { CredentialRef, ModelRequest, ModelStreamEvent } from "@deepseek/platform-contracts";
 
 async function collect(iterable: AsyncIterable<ModelStreamEvent>): Promise<readonly ModelStreamEvent[]> {
   const events: ModelStreamEvent[] = [];
@@ -216,5 +217,24 @@ describe("DeepSeek OpenAI provider", () => {
 
     assert.deepEqual(events.map((event) => event.kind), ["delta", "usage", "finish", "done"]);
     assert.equal(events[1]?.kind === "usage" ? events[1].inputTokens : 0, 2);
+  });
+
+  it("passes live verification credential and timeout controls to provider requests", async () => {
+    const transport = new FixtureModelProviderTransport([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }]);
+    const requestedRef = asId<"credentialRef">("credential-deepseek-custom");
+    const provider = new DeepSeekOpenAIProvider({
+      transport,
+      credentials: {
+        async resolve(ref: CredentialRef, _request: ModelRequest) {
+          return { ref, value: ref === requestedRef ? "sk-custom" : "sk-wrong", redaction: { class: "secret" } };
+        }
+      }
+    });
+
+    const result = await provider.verify?.({ profile: defaultDeepSeekProfile, credentialRef: requestedRef, prompt: "ok", timeoutMs: 4321 });
+
+    assert.equal(result?.ok, true);
+    assert.equal(transport.requests[0]?.headers.authorization, "Bearer sk-custom");
+    assert.equal(transport.requests[0]?.timeoutMs, 4321);
   });
 });

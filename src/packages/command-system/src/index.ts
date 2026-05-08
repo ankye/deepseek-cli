@@ -4,12 +4,15 @@ import type {
   CommandSystem,
   JsonObject,
   JsonValue,
+  ModelLiveVerificationResult,
   ReadinessCheck,
   ReadinessCommandName,
   ReadinessCommandResult,
   ReadinessCredentialReference,
+  ResolvedConfig,
   SerializableResult
 } from "@deepseek/platform-contracts";
+import type { StoredCredentialReference } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 
 export class InMemoryCommandSystem implements CommandSystem {
@@ -49,7 +52,12 @@ export interface LocalReadinessEnvironment {
   readonly ignoredPaths: readonly string[];
   readonly availableCommands: readonly string[];
   readonly config?: JsonObject;
+  readonly resolvedConfig?: ResolvedConfig;
+  readonly credentialReferences?: readonly StoredCredentialReference[];
+  readonly workspaceMetadataPath?: string;
+  readonly liveVerifier?: () => Promise<ModelLiveVerificationResult>;
   readonly initialized?: boolean;
+  readonly initializedThisRun?: boolean;
 }
 
 export function createDefaultReadinessEnvironment(env: Readonly<Record<string, string | undefined>>): LocalReadinessEnvironment {
@@ -71,27 +79,28 @@ export async function registerLocalReadinessCommands(commandSystem: CommandSyste
   for (const command of readinessCommandNames) {
     await commandSystem.register(readinessManifest(command), async (input) => ({
       ok: true,
-      value: runLocalReadinessCommand(command, input, environment)
+      value: await runLocalReadinessCommand(command, input, environment)
     }));
   }
 }
 
-export function runLocalReadinessCommand(command: ReadinessCommandName, input: JsonObject, environment: LocalReadinessEnvironment): ReadinessCommandResult {
+export async function runLocalReadinessCommand(command: ReadinessCommandName, input: JsonObject, environment: LocalReadinessEnvironment): Promise<ReadinessCommandResult> {
   switch (command) {
     case "init":
-      return readinessResult(command, environment, initChecks(environment, input), { initialized: Boolean(environment.initialized), force: Boolean(input.force) });
+      return readinessResult(command, environment, initChecks(environment, input), { initialized: Boolean(environment.initialized), initializedThisRun: Boolean(environment.initializedThisRun), force: Boolean(input.force), workspaceMetadataPath: environment.workspaceMetadataPath });
     case "config":
-      return readinessResult(command, environment, configChecks(environment), { configKeys: Object.keys(environment.config ?? {}).sort() });
+      return readinessResult(command, environment, configChecks(environment), { configKeys: Object.keys(environment.config ?? {}).sort(), resolvedConfig: redactedResolvedConfig(environment.resolvedConfig) });
     case "auth": {
       const credential = credentialReference(environment);
-      return readinessResult(command, environment, authChecks(credential), { provider: "deepseek" }, credential);
+      return readinessResult(command, environment, authChecks(credential), { provider: "deepseek", credentialCount: environment.credentialReferences?.length ?? 0 }, credential);
     }
     case "doctor": {
       const credential = credentialReference(environment);
-      return readinessResult(command, environment, [...platformChecks(environment), ...configChecks(environment), ...authChecks(credential), ignoredPathCheck(environment)], { checkGroup: "doctor" }, credential);
+      const live = input.live === true && environment.liveVerifier ? await environment.liveVerifier() : undefined;
+      return readinessResult(command, environment, [...platformChecks(environment), ...configChecks(environment), ...authChecks(credential), ignoredPathCheck(environment), ...liveChecks(live, input.live === true)], { checkGroup: "doctor", liveRequested: input.live === true }, credential, live);
     }
     case "privacy":
-      return readinessResult(command, environment, privacyChecks(), { telemetryExport: "disabled", diagnosticsPersistence: "local-redacted", optOut: true });
+      return readinessResult(command, environment, privacyChecks(environment), { telemetryExport: resolvedValue(environment, "telemetry") ?? "disabled", diagnosticsPersistence: "local-redacted", privacy: resolvedValue(environment, "privacy") ?? "local" });
     case "verify-install":
       return readinessResult(command, environment, verifyInstallChecks(environment), { packageName: environment.packageName, packageVersion: environment.packageVersion });
   }
@@ -130,7 +139,8 @@ function readinessResult(
   environment: LocalReadinessEnvironment,
   checks: readonly ReadinessCheck[],
   metadata: JsonObject,
-  credential?: ReadinessCredentialReference
+  credential?: ReadinessCredentialReference,
+  live?: ModelLiveVerificationResult
 ): ReadinessCommandResult {
   const warnings = checks.filter((check) => check.status === "warn").map((check) => check.message);
   const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "pass";
@@ -148,19 +158,26 @@ function readinessResult(
     },
     suggestedActions: [...new Set(checks.flatMap((check) => check.suggestedActions ?? []))],
     ...(credential ? { credential } : {}),
+    ...(live ? { live } : {}),
     redaction: { class: "internal", fields: ["credential", "metadata.env"] }
   };
 }
 
 function initChecks(environment: LocalReadinessEnvironment, input: JsonObject): readonly ReadinessCheck[] {
+  const alreadyInitialized = Boolean(environment.initialized);
+  const initializedThisRun = Boolean(environment.initializedThisRun);
   return [
     check("workspace.access", "Workspace access", "pass", `Workspace is available at ${environment.cwd}.`),
     check(
       "init.state",
       "Initialization state",
-      environment.initialized && !input.force ? "warn" : "pass",
-      environment.initialized && !input.force ? "Workspace already has readiness metadata; no files were rewritten." : "Workspace can be initialized.",
-      environment.initialized && !input.force ? ["Use --force only when you intend to refresh generated metadata."] : []
+      alreadyInitialized && !input.force ? "warn" : "pass",
+      alreadyInitialized && !input.force
+        ? "Workspace already has readiness metadata; no files were rewritten."
+        : initializedThisRun
+          ? "Workspace readiness metadata was initialized."
+          : "Workspace can be initialized.",
+      alreadyInitialized && !input.force ? ["Use --force only when you intend to refresh generated metadata."] : []
     )
   ];
 }
@@ -169,15 +186,16 @@ function configChecks(environment: LocalReadinessEnvironment): readonly Readines
   const config = environment.config ?? {};
   const keys = Object.keys(config);
   const unknownKeys = keys.filter((key) => !knownConfigKeys.has(key));
+  const diagnostics = environment.resolvedConfig?.diagnostics ?? [];
   return [
     check("config.loaded", "Config loaded", "pass", keys.length === 0 ? "No local config values found; defaults will be used." : `${keys.length} local config value(s) found.`, [], { keys }),
     check(
       "config.known-keys",
       "Config known keys",
-      unknownKeys.length > 0 ? "warn" : "pass",
-      unknownKeys.length > 0 ? `Unknown config key(s): ${unknownKeys.join(", ")}.` : "All config keys are known.",
-      unknownKeys.length > 0 ? ["Remove unknown keys or add them through a future config schema change."] : [],
-      { unknownKeys }
+      unknownKeys.length > 0 || diagnostics.some((diagnostic) => diagnostic.severity === "warn") ? "warn" : diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "fail" : "pass",
+      unknownKeys.length > 0 ? `Unknown config key(s): ${unknownKeys.join(", ")}.` : diagnostics.length > 0 ? `${diagnostics.length} config diagnostic(s) found.` : "All config keys are known.",
+      diagnostics.flatMap((diagnostic) => diagnostic.suggestedActions ?? []),
+      { unknownKeys, diagnosticCodes: diagnostics.map((diagnostic) => diagnostic.code) }
     )
   ];
 }
@@ -203,10 +221,12 @@ function platformChecks(environment: LocalReadinessEnvironment): readonly Readin
   ];
 }
 
-function privacyChecks(): readonly ReadinessCheck[] {
+function privacyChecks(environment: LocalReadinessEnvironment): readonly ReadinessCheck[] {
+  const telemetry = resolvedValue(environment, "telemetry") ?? "disabled";
+  const privacy = resolvedValue(environment, "privacy") ?? "local";
   return [
-    check("privacy.telemetry", "Telemetry export", "pass", "Telemetry export is disabled by default for local readiness.", [], { export: "disabled" }),
-    check("privacy.diagnostics", "Diagnostics persistence", "pass", "Diagnostics are local and redacted by default.", [], { persistence: "local-redacted" })
+    check("privacy.telemetry", "Telemetry export", telemetry === "enabled" ? "warn" : "pass", `Telemetry export policy: ${telemetry}.`, telemetry === "enabled" ? ["Review telemetry policy before sharing diagnostics."] : [], { export: telemetry }),
+    check("privacy.diagnostics", "Diagnostics persistence", "pass", "Diagnostics are local and redacted by default.", [], { persistence: "local-redacted", privacy })
   ];
 }
 
@@ -232,6 +252,10 @@ function ignoredPathCheck(environment: LocalReadinessEnvironment): ReadinessChec
 }
 
 function credentialReference(environment: LocalReadinessEnvironment): ReadinessCredentialReference {
+  const stored = environment.credentialReferences?.find((reference) => reference.available);
+  if (stored) {
+    return { ref: stored.ref, provider: "deepseek", source: stored.source, available: true, redaction: { class: "secret" } };
+  }
   if (hasValue(environment.env.DEEPSEEK_API_KEY) || hasValue(environment.env.DEEPSEEK_TOKEN)) {
     return { ref: asId<"credentialRef">("credential-deepseek-api-key"), provider: "deepseek", source: "process-env", available: true, redaction: { class: "secret" } };
   }
@@ -239,6 +263,39 @@ function credentialReference(environment: LocalReadinessEnvironment): ReadinessC
     return { ref: asId<"credentialRef">("credential-deepseek-api-key"), provider: "deepseek", source: "env-file", available: true, redaction: { class: "secret" } };
   }
   return { ref: asId<"credentialRef">("credential-deepseek-api-key"), provider: "deepseek", source: "missing", available: false, redaction: { class: "secret" } };
+}
+
+function liveChecks(live: ModelLiveVerificationResult | undefined, requested: boolean): readonly ReadinessCheck[] {
+  if (!requested) {
+    return [check("doctor.live", "Live provider verification", "pass", "Live provider verification was not requested; doctor stayed offline.", [], { requested: false })];
+  }
+  if (!live) {
+    return [check("doctor.live", "Live provider verification", "warn", "Live provider verification was requested but no live verifier was configured.", ["Configure a model gateway live verifier."], { requested: true })];
+  }
+  return [
+    check(
+      "doctor.live",
+      "Live provider verification",
+      live.ok ? "pass" : "warn",
+      live.ok ? `DeepSeek live verification completed for ${live.provider.model}.` : `DeepSeek live verification did not complete: ${live.terminalStatus}.`,
+      live.ok ? [] : live.diagnostics.flatMap((diagnostic) => (Array.isArray(diagnostic.details?.suggestedActions) ? diagnostic.details.suggestedActions.map(String) : [])),
+      { requested: true, terminalStatus: live.terminalStatus, eventKinds: live.eventKinds, reachable: live.reachable }
+    )
+  ];
+}
+
+function resolvedValue(environment: LocalReadinessEnvironment, key: string): JsonValue | undefined {
+  return environment.resolvedConfig?.values.find((value) => value.key === key)?.redactedValue ?? environment.config?.[key];
+}
+
+function redactedResolvedConfig(config: ResolvedConfig | undefined): JsonObject {
+  if (!config) return {};
+  return {
+    schemaVersion: config.schemaVersion,
+    profile: config.profile,
+    values: config.values.map((value) => ({ key: value.key, value: value.redactedValue, source: value.source.scope, shadowedSources: value.shadowedSources.map((source) => source.scope) })),
+    diagnostics: config.diagnostics.map((diagnostic) => ({ code: diagnostic.code, severity: diagnostic.severity, keyPath: diagnostic.keyPath, message: diagnostic.message }))
+  };
 }
 
 function check(id: string, label: string, status: ReadinessCheck["status"], message: string, suggestedActions: readonly string[] = [], metadata: JsonObject = {}): ReadinessCheck {

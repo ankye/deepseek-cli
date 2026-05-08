@@ -6,6 +6,8 @@ import type {
   ModelCredentialProvider,
   ModelFinishReason,
   ModelGateway,
+  ModelLiveVerificationRequest,
+  ModelLiveVerificationResult,
   ModelProfile,
   ModelProviderConfig,
   ModelProviderEventMetadata,
@@ -64,6 +66,10 @@ export class DeterministicMockModelGateway implements ModelGateway {
   async countTokens(text: string, _profile?: ModelProfile): Promise<number> {
     return countWhitespaceTokens(text);
   }
+
+  async verify(request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
+    return verifyByStreaming(this, request);
+  }
 }
 
 export class DeepSeekModelGatewaySkeleton implements ModelGateway {
@@ -76,6 +82,10 @@ export class DeepSeekModelGatewaySkeleton implements ModelGateway {
 
   async countTokens(text: string, _profile?: ModelProfile): Promise<number> {
     return countWhitespaceTokens(text);
+  }
+
+  async verify(request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
+    return verifyByStreaming(this, request);
   }
 }
 
@@ -93,9 +103,10 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
       return;
     }
 
-    const credential = this.config.credentialRef ? await this.options.credentials?.resolve(this.config.credentialRef, request) : undefined;
-    if (this.config.credentialRef && !credential) {
-      yield { kind: "error", error: providerError("PROVIDER_CREDENTIAL_MISSING", "DeepSeek provider credential is missing.", false, { credentialRef: this.config.credentialRef }), provider };
+    const credentialRef = request.credentialRef ?? this.config.credentialRef;
+    const credential = credentialRef ? await this.options.credentials?.resolve(credentialRef, request) : undefined;
+    if (credentialRef && !credential) {
+      yield { kind: "error", error: providerError("PROVIDER_CREDENTIAL_MISSING", "DeepSeek provider credential is missing.", false, { credentialRef }), provider };
       return;
     }
 
@@ -118,6 +129,10 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
 
   async countTokens(text: string, _profile?: ModelProfile): Promise<number> {
     return countWhitespaceTokens(text);
+  }
+
+  async verify(request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
+    return verifyByStreaming(this, request);
   }
 
   buildProviderRequest(request: ModelRequest, credentialValue = ""): ModelProviderRequest {
@@ -146,7 +161,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
         ...(this.config.defaultHeaders ?? {})
       },
       body,
-      ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {})
+      ...(request.timeoutMs ?? this.options.timeoutMs ? { timeoutMs: request.timeoutMs ?? this.options.timeoutMs } : {})
     };
   }
 
@@ -365,6 +380,53 @@ function providerError(code: string, message: string, retryable: boolean, detail
     retryable,
     redaction: { class: "public" },
     ...(Object.keys(details).length > 0 ? { details } : {})
+  };
+}
+
+export async function verifyByStreaming(gateway: ModelGateway, request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
+  const started = Date.now();
+  const eventKinds: string[] = [];
+  const diagnostics: RedactedError[] = [];
+  let usage: ModelLiveVerificationResult["usage"];
+  let terminalStatus: ModelLiveVerificationResult["terminalStatus"] = "failed";
+  let reachable = false;
+
+  for await (const event of gateway.stream({
+    profile: request.profile,
+    prompt: request.prompt,
+    ...(request.credentialRef ? { credentialRef: request.credentialRef } : {}),
+    ...(request.timeoutMs ? { timeoutMs: request.timeoutMs } : {}),
+    metadata: { liveVerification: true, ...(request.timeoutMs ? { timeoutMs: request.timeoutMs } : {}) }
+  } as ModelRequest)) {
+    eventKinds.push(event.kind);
+    if (event.kind === "delta" || event.kind === "reasoning" || event.kind === "finish" || event.kind === "usage" || event.kind === "done") reachable = true;
+    if (event.kind === "usage") usage = event.metadata;
+    if (event.kind === "error") {
+      diagnostics.push(redactProviderError(event.error));
+      terminalStatus = event.error.code === "PROVIDER_CREDENTIAL_MISSING" ? "missing-credential" : "failed";
+    }
+    if (event.kind === "done" || event.kind === "finish") terminalStatus = diagnostics.length === 0 ? "completed" : terminalStatus;
+  }
+
+  return {
+    ok: terminalStatus === "completed",
+    provider: { provider: "deepseek", protocol: "openai-chat-completions", model: request.profile.model },
+    reachable,
+    terminalStatus,
+    latencyMs: Date.now() - started,
+    eventKinds,
+    ...(usage ? { usage } : {}),
+    ...(diagnostics[0] ? { error: diagnostics[0] } : {}),
+    diagnostics,
+    redaction: { class: "internal" }
+  };
+}
+
+function redactProviderError(error: RedactedError): RedactedError {
+  return {
+    ...error,
+    message: error.message.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]").replace(/sk-[A-Za-z0-9_-]+/g, "[REDACTED]"),
+    redaction: { class: "public" }
   };
 }
 

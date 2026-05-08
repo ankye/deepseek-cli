@@ -12,7 +12,12 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@deepseek/config": "0.1.0",
+    "@deepseek/credential-auth-management": "0.1.0",
+    "@deepseek/model-gateway": "0.1.0",
+    "@deepseek/platform-abstraction": "0.1.0"
+  },
   "publishConfig": {
     "access": "public"
   },

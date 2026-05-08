@@ -54,8 +54,8 @@ describe("local readiness contracts", () => {
     }
   });
 
-  it("reports credential references without raw secret fields", () => {
-    const result = runLocalReadinessCommand("auth", {}, fakeEnv());
+  it("reports credential references without raw secret fields", async () => {
+    const result = await runLocalReadinessCommand("auth", {}, fakeEnv());
 
     assert.equal(result.credential?.available, true);
     assert.equal(result.credential?.source, "process-env");
