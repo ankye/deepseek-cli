@@ -1,4 +1,4 @@
-import type { JsonObject, RuntimeEvent, VscodeHostAdapter } from "@deepseek/platform-contracts";
+import type { JsonObject, RuntimeEvent, RuntimeKernel, RuntimeKernelRequest, VscodeHostAdapter } from "@deepseek/platform-contracts";
 import { InProcessProtocolTransport } from "@deepseek/communication-protocol";
 
 export interface VscodeLikeContext {
@@ -31,6 +31,13 @@ export class DeepSeekVscodeHostBridge implements VscodeHostAdapter {
 
   getRenderedEvents(): readonly RuntimeEvent[] {
     return [...this.rendered];
+  }
+
+  async *projectRuntimeEvents(kernel: RuntimeKernel, request: RuntimeKernelRequest): AsyncIterable<RuntimeEvent> {
+    for await (const event of kernel.execute(request)) {
+      this.render(event);
+      yield event;
+    }
   }
 }
 

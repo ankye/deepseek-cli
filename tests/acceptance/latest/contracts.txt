@@ -7,40 +7,71 @@ TAP version 13
     # Subtest: passes a valid minimal workspace
     ok 1 - passes a valid minimal workspace
       ---
-      duration_ms: 468.6508
+      duration_ms: 343.472
       type: 'test'
       ...
     # Subtest: reports stable rule ids for boundary violations
     ok 2 - reports stable rule ids for boundary violations
       ---
-      duration_ms: 429.7893
+      duration_ms: 338.5225
       type: 'test'
       ...
-    1..2
+    # Subtest: allows governed execution primitives in runtime, owner packages, and tests
+    ok 3 - allows governed execution primitives in runtime, owner packages, and tests
+      ---
+      duration_ms: 325.208
+      type: 'test'
+      ...
+    # Subtest: rejects direct governed execution primitive bypasses outside approved owners
+    ok 4 - rejects direct governed execution primitive bypasses outside approved owners
+      ---
+      duration_ms: 321.8625
+      type: 'test'
+      ...
+    1..4
 ok 1 - architecture lint framework
   ---
-  duration_ms: 899.4955
+  duration_ms: 1330.0134
   type: 'suite'
   ...
 # Subtest: package boundaries
     # Subtest: passes dependency boundary checker
     ok 1 - passes dependency boundary checker
       ---
-      duration_ms: 643.5277
+      duration_ms: 477.7934
       type: 'test'
       ...
     1..1
 ok 2 - package boundaries
   ---
-  duration_ms: 644.2084
+  duration_ms: 478.49
   type: 'suite'
   ...
-1..2
-# tests 3
-# suites 2
-# pass 3
+# Subtest: runtime kernel contracts
+    # Subtest: constructs the kernel and validates execution envelopes
+    ok 1 - constructs the kernel and validates execution envelopes
+      ---
+      duration_ms: 2.0856
+      type: 'test'
+      ...
+    # Subtest: returns typed rejection events for unknown capabilities
+    ok 2 - returns typed rejection events for unknown capabilities
+      ---
+      duration_ms: 0.9918
+      type: 'test'
+      ...
+    1..2
+ok 3 - runtime kernel contracts
+  ---
+  duration_ms: 3.7398
+  type: 'suite'
+  ...
+1..3
+# tests 7
+# suites 3
+# pass 7
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 1187.8396
+# duration_ms 1514.6476

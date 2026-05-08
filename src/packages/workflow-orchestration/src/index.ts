@@ -1,11 +1,19 @@
 import type {
+  AgentId,
+  CapabilityId,
   JsonObject,
   RuntimeEvent,
+  SessionId,
+  StepId,
+  TraceContext,
   WorkflowCheckpoint,
   WorkflowGraph,
+  WorkflowInvocation,
+  WorkflowInvocationRequest,
   WorkflowOrchestrator,
   WorkflowRunRequest,
-  WorkflowStep
+  WorkflowStep,
+  WorkflowTerminalStatus
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 
@@ -29,6 +37,41 @@ export class InMemoryWorkflowTemplateRegistry {
 }
 
 export class SingleTurnWorkflowOrchestrator implements WorkflowOrchestrator {
+  async openInvocation(request: WorkflowInvocationRequest): Promise<WorkflowInvocation> {
+    const suffix = String(request.envelopeId);
+    return {
+      workflowId: asId<"workflow">(`workflow-${suffix}`),
+      taskId: asId<"task">(`task-${suffix}`),
+      stepId: asId<"step">(`step-${suffix}`),
+      envelopeId: request.envelopeId,
+      capabilityId: request.capabilityId,
+      sessionId: request.sessionId,
+      ...(request.ownerAgentId ? { ownerAgentId: request.ownerAgentId } : {})
+    };
+  }
+
+  async closeInvocation(
+    invocation: WorkflowInvocation,
+    status: WorkflowTerminalStatus,
+    metadata: JsonObject = {}
+  ): Promise<RuntimeEvent> {
+    return {
+      kind: "workflow.closed",
+      sessionId: invocation.sessionId,
+      taskId: invocation.taskId,
+      ...(invocation.ownerAgentId ? { agentId: invocation.ownerAgentId } : {}),
+      trace: this.trace(invocation.sessionId, invocation.workflowId),
+      data: {
+        workflowId: invocation.workflowId,
+        stepId: invocation.stepId,
+        capabilityId: invocation.capabilityId,
+        envelopeId: invocation.envelopeId,
+        status,
+        ...metadata
+      }
+    };
+  }
+
   async createGraph(request: WorkflowRunRequest): Promise<WorkflowGraph> {
     const step: WorkflowStep = {
       id: asId<"step">("step-model-response"),
@@ -74,5 +117,14 @@ export class SingleTurnWorkflowOrchestrator implements WorkflowOrchestrator {
 
   async validateGraph(graph: WorkflowGraph): Promise<readonly string[]> {
     return graph.steps.length === 0 ? ["workflow graph must contain at least one step"] : [];
+  }
+
+  private trace(sessionId: SessionId, workflowId: string): TraceContext {
+    return {
+      traceId: asId<"trace">(`trace-${workflowId}`),
+      spanId: asId<"span">(`span-${workflowId}`),
+      correlationId: asId<"correlation">(`corr-${workflowId}`),
+      sessionId
+    };
   }
 }

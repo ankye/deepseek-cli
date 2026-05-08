@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { ProtocolEnvelope } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
+import { createDefaultRuntimeKernel, runtimeEchoCapability } from "@deepseek/runtime";
+import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { runCli } from "../../src/apps/cli/src/index.js";
 import { activate } from "../../src/apps/vscode-extension/src/index.js";
 
@@ -23,6 +25,15 @@ describe("host adapter smoke", () => {
     assert.ok(lines.some((line) => JSON.parse(line).kind === "turn.completed"));
     const bridge = activate({ subscriptions: [] });
     assert.equal(bridge.context.hostKind, "vscode");
+  });
+
+  it("runs CLI kernel-backed command in stream-json mode", async () => {
+    const lines: string[] = [];
+    await runCli(["run", "-p", "kernel e2e", "--output", "stream-json"], (line) => lines.push(line));
+    const events = lines.map((line) => JSON.parse(line));
+    assert.equal(events.some((event) => event.kind === "execution.envelope.created"), true);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.some((event) => event.trace?.traceId), true);
   });
 
   it("runs the built CLI binary with traceable runtime metadata", () => {
@@ -97,5 +108,22 @@ describe("host adapter smoke", () => {
     };
     await bridge.transport.send(event);
     assert.deepEqual((await stream.next()).value, event);
+  });
+
+  it("lets VSCode project runtime kernel events without importing CLI", async () => {
+    const bridge = activate({ subscriptions: [] });
+    const deps = createDeterministicRuntimeDependencies();
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const events: unknown[] = [];
+    for await (const event of bridge.projectRuntimeEvents(kernel, {
+      capabilityId: runtimeEchoCapability.id,
+      caller: "vscode",
+      input: { text: "vscode kernel" }
+    })) {
+      events.push(event);
+    }
+    assert.equal(bridge.getRenderedEvents().some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.some((event) => (event as { kind?: string }).kind === "workflow.opened"), true);
+    await kernel.shutdown();
   });
 });

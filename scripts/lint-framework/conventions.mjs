@@ -106,6 +106,21 @@ export const lintConventions = {
         ownerPackage: "policy-sandbox"
       },
       {
+        serviceNames: new Set(["scheduler", "concurrency", "concurrencyOrchestrator"]),
+        methods: new Set(["run", "cancel"]),
+        ownerPackage: "concurrency-orchestration"
+      },
+      {
+        serviceNames: new Set(["policy", "policyEngine"]),
+        methods: new Set(["decide"]),
+        ownerPackage: "policy-sandbox"
+      },
+      {
+        serviceNames: new Set(["workflow", "workflowOrchestrator"]),
+        methods: new Set(["openInvocation", "closeInvocation"]),
+        ownerPackage: "workflow-orchestration"
+      },
+      {
         serviceNames: new Set(["bus", "runtimeMessageBus"]),
         methods: new Set(["publish"]),
         ownerPackage: "runtime-message-bus"

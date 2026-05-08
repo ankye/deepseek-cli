@@ -19,8 +19,29 @@ describe("deterministic scheduler", () => {
     assert.deepEqual(order, ["a", "b"]);
     assert.deepEqual(
       scheduler.events().map((event) => event.status),
-      ["running", "completed"]
+      ["queued", "running", "completed"]
     );
+  });
+
+  it("queues work beyond the concurrency limit", async () => {
+    const scheduler = new DeterministicScheduler({ maxConcurrency: 1 });
+    let releaseFirst!: () => void;
+    const first = scheduler.run({ id: asId<"task">("task-first"), name: "first" }, async () => {
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      return "first";
+    });
+    const second = scheduler.run({ id: asId<"task">("task-second"), name: "second" }, async () => "second");
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(
+      scheduler.events().map((event) => `${event.taskId}:${event.status}`),
+      ["task-first:queued", "task-second:queued", "task-first:running"]
+    );
+    releaseFirst();
+    assert.deepEqual(await Promise.all([first, second]), ["first", "second"]);
+    assert.equal(scheduler.events().some((event) => event.taskId === "task-second" && event.status === "running"), true);
   });
 
   it("emits terminal events for deadlines and cancellation", async () => {

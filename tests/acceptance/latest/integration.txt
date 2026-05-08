@@ -7,40 +7,46 @@ TAP version 13
     # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
     ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
       ---
-      duration_ms: 2.7231
+      duration_ms: 1.552
       type: 'test'
       ...
     # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
     ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
       ---
-      duration_ms: 1.8068
+      duration_ms: 1.2439
       type: 'test'
       ...
     1..2
 ok 1 - ecosystem and governance integration
   ---
-  duration_ms: 5.8362
+  duration_ms: 3.4134
   type: 'suite'
   ...
 # Subtest: runtime integration pipeline
     # Subtest: records bus, session, usage, and observability state for a turn
     ok 1 - records bus, session, usage, and observability state for a turn
       ---
-      duration_ms: 3.5444
+      duration_ms: 2.4211
       type: 'test'
       ...
-    1..1
+    # Subtest: connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
+    ok 2 - connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
+      ---
+      duration_ms: 2.0446
+      type: 'test'
+      ...
+    1..2
 ok 2 - runtime integration pipeline
   ---
-  duration_ms: 4.4351
+  duration_ms: 5.0724
   type: 'suite'
   ...
 1..2
-# tests 3
+# tests 4
 # suites 2
-# pass 3
+# pass 4
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 421.4319
+# duration_ms 30255.2077

@@ -17,6 +17,7 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | Type and contract checks | \`npm run typecheck\`, \`npm run test:contracts\` -> \`latest/typecheck.txt\`, \`latest/contracts.txt\` | required |
 | CLI build artifact | \`npm run build:cli\` -> \`latest/build-cli.txt\` | required |
 | Headless smoke | \`npm run smoke:headless\` -> \`latest/smoke-headless.txt\` | required |
+| Runtime kernel smoke | \`npx tsx src/apps/cli/src/index.ts run -p "kernel smoke" --output stream-json\` -> \`latest/runtime-kernel.txt\` | required |
 | Protocol and bus replay | \`npm run test:golden\` -> \`latest/golden-replay.txt\` | required |
 | Scheduler/workflow/concurrency | \`npm run test:integration\` and package tests -> \`latest/integration.txt\`, \`latest/test-summary.txt\` | required |
 | Capability ecosystem | package and integration tests -> \`latest/integration.txt\`, \`latest/test-summary.txt\` | required |

@@ -7,6 +7,6 @@
 > esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js
 
 
-  dist\index.js  31.2kb
+  dist\index.js  53.3kb
 
-Done in 30ms
+Done in 13ms

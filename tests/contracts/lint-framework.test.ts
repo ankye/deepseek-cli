@@ -92,6 +92,21 @@ const conventions = {
         ownerPackage: "policy-sandbox"
       },
       {
+        serviceNames: new Set(["scheduler", "concurrency", "concurrencyOrchestrator"]),
+        methods: new Set(["run", "cancel"]),
+        ownerPackage: "concurrency-orchestration"
+      },
+      {
+        serviceNames: new Set(["policy", "policyEngine"]),
+        methods: new Set(["decide"]),
+        ownerPackage: "policy-sandbox"
+      },
+      {
+        serviceNames: new Set(["workflow", "workflowOrchestrator"]),
+        methods: new Set(["openInvocation", "closeInvocation"]),
+        ownerPackage: "workflow-orchestration"
+      },
+      {
         serviceNames: new Set(["bus", "runtimeMessageBus"]),
         methods: new Set(["publish"]),
         ownerPackage: "runtime-message-bus"
@@ -213,6 +228,7 @@ describe("architecture lint framework", () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/packages/runtime/src/index.ts", "export async function run(deps) { await deps.skills.activate(\"review\", {}); }\n");
       await writeFixtureFile(root, "src/packages/skill-system/src/index.ts", "export async function own(skillSystem) { await skillSystem.activate(\"review\", {}); }\n");
+      await writeFixtureFile(root, "src/packages/concurrency-orchestration/src/index.ts", "export async function ownScheduler(scheduler) { await scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
       await writeFixtureFile(root, "src/apps/cli/test/cli.test.ts", "export async function test(deps) { await deps.mcp.listTools(\"fake\"); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
@@ -224,7 +240,8 @@ describe("architecture lint framework", () => {
   it("rejects direct governed execution primitive bypasses outside approved owners", async () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activate(\"review\", {}); }\n");
-      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); }\n");
+      await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function badHost(deps) { await deps.scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 2, result.stderr || result.stdout);

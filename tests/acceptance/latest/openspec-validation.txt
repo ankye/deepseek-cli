@@ -1,6 +1,7 @@
 - Validating...
 ✓ spec/agent-management
 ✓ spec/bilingual-openspec-documentation
+✓ spec/capability-execution-governance
 ✓ spec/capability-registry
 ✓ spec/code-intelligence
 ✓ spec/command-system
@@ -23,6 +24,7 @@
 ✓ spec/policy-sandbox
 ✓ spec/remote-runtime-connectivity
 ✓ spec/runtime-event-loop
+✓ spec/runtime-execution-kernel
 ✓ spec/runtime-message-bus
 ✓ spec/session-store
 ✓ spec/skill-system
@@ -31,4 +33,4 @@
 ✓ spec/vscode-extension-adapter
 ✓ spec/workflow-orchestration
 ✓ spec/workspace-state-management
-Totals: 32 passed, 0 failed (32 items)
+Totals: 34 passed, 0 failed (34 items)

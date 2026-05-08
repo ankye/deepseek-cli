@@ -1,5 +1,5 @@
-import type { JsonObject, RedactedError, TraceContext } from "./common.js";
-import type { AgentId, SessionId, TaskId, TurnId } from "./ids.js";
+import type { Clock, JsonObject, RedactedError, TraceContext } from "./common.js";
+import type { AgentId, CapabilityId, IdFactory, SessionId, TaskId, TurnId, WorkflowId } from "./ids.js";
 import type { AgentManager } from "./agent.js";
 import type { CapabilityRegistry } from "./capability.js";
 import type { CacheManager, MemoryManager } from "./memory.js";
@@ -30,6 +30,25 @@ import type { WorkflowOrchestrator } from "./workflow.js";
 import type { WorkspaceStateManager } from "./workspace.js";
 
 export type RuntimeEventKind =
+  | "kernel.lifecycle"
+  | "kernel.request.accepted"
+  | "execution.envelope.created"
+  | "execution.rejected"
+  | "workflow.opened"
+  | "workflow.closed"
+  | "policy.decided"
+  | "sandbox.selected"
+  | "scheduler.queued"
+  | "scheduler.started"
+  | "scheduler.completed"
+  | "scheduler.failed"
+  | "scheduler.cancelled"
+  | "scheduler.timed-out"
+  | "capability.started"
+  | "capability.output"
+  | "capability.completed"
+  | "capability.failed"
+  | "capability.cancelled"
   | "session.started"
   | "turn.started"
   | "workflow.step"
@@ -39,6 +58,114 @@ export type RuntimeEventKind =
   | "turn.completed"
   | "runtime.error"
   | "runtime.disposed";
+
+export type ExecutionInvocationKind =
+  | "capability"
+  | "model"
+  | "command"
+  | "skill"
+  | "hook"
+  | "mcp"
+  | "sandbox"
+  | "plugin"
+  | "subagent";
+
+export type ExecutionOutcomeStatus = "completed" | "failed" | "cancelled" | "timed-out" | "rejected";
+
+export type RuntimeKernelState = "created" | "running" | "shutting-down" | "shutdown";
+
+export type KernelErrorCode =
+  | "KERNEL_CONFIGURATION_ERROR"
+  | "KERNEL_NOT_RUNNING"
+  | "KERNEL_SHUTDOWN"
+  | "KERNEL_CAPABILITY_NOT_FOUND"
+  | "KERNEL_ENVELOPE_INVALID"
+  | "KERNEL_POLICY_DENIED"
+  | "KERNEL_SCHEDULER_TIMEOUT"
+  | "KERNEL_CANCELLED"
+  | "KERNEL_EXECUTOR_FAILED";
+
+export interface KernelError extends RedactedError {
+  readonly code: KernelErrorCode;
+}
+
+export interface ExecutionEnvelope extends JsonObject {
+  readonly invocationId: string;
+  readonly capabilityId: CapabilityId;
+  readonly capabilityVersion: string;
+  readonly kind: ExecutionInvocationKind;
+  readonly caller: string;
+  readonly parentInvocationId?: string;
+  readonly sessionId?: SessionId;
+  readonly workflowId?: WorkflowId;
+  readonly taskId?: TaskId;
+  readonly agentId?: AgentId;
+  readonly inputSchema: JsonObject;
+  readonly outputSchema: JsonObject;
+  readonly redactionClass: string;
+  readonly provenance: JsonObject;
+  readonly trust: string;
+  readonly permissions: readonly string[];
+  readonly sideEffect: string;
+  readonly policyContext: JsonObject;
+  readonly approvalRequired: boolean;
+  readonly sandboxProfile?: string;
+  readonly resourceLocks: readonly string[];
+  readonly timeoutMs: number;
+  readonly deadlineAt?: string;
+  readonly cancellation: JsonObject;
+  readonly retryPolicy: JsonObject;
+  readonly idempotency: JsonObject;
+  readonly trace: TraceContext;
+  readonly telemetry: JsonObject;
+  readonly replayPolicy: JsonObject;
+  readonly createdAt: string;
+}
+
+export interface RuntimeKernelRequest {
+  readonly capabilityId: CapabilityId;
+  readonly input: JsonObject;
+  readonly caller: string;
+  readonly sessionId?: SessionId;
+  readonly agentId?: AgentId;
+  readonly parentInvocationId?: string;
+  readonly timeoutMs?: number;
+  readonly trace?: TraceContext;
+}
+
+export interface RuntimeKernelResult extends JsonObject {
+  readonly envelope: ExecutionEnvelope;
+  readonly status: ExecutionOutcomeStatus;
+  readonly output?: JsonObject;
+  readonly error?: KernelError;
+}
+
+export interface RuntimeKernelLogger {
+  debug(message: string, metadata?: JsonObject): void;
+  error(message: string, error: KernelError, metadata?: JsonObject): void;
+}
+
+export interface RuntimeKernelDependencies {
+  readonly bus: RuntimeMessageBus;
+  readonly workflow: WorkflowOrchestrator;
+  readonly scheduler: ConcurrencyOrchestrator;
+  readonly capabilities: CapabilityRegistry;
+  readonly policy: PolicyEngine;
+  readonly sandbox: SandboxRuntime;
+  readonly sessions: SessionStore;
+  readonly observability: ObservabilitySink;
+  readonly clock: Clock;
+  readonly ids: IdFactory;
+  readonly logger: RuntimeKernelLogger;
+}
+
+export interface RuntimeKernel {
+  start(): Promise<void>;
+  execute(request: RuntimeKernelRequest): AsyncIterable<RuntimeEvent>;
+  cancel(invocationId: string, reason: string): Promise<void>;
+  shutdown(reason?: string): Promise<void>;
+  state(): RuntimeKernelState;
+}
 
 export interface RuntimeRequest extends JsonObject {
   readonly prompt: string;

@@ -5,8 +5,10 @@ import { parseCliArgs, runCli } from "../src/index.js";
 describe("cli host adapter", () => {
   it("parses prompt mode and stream-json rendering", () => {
     assert.deepEqual(parseCliArgs(["-p", "hello", "--output", "stream-json"]), {
+      command: "turn",
       prompt: "hello",
-      output: "stream-json"
+      output: "stream-json",
+      capabilityId: "runtime.echo"
     });
   });
 

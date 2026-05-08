@@ -14,6 +14,8 @@ export interface PolicyDecision {
   readonly action: PolicyAction;
   readonly reason: string;
   readonly rewritten?: JsonObject;
+  readonly audit?: JsonObject;
+  readonly sandboxProfile?: string;
 }
 
 export interface ApprovalRequest extends PolicyRequest {

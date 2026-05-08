@@ -12,13 +12,27 @@ import type {
 
 export class DefaultPolicyEngine implements PolicyEngine {
   async decide(request: PolicyRequest): Promise<PolicyDecision> {
+    const sideEffect = request.metadata.sideEffect;
+    if (sideEffect === "write" || sideEffect === "network" || sideEffect === "process") {
+      return {
+        action: "deny",
+        reason: `Side effect ${String(sideEffect)} is not allowed by deterministic policy`,
+        audit: { policy: "deterministic-development", resource: request.resource },
+        sandboxProfile: "development-denied"
+      };
+    }
     if (request.action.includes("delete") || request.action.includes("secret")) {
-      return { action: "ask", reason: "Potentially sensitive action requires approval" };
+      return { action: "ask", reason: "Potentially sensitive action requires approval", audit: { policy: "default" }, sandboxProfile: "development" };
     }
     if (request.resource.includes("untrusted")) {
-      return { action: "quarantine", reason: "Untrusted resource" };
+      return { action: "quarantine", reason: "Untrusted resource", audit: { policy: "default" }, sandboxProfile: "development-quarantine" };
     }
-    return { action: "allow", reason: "Default development policy" };
+    return {
+      action: "allow",
+      reason: "Default development policy",
+      audit: { policy: "deterministic-development", resource: request.resource },
+      sandboxProfile: "development"
+    };
   }
 }
 
