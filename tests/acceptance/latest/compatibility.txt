@@ -7,13 +7,13 @@ TAP version 13
     # Subtest: requires schemaVersion on persisted subjects
     ok 1 - requires schemaVersion on persisted subjects
       ---
-      duration_ms: 0.8859
+      duration_ms: 0.9767
       type: 'test'
       ...
     1..1
 ok 1 - compatibility checks
   ---
-  duration_ms: 1.4911
+  duration_ms: 1.6085
   type: 'suite'
   ...
 1..1
@@ -24,4 +24,4 @@ ok 1 - compatibility checks
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 232.8933
+# duration_ms 245.5039

@@ -67,7 +67,7 @@ export const lintConventions = {
     primitives: [
       {
         serviceNames: new Set(["capabilities", "capabilityRegistry"]),
-        methods: new Set(["execute"]),
+        methods: new Set(["execute", "resolveExecutable"]),
         ownerPackage: "capability-registry"
       },
       {

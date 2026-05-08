@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { CapabilityId, RuntimeEvent } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { createDefaultRuntimeKernel, createHeadlessRuntime, runtimeEchoCapability } from "@deepseek/runtime";
+import { createDefaultRuntimeKernel, runtimeEchoCapability } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 
 export interface CliOptions {
@@ -41,30 +41,18 @@ export function renderStreamJson(event: RuntimeEvent): string {
 export async function runCli(args: readonly string[], write: (line: string) => void = console.log): Promise<void> {
   const options = parseCliArgs(args);
   const deps = createDeterministicRuntimeDependencies();
-  if (options.command === "run") {
-    const kernel = await createDefaultRuntimeKernel(deps);
-    try {
-      for await (const event of kernel.execute({
-        capabilityId: options.capabilityId ?? runtimeEchoCapability.id,
-        caller: "cli",
-        input: { text: options.prompt },
-        timeoutMs: 30_000
-      })) {
-        write(options.output === "stream-json" ? renderStreamJson(event) : renderText(event));
-      }
-    } finally {
-      await kernel.shutdown();
-    }
-    return;
-  }
-
-  const runtime = createHeadlessRuntime(deps);
+  const kernel = await createDefaultRuntimeKernel(deps);
   try {
-    for await (const event of runtime.runTurn({ prompt: options.prompt })) {
+    for await (const event of kernel.execute({
+      capabilityId: options.capabilityId ?? runtimeEchoCapability.id,
+      caller: options.command === "run" ? "cli.run" : "cli.turn",
+      input: { text: options.prompt, prompt: options.prompt },
+      timeoutMs: 30_000
+    })) {
       write(options.output === "stream-json" ? renderStreamJson(event) : renderText(event));
     }
   } finally {
-    await runtime.dispose();
+    await kernel.shutdown();
   }
 }
 

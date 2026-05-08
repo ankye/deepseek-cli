@@ -7,332 +7,417 @@ TAP version 13
     # Subtest: parses prompt mode and stream-json rendering
     ok 1 - parses prompt mode and stream-json rendering
       ---
-      duration_ms: 1.6933
+      duration_ms: 1.5381
       type: 'test'
       ...
     # Subtest: runs as a thin host over runtime events
     ok 2 - runs as a thin host over runtime events
       ---
-      duration_ms: 3.81
+      duration_ms: 8.2724
       type: 'test'
       ...
     1..2
 ok 1 - cli host adapter
   ---
-  duration_ms: 6.567
+  duration_ms: 10.9722
   type: 'suite'
   ...
 # Subtest: vscode extension host adapter
     # Subtest: exposes a thin bridge without CLI app imports
     ok 1 - exposes a thin bridge without CLI app imports
       ---
-      duration_ms: 1.4422
+      duration_ms: 2.216
       type: 'test'
       ...
     1..1
 ok 2 - vscode extension host adapter
   ---
-  duration_ms: 2.3139
+  duration_ms: 8.6509
   type: 'suite'
   ...
 # Subtest: communication protocol
     # Subtest: round-trips a versioned envelope
     ok 1 - round-trips a versioned envelope
       ---
-      duration_ms: 2.5498
+      duration_ms: 3.4356
       type: 'test'
       ...
     1..1
 ok 3 - communication protocol
   ---
-  duration_ms: 3.3722
+  duration_ms: 4.4013
   type: 'suite'
   ...
 # Subtest: deterministic scheduler
     # Subtest: serializes work through explicit locks
     ok 1 - serializes work through explicit locks
       ---
-      duration_ms: 3.1058
+      duration_ms: 9.9611
       type: 'test'
       ...
     # Subtest: queues work beyond the concurrency limit
     ok 2 - queues work beyond the concurrency limit
       ---
-      duration_ms: 5.7642
+      duration_ms: 6.0849
       type: 'test'
       ...
     # Subtest: emits terminal events for deadlines and cancellation
     ok 3 - emits terminal events for deadlines and cancellation
       ---
-      duration_ms: 2.1343
+      duration_ms: 2.9693
       type: 'test'
       ...
-    1..3
+    # Subtest: cancels queued work without invoking its executor
+    ok 4 - cancels queued work without invoking its executor
+      ---
+      duration_ms: 17.6121
+      type: 'test'
+      ...
+    # Subtest: aborts running work through AbortSignal on timeout without completing it
+    ok 5 - aborts running work through AbortSignal on timeout without completing it
+      ---
+      duration_ms: 2.5818
+      type: 'test'
+      ...
+    # Subtest: fails queued submissions with typed backpressure instead of unbounded growth
+    ok 6 - fails queued submissions with typed backpressure instead of unbounded growth
+      ---
+      duration_ms: 1.3011
+      type: 'test'
+      ...
+    1..6
 ok 4 - deterministic scheduler
   ---
-  duration_ms: 12.2008
+  duration_ms: 43.1177
   type: 'suite'
   ...
 # Subtest: platform-contracts boundary
     # Subtest: does not import hosts, processes, SDKs, or implementation packages
     ok 1 - does not import hosts, processes, SDKs, or implementation packages
       ---
-      duration_ms: 36.3648
+      duration_ms: 33.8735
       type: 'test'
       ...
     1..1
 ok 5 - platform-contracts boundary
   ---
-  duration_ms: 37.544
+  duration_ms: 35.1195
   type: 'suite'
   ...
 # Subtest: runtime message bus
     # Subtest: records replayable envelopes in publish order
     ok 1 - records replayable envelopes in publish order
       ---
-      duration_ms: 1.9436
+      duration_ms: 2.0409
       type: 'test'
       ...
-    1..1
+    # Subtest: bounds slow subscriber queues with typed backpressure failure
+    ok 2 - bounds slow subscriber queues with typed backpressure failure
+      ---
+      duration_ms: 24.4796
+      type: 'test'
+      ...
+    1..2
 ok 6 - runtime message bus
   ---
-  duration_ms: 2.873
+  duration_ms: 30.3151
   type: 'suite'
   ...
 # Subtest: headless runtime
-    # Subtest: emits session, workflow, model, usage, and completion events
-    ok 1 - emits session, workflow, model, usage, and completion events
+    # Subtest: delegates turns to the runtime kernel without direct model execution
+    ok 1 - delegates turns to the runtime kernel without direct model execution
       ---
-      duration_ms: 5.233
+      duration_ms: 8.4857
       type: 'test'
       ...
     # Subtest: executes deterministic built-in capabilities through the runtime kernel
     ok 2 - executes deterministic built-in capabilities through the runtime kernel
       ---
-      duration_ms: 6.7218
+      duration_ms: 1.5798
       type: 'test'
       ...
     1..2
 ok 7 - headless runtime
   ---
-  duration_ms: 13.7474
+  duration_ms: 11.0818
   type: 'suite'
   ...
 # Subtest: workflow orchestration
     # Subtest: creates a valid single-turn graph
     ok 1 - creates a valid single-turn graph
       ---
-      duration_ms: 0.9592
+      duration_ms: 1.0162
       type: 'test'
       ...
     # Subtest: accepts workflow template contribution metadata
     ok 2 - accepts workflow template contribution metadata
       ---
-      duration_ms: 0.1985
+      duration_ms: 0.1987
       type: 'test'
       ...
     1..2
 ok 8 - workflow orchestration
   ---
-  duration_ms: 2.2237
+  duration_ms: 2.3098
   type: 'suite'
   ...
 # Subtest: compatibility checks
     # Subtest: requires schemaVersion on persisted subjects
     ok 1 - requires schemaVersion on persisted subjects
       ---
-      duration_ms: 1.4194
+      duration_ms: 1.5126
       type: 'test'
       ...
     1..1
 ok 9 - compatibility checks
   ---
-  duration_ms: 2.4363
+  duration_ms: 2.6014
+  type: 'suite'
+  ...
+# Subtest: capability registry hardening
+    # Subtest: returns immutable deep-copy host and model projections without executor bindings
+    ok 1 - returns immutable deep-copy host and model projections without executor bindings
+      ---
+      duration_ms: 1.6471
+      type: 'test'
+      ...
+    # Subtest: keeps stored manifests isolated from registration input and get() mutations
+    ok 2 - keeps stored manifests isolated from registration input and get() mutations
+      ---
+      duration_ms: 0.8515
+      type: 'test'
+      ...
+    1..2
+ok 10 - capability registry hardening
+  ---
+  duration_ms: 3.642
   type: 'suite'
   ...
 # Subtest: architecture lint framework
     # Subtest: passes a valid minimal workspace
     ok 1 - passes a valid minimal workspace
       ---
-      duration_ms: 516.7269
+      duration_ms: 457.7864
       type: 'test'
       ...
     # Subtest: reports stable rule ids for boundary violations
     ok 2 - reports stable rule ids for boundary violations
       ---
-      duration_ms: 427.8642
+      duration_ms: 373.9804
       type: 'test'
       ...
     # Subtest: allows governed execution primitives in runtime, owner packages, and tests
     ok 3 - allows governed execution primitives in runtime, owner packages, and tests
       ---
-      duration_ms: 419.6998
+      duration_ms: 356.2534
       type: 'test'
       ...
     # Subtest: rejects direct governed execution primitive bypasses outside approved owners
     ok 4 - rejects direct governed execution primitive bypasses outside approved owners
       ---
-      duration_ms: 393.3515
+      duration_ms: 348.6732
       type: 'test'
       ...
-    1..4
-ok 10 - architecture lint framework
+    # Subtest: rejects legacy runtime direct execution paths inside runtime package
+    ok 5 - rejects legacy runtime direct execution paths inside runtime package
+      ---
+      duration_ms: 343.288
+      type: 'test'
+      ...
+    1..5
+ok 11 - architecture lint framework
   ---
-  duration_ms: 1759.1628
+  duration_ms: 1881.2755
   type: 'suite'
   ...
 # Subtest: package boundaries
     # Subtest: passes dependency boundary checker
     ok 1 - passes dependency boundary checker
       ---
-      duration_ms: 659.7745
+      duration_ms: 624.3622
       type: 'test'
       ...
     1..1
-ok 11 - package boundaries
+ok 12 - package boundaries
   ---
-  duration_ms: 660.5528
+  duration_ms: 625.1602
   type: 'suite'
   ...
 # Subtest: runtime kernel contracts
     # Subtest: constructs the kernel and validates execution envelopes
     ok 1 - constructs the kernel and validates execution envelopes
       ---
-      duration_ms: 3.5946
+      duration_ms: 2.9817
       type: 'test'
       ...
     # Subtest: returns typed rejection events for unknown capabilities
     ok 2 - returns typed rejection events for unknown capabilities
       ---
-      duration_ms: 1.7603
+      duration_ms: 1.9764
       type: 'test'
       ...
-    1..2
-ok 12 - runtime kernel contracts
+    # Subtest: rejects invalid timeout and malformed trace before policy or scheduler submission
+    ok 3 - rejects invalid timeout and malformed trace before policy or scheduler submission
+      ---
+      duration_ms: 1.0667
+      type: 'test'
+      ...
+    # Subtest: validates governance metadata shape directly
+    ok 4 - validates governance metadata shape directly
+      ---
+      duration_ms: 0.3002
+      type: 'test'
+      ...
+    # Subtest: prevents denied policy invocations from reaching the scheduler
+    ok 5 - prevents denied policy invocations from reaching the scheduler
+      ---
+      duration_ms: 0.7751
+      type: 'test'
+      ...
+    # Subtest: fails closed when replayable session or bus event persistence fails
+    ok 6 - fails closed when replayable session or bus event persistence fails
+      ---
+      duration_ms: 0.7925
+      type: 'test'
+      ...
+    # Subtest: records explicit degraded observability events without failing successful execution
+    ok 7 - records explicit degraded observability events without failing successful execution
+      ---
+      duration_ms: 3.3664
+      type: 'test'
+      ...
+    1..7
+ok 13 - runtime kernel contracts
   ---
-  duration_ms: 6.4833
+  duration_ms: 12.9944
   type: 'suite'
   ...
 # Subtest: host adapter smoke
     # Subtest: runs CLI stream-json and activates VSCode bridge
     ok 1 - runs CLI stream-json and activates VSCode bridge
       ---
-      duration_ms: 3.4408
+      duration_ms: 6.9379
       type: 'test'
       ...
     # Subtest: runs CLI kernel-backed command in stream-json mode
     ok 2 - runs CLI kernel-backed command in stream-json mode
       ---
-      duration_ms: 3.0541
+      duration_ms: 1.3578
       type: 'test'
       ...
     # Subtest: runs the built CLI binary with traceable runtime metadata
     ok 3 - runs the built CLI binary with traceable runtime metadata
       ---
-      duration_ms: 64.192
+      duration_ms: 54.0475
       type: 'test'
       ...
     # Subtest: keeps the VSCode bridge transport-backed and isolated from CLI rendering
     ok 4 - keeps the VSCode bridge transport-backed and isolated from CLI rendering
       ---
-      duration_ms: 0.2825
+      duration_ms: 0.4186
       type: 'test'
       ...
     # Subtest: lets VSCode project runtime kernel events without importing CLI
     ok 5 - lets VSCode project runtime kernel events without importing CLI
       ---
-      duration_ms: 0.829
+      duration_ms: 1.5136
       type: 'test'
       ...
     1..5
-ok 13 - host adapter smoke
+ok 14 - host adapter smoke
   ---
-  duration_ms: 72.3927
+  duration_ms: 65.1093
   type: 'suite'
   ...
 # Subtest: golden replay
     # Subtest: replays a normalized minimal headless trace
     ok 1 - replays a normalized minimal headless trace
       ---
-      duration_ms: 4.5055
+      duration_ms: 5.1939
       type: 'test'
       ...
     1..1
-ok 14 - golden replay
+ok 15 - golden replay
   ---
-  duration_ms: 5.4787
+  duration_ms: 5.973
   type: 'suite'
   ...
 # Subtest: runtime kernel replay
     # Subtest: replays a normalized kernel invocation trace
     ok 1 - replays a normalized kernel invocation trace
       ---
-      duration_ms: 4.822
+      duration_ms: 5.9852
       type: 'test'
       ...
     1..1
-ok 15 - runtime kernel replay
+ok 16 - runtime kernel replay
   ---
-  duration_ms: 5.7766
+  duration_ms: 6.893
   type: 'suite'
   ...
 # Subtest: ecosystem and governance integration
     # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
     ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
       ---
-      duration_ms: 2.737
+      duration_ms: 1.8926
       type: 'test'
       ...
     # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
     ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
       ---
-      duration_ms: 2.0806
+      duration_ms: 1.6127
       type: 'test'
       ...
     1..2
-ok 16 - ecosystem and governance integration
+ok 17 - ecosystem and governance integration
   ---
-  duration_ms: 5.9129
+  duration_ms: 4.2074
   type: 'suite'
   ...
 # Subtest: runtime integration pipeline
-    # Subtest: records bus, session, usage, and observability state for a turn
-    ok 1 - records bus, session, usage, and observability state for a turn
+    # Subtest: records bus, session, and observability state for a kernel-backed turn
+    ok 1 - records bus, session, and observability state for a kernel-backed turn
       ---
-      duration_ms: 4.6844
+      duration_ms: 4.7886
       type: 'test'
       ...
     # Subtest: connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
     ok 2 - connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
       ---
-      duration_ms: 4.2519
+      duration_ms: 1.0724
       type: 'test'
       ...
-    1..2
-ok 17 - runtime integration pipeline
+    # Subtest: streams scheduler timeout events through kernel.execute and closes workflow once
+    ok 3 - streams scheduler timeout events through kernel.execute and closes workflow once
+      ---
+      duration_ms: 4.1476
+      type: 'test'
+      ...
+    1..3
+ok 18 - runtime integration pipeline
   ---
-  duration_ms: 10.2077
+  duration_ms: 10.9129
   type: 'suite'
   ...
 # Subtest: fake platform matrix
     # Subtest: covers macOS, Windows, and Linux fallback behavior
     ok 1 - covers macOS, Windows, and Linux fallback behavior
       ---
-      duration_ms: 1.5641
+      duration_ms: 1.5503
       type: 'test'
       ...
     1..1
-ok 18 - fake platform matrix
+ok 19 - fake platform matrix
   ---
-  duration_ms: 2.5206
+  duration_ms: 2.4269
   type: 'suite'
   ...
-1..18
-# tests 33
-# suites 18
-# pass 33
+1..19
+# tests 46
+# suites 19
+# pass 46
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 31494.5916
+# duration_ms 2290.8003

@@ -21,8 +21,9 @@ export interface CapabilityManifest {
 export interface CapabilityExecutionContext {
   readonly envelope: ExecutionEnvelope;
   readonly trace: TraceContext;
-  readonly cancelled?: boolean;
+  readonly signal: AbortSignal;
   readonly cancellationReason?: string;
+  readonly metadata: JsonObject;
 }
 
 export type CapabilityExecutor = (

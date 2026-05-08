@@ -52,4 +52,90 @@ describe("deterministic scheduler", () => {
     assert.ok(scheduler.events().some((event) => event.status === "timed-out"));
     assert.ok(scheduler.events().some((event) => event.status === "cancelled"));
   });
+
+  it("cancels queued work without invoking its executor", async () => {
+    const scheduler = new DeterministicScheduler({ maxConcurrency: 1 });
+    let releaseFirst!: () => void;
+    const first = scheduler.run({ id: asId<"task">("task-first"), name: "first" }, async () => {
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      return "first";
+    });
+    let called = false;
+    const second = scheduler.run({ id: asId<"task">("task-second"), name: "second" }, async () => {
+      called = true;
+      return "second";
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await scheduler.cancel(asId<"task">("task-second"), "user");
+    releaseFirst();
+    assert.equal(await first, "first");
+    await assert.rejects(second, /Task cancelled: user/);
+    assert.equal(called, false);
+    assert.deepEqual(
+      scheduler.events()
+        .filter((event) => event.taskId === "task-second")
+        .map((event) => event.status),
+      ["queued", "cancelled"]
+    );
+  });
+
+  it("aborts running work through AbortSignal on timeout without completing it", async () => {
+    const scheduler = new DeterministicScheduler();
+    let observedAbort = false;
+    await assert.rejects(
+      () => scheduler.run({ id: asId<"task">("task-timeout-running"), name: "timeout", deadlineMs: 1 }, async ({ signal }) => {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              observedAbort = true;
+              resolve();
+            },
+            { once: true }
+          );
+        });
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }),
+      /Task cancelled: timeout/
+    );
+
+    assert.equal(observedAbort, true);
+    assert.deepEqual(
+      scheduler.events()
+        .filter((event) => event.taskId === "task-timeout-running")
+        .map((event) => event.status),
+      ["queued", "running", "timed-out"]
+    );
+    assert.equal(scheduler.events().some((event) => event.taskId === "task-timeout-running" && event.status === "completed"), false);
+  });
+
+  it("fails queued submissions with typed backpressure instead of unbounded growth", async () => {
+    const scheduler = new DeterministicScheduler({ maxConcurrency: 1, maxQueueSize: 1 });
+    let releaseFirst!: () => void;
+    const first = scheduler.run({ id: asId<"task">("task-first"), name: "first" }, async () => {
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+    });
+    const second = scheduler.run({ id: asId<"task">("task-second"), name: "second" }, async () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await assert.rejects(
+      () => scheduler.run({ id: asId<"task">("task-third"), name: "third" }, async () => undefined),
+      (error) => error instanceof Error && error.name === "SCHEDULER_QUEUE_BACKPRESSURE"
+    );
+
+    releaseFirst();
+    await first;
+    await second;
+    assert.deepEqual(
+      scheduler.events()
+        .filter((event) => event.taskId === "task-third")
+        .map((event) => event.status),
+      ["queued", "failed"]
+    );
+  });
 });

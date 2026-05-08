@@ -22,7 +22,8 @@ describe("host adapter smoke", () => {
   it("runs CLI stream-json and activates VSCode bridge", async () => {
     const lines: string[] = [];
     await runCli(["-p", "e2e", "--output", "stream-json"], (line) => lines.push(line));
-    assert.ok(lines.some((line) => JSON.parse(line).kind === "turn.completed"));
+    assert.ok(lines.some((line) => JSON.parse(line).kind === "capability.completed"));
+    assert.ok(lines.some((line) => JSON.parse(line).kind === "scheduler.completed"));
     const bridge = activate({ subscriptions: [] });
     assert.equal(bridge.context.hostKind, "vscode");
   });
@@ -50,7 +51,20 @@ describe("host adapter smoke", () => {
       .map((line) => JSON.parse(line));
     assert.deepEqual(
       events.map((event) => event.kind),
-      ["turn.started", "workflow.step", "bus.recorded", "model.delta", "usage.updated", "turn.completed"]
+      [
+        "kernel.request.accepted",
+        "workflow.opened",
+        "execution.envelope.created",
+        "policy.decided",
+        "sandbox.selected",
+        "capability.started",
+        "scheduler.queued",
+        "scheduler.started",
+        "scheduler.completed",
+        "capability.output",
+        "capability.completed",
+        "workflow.closed"
+      ]
     );
 
     for (const event of events) {
@@ -59,7 +73,7 @@ describe("host adapter smoke", () => {
       assert.equal(typeof event.trace?.correlationId, "string");
     }
     assert.equal(events.some((event) => event.taskId), true);
-    assert.equal(events.some((event) => event.agentId), true);
+    assert.equal(events.some((event) => event.kind === "model.delta"), false);
   });
 
   it("keeps the VSCode bridge transport-backed and isolated from CLI rendering", async () => {
@@ -95,7 +109,7 @@ describe("host adapter smoke", () => {
       routing: { host: "vscode", target: "host" },
       payload: {
         event: {
-          kind: "turn.completed",
+          kind: "capability.completed",
           sessionId: asId<"session">("session-e2e"),
           trace: {
             traceId: asId<"trace">("trace-e2e"),

@@ -7,7 +7,6 @@ import type {
   Id,
   JsonObject,
   KernelError,
-  ModelStreamEvent,
   PolicyDecision,
   RunTurnRequest,
   RuntimeDependencies,
@@ -16,17 +15,15 @@ import type {
   RuntimeKernelDependencies,
   RuntimeKernelLogger,
   RuntimeKernelRequest,
-  RuntimeKernelResult,
   RuntimeKernelState,
   SessionEvent,
   SessionId,
   StartSessionRequest,
   TaskEvent,
   TraceContext,
-  TurnId
+  TaskId
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 
 class DeterministicClock {
   now(): Date {
@@ -84,6 +81,17 @@ export const runtimeEchoCapability: CapabilityManifest = {
 export async function registerRuntimeBuiltins(deps: Pick<RuntimeDependencies, "capabilities">): Promise<void> {
   if (await deps.capabilities.get(runtimeEchoCapability.id)) return;
   await deps.capabilities.register(runtimeEchoCapability, async (input: JsonObject, context: CapabilityExecutionContext) => {
+    if (context.signal.aborted) {
+      return {
+        ok: false,
+        error: {
+          code: "CAPABILITY_ABORTED",
+          message: context.cancellationReason ?? "Capability execution aborted",
+          retryable: false,
+          redaction: { class: "public" }
+        }
+      };
+    }
     const text = typeof input.text === "string" ? input.text : typeof input.prompt === "string" ? input.prompt : "";
     return {
       ok: true,
@@ -136,12 +144,16 @@ export function buildExecutionEnvelope(input: ExecutionEnvelopeBuildInput): impo
     resourceLocks: [],
     timeoutMs,
     deadlineAt: new Date(new Date(input.createdAt).getTime() + timeoutMs).toISOString(),
-    cancellation: { cancellable: true },
-    retryPolicy: { maxAttempts: 1 },
-    idempotency: { key: `${input.invocationId}:${input.manifest.version}` },
+    cancellation: {
+      cancellable: true,
+      propagation: "abort-signal",
+      reasonSchema: { type: "string" }
+    },
+    retryPolicy: { maxAttempts: 1, strategy: "none" },
+    idempotency: { key: `${input.invocationId}:${input.manifest.version}`, scope: "invocation" },
     trace: input.trace,
-    telemetry: { eventSchemaVersion: "1.0.0" },
-    replayPolicy: { replayable: true, snapshot: "normalized" },
+    telemetry: { eventSchemaVersion: "1.0.0", traceRequired: true },
+    replayPolicy: { replayable: true, snapshot: "normalized", deterministic: true },
     createdAt: input.createdAt
   };
 }
@@ -152,10 +164,94 @@ export function validateExecutionEnvelope(envelope: unknown): readonly KernelErr
     return [kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope must be an object")];
   }
   const candidate = envelope as Record<string, unknown>;
-  for (const key of ["invocationId", "capabilityId", "capabilityVersion", "kind", "caller", "sideEffect", "timeoutMs", "trace", "createdAt"]) {
+  for (const key of [
+    "invocationId",
+    "capabilityId",
+    "capabilityVersion",
+    "kind",
+    "caller",
+    "sessionId",
+    "workflowId",
+    "taskId",
+    "inputSchema",
+    "outputSchema",
+    "redactionClass",
+    "provenance",
+    "trust",
+    "permissions",
+    "sideEffect",
+    "policyContext",
+    "approvalRequired",
+    "resourceLocks",
+    "timeoutMs",
+    "deadlineAt",
+    "cancellation",
+    "retryPolicy",
+    "idempotency",
+    "trace",
+    "telemetry",
+    "replayPolicy",
+    "createdAt"
+  ]) {
     if (candidate[key] === undefined || candidate[key] === null || candidate[key] === "") {
       errors.push(kernelError("KERNEL_ENVELOPE_INVALID", `Execution envelope missing ${key}`, { key }));
     }
+  }
+  if (candidate.kind !== "capability") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope kind must be capability", { kind: String(candidate.kind) }));
+  }
+  if (!["none", "read", "write", "network", "process"].includes(String(candidate.sideEffect))) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope has unsupported sideEffect", { sideEffect: String(candidate.sideEffect) }));
+  }
+  if (typeof candidate.timeoutMs !== "number" || !Number.isFinite(candidate.timeoutMs) || candidate.timeoutMs <= 0 || candidate.timeoutMs > 600_000) {
+    errors.push(kernelError("KERNEL_INVALID_TIMEOUT", "Execution envelope timeoutMs must be between 1 and 600000", {
+      timeoutMs: typeof candidate.timeoutMs === "number" ? candidate.timeoutMs : String(candidate.timeoutMs)
+    }));
+  }
+  if (typeof candidate.deadlineAt !== "string" || Number.isNaN(Date.parse(candidate.deadlineAt))) {
+    errors.push(kernelError("KERNEL_INVALID_TIMEOUT", "Execution envelope deadlineAt must be a valid ISO date"));
+  }
+  const trace = candidate.trace as Record<string, unknown> | undefined;
+  if (!trace || typeof trace !== "object" || typeof trace.traceId !== "string" || typeof trace.spanId !== "string" || typeof trace.correlationId !== "string" || typeof trace.sessionId !== "string") {
+    errors.push(kernelError("KERNEL_MALFORMED_TRACE", "Execution envelope trace must include traceId, spanId, correlationId, and sessionId"));
+  }
+  if (!candidate.inputSchema || typeof candidate.inputSchema !== "object") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope inputSchema must be an object"));
+  }
+  if (!candidate.outputSchema || typeof candidate.outputSchema !== "object") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope outputSchema must be an object"));
+  }
+  if (!Array.isArray(candidate.permissions)) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope permissions must be an array"));
+  }
+  if (!Array.isArray(candidate.resourceLocks)) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope resourceLocks must be an array"));
+  }
+  if (!candidate.policyContext || typeof candidate.policyContext !== "object" || typeof (candidate.policyContext as Record<string, unknown>).caller !== "string") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope policyContext must include caller"));
+  }
+  const cancellation = candidate.cancellation as Record<string, unknown> | undefined;
+  if (!cancellation || typeof cancellation !== "object" || cancellation.cancellable !== true || cancellation.propagation !== "abort-signal") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope cancellation metadata must require abort-signal propagation"));
+  }
+  const retryPolicy = candidate.retryPolicy as Record<string, unknown> | undefined;
+  if (!retryPolicy || typeof retryPolicy.maxAttempts !== "number" || retryPolicy.maxAttempts < 1) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope retryPolicy.maxAttempts must be positive"));
+  }
+  const idempotency = candidate.idempotency as Record<string, unknown> | undefined;
+  if (!idempotency || typeof idempotency.key !== "string" || !idempotency.key) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope idempotency.key is required"));
+  }
+  const replayPolicy = candidate.replayPolicy as Record<string, unknown> | undefined;
+  if (!replayPolicy || replayPolicy.replayable !== true || replayPolicy.snapshot !== "normalized") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope replayPolicy must be replayable normalized metadata"));
+  }
+  const telemetry = candidate.telemetry as Record<string, unknown> | undefined;
+  if (!telemetry || typeof telemetry.eventSchemaVersion !== "string") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope telemetry.eventSchemaVersion is required"));
+  }
+  if (typeof candidate.createdAt !== "string" || Number.isNaN(Date.parse(candidate.createdAt))) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope createdAt must be a valid ISO date"));
   }
   return errors;
 }
@@ -164,7 +260,6 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
   private lifecycle: RuntimeKernelState = "created";
   private readonly activeTasks = new Map<string, string>();
   private readonly cancelled = new Map<string, string>();
-  private readonly schedulerUnsubscribe: () => void;
 
   constructor(private readonly deps: RuntimeKernelDependencies) {
     const missing = [
@@ -183,12 +278,6 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     if (missing.length > 0) {
       throw new Error(kernelError("KERNEL_CONFIGURATION_ERROR", `Missing runtime kernel dependencies: ${missing.join(", ")}`).message);
     }
-    this.schedulerUnsubscribe = this.deps.scheduler.subscribe((event) => {
-      const envelopeId = typeof event.taskId === "string" ? String(event.taskId).replace(/^task-/, "") : String(event.taskId);
-      const sessionId = event.trace?.sessionId;
-      if (!sessionId) return;
-      this.publishSchedulerEvent(event, sessionId, envelopeId).catch(() => undefined);
-    });
   }
 
   async start(): Promise<void> {
@@ -216,13 +305,14 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     await this.recordEvent(accepted);
     yield accepted;
 
+    const invocationId = String(this.deps.ids.create("invocation"));
     const binding = await this.deps.capabilities.resolveExecutable(request.capabilityId);
     if (!binding) {
       const rejected = this.event(
         "execution.rejected",
         sessionId,
         trace,
-        { capabilityId: request.capabilityId, reason: "capability-not-found" },
+        { capabilityId: request.capabilityId, envelopeId: invocationId, reason: "capability-not-found" },
         request.agentId,
         undefined,
         kernelError("KERNEL_CAPABILITY_NOT_FOUND", `Capability not found: ${String(request.capabilityId)}`)
@@ -231,8 +321,6 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       yield rejected;
       return;
     }
-
-    const invocationId = String(this.deps.ids.create("invocation"));
     const workflow = await this.deps.workflow.openInvocation({
       sessionId,
       capabilityId: binding.manifest.id,
@@ -311,12 +399,26 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     }
 
     this.activeTasks.set(invocationId, String(workflow.taskId));
+    const schedulerEvents: RuntimeEvent[] = [];
+    const unsubscribeScheduler = this.deps.scheduler.subscribe((event) => {
+      if (event.taskId !== workflow.taskId) return;
+      schedulerEvents.push(this.schedulerEventToRuntimeEvent(event, sessionId, trace, invocationId, request.agentId, workflow.taskId));
+    });
+    let drainedSchedulerEvents = 0;
+    const drainSchedulerEvents = async function* (kernel: InProcessRuntimeKernel): AsyncIterable<RuntimeEvent> {
+      while (drainedSchedulerEvents < schedulerEvents.length) {
+        const event = schedulerEvents[drainedSchedulerEvents++];
+        if (!event) continue;
+        await kernel.recordEvent(event);
+        yield event;
+      }
+    };
     try {
       const started = this.event("capability.started", sessionId, trace, { envelopeId: invocationId, capabilityId: binding.manifest.id }, request.agentId, workflow.taskId);
       await this.recordEvent(started);
       yield started;
 
-      const result = await this.deps.scheduler.run(
+      const scheduled = this.deps.scheduler.run(
         {
           id: workflow.taskId,
           name: String(binding.manifest.id),
@@ -324,8 +426,22 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
           trace,
           metadata: { envelopeId: invocationId, capabilityId: binding.manifest.id }
         },
-        () => binding.execute(request.input, { envelope, trace })
+        (taskContext) => binding.execute(request.input, {
+          envelope,
+          trace,
+          signal: taskContext.signal,
+          ...(taskContext.cancellationReason ? { cancellationReason: taskContext.cancellationReason } : {}),
+          metadata: {
+            taskId: workflow.taskId,
+            workflowId: workflow.workflowId,
+            capabilityId: binding.manifest.id
+          }
+        })
       );
+      await Promise.resolve();
+      for await (const event of drainSchedulerEvents(this)) yield event;
+      const result = await scheduled;
+      for await (const event of drainSchedulerEvents(this)) yield event;
 
       if (result.ok) {
         const output = this.event("capability.output", sessionId, trace, { envelopeId: invocationId, output: result.value ?? {} }, request.agentId, workflow.taskId);
@@ -350,14 +466,28 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
         yield await this.closeWorkflow(workflow, "failed", { envelopeId: invocationId });
       }
     } catch (error) {
+      for await (const event of drainSchedulerEvents(this)) yield event;
       const reason = this.cancelled.get(invocationId);
-      const code = reason === "timeout" ? "KERNEL_SCHEDULER_TIMEOUT" : reason ? "KERNEL_CANCELLED" : "KERNEL_EXECUTOR_FAILED";
-      const kind = reason ? "capability.cancelled" : "capability.failed";
-      const failed = this.event(kind, sessionId, trace, { envelopeId: invocationId, capabilityId: binding.manifest.id, reason: reason ?? "executor-failed" }, request.agentId, workflow.taskId, kernelError(code, error instanceof Error ? error.message : "Unknown executor failure"));
+      const message = error instanceof Error ? error.message : "Unknown executor failure";
+      const schedulerTimeout = error instanceof Error && error.name === "SCHEDULER_TASK_TIMEOUT";
+      const schedulerCancelled = error instanceof Error && error.name === "SCHEDULER_TASK_CANCELLED";
+      const schedulerBackpressure = error instanceof Error && error.name === "SCHEDULER_QUEUE_BACKPRESSURE";
+      const code = schedulerBackpressure
+        ? "KERNEL_QUEUE_BACKPRESSURE"
+        : schedulerTimeout || reason === "timeout"
+          ? "KERNEL_SCHEDULER_TIMEOUT"
+          : schedulerCancelled || reason
+            ? "KERNEL_CANCELLED"
+            : "KERNEL_EXECUTOR_FAILED";
+      const terminalReason = schedulerTimeout ? "timeout" : reason ?? (schedulerCancelled ? "cancelled" : "executor-failed");
+      const kind = schedulerCancelled || schedulerTimeout || reason ? "capability.cancelled" : "capability.failed";
+      const failed = this.event(kind, sessionId, trace, { envelopeId: invocationId, capabilityId: binding.manifest.id, reason: terminalReason }, request.agentId, workflow.taskId, kernelError(code, message));
       await this.recordEvent(failed);
       yield failed;
-      yield await this.closeWorkflow(workflow, reason === "timeout" ? "timed-out" : reason ? "cancelled" : "failed", { envelopeId: invocationId });
+      yield await this.closeWorkflow(workflow, schedulerTimeout || reason === "timeout" ? "timed-out" : schedulerCancelled || reason ? "cancelled" : "failed", { envelopeId: invocationId });
     } finally {
+      for await (const event of drainSchedulerEvents(this)) yield event;
+      unsubscribeScheduler();
       this.activeTasks.delete(invocationId);
     }
   }
@@ -376,7 +506,6 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     for (const invocationId of this.activeTasks.keys()) {
       await this.cancel(invocationId, reason);
     }
-    this.schedulerUnsubscribe();
     this.lifecycle = "shutdown";
     await this.publishLifecycle("shutdown");
   }
@@ -435,26 +564,50 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     await this.recordEvent(this.event("kernel.lifecycle", sessionId, trace, { state }));
   }
 
-  private async publishSchedulerEvent(event: TaskEvent, sessionId: SessionId, envelopeId: string): Promise<void> {
-    const trace = event.trace ?? this.trace(sessionId, "scheduler");
+  private schedulerEventToRuntimeEvent(event: TaskEvent, sessionId: SessionId, trace: TraceContext, envelopeId: string, agentId?: AgentId, taskId?: TaskId): RuntimeEvent {
+    const eventTrace = event.trace ?? trace;
     const kind = `scheduler.${event.status === "running" ? "started" : event.status}` as RuntimeEvent["kind"];
-    await this.recordEvent(this.event(kind, sessionId, trace, {
+    return this.event(kind, sessionId, eventTrace, {
       envelopeId,
       taskId: event.taskId,
       status: event.status,
       reason: event.reason ?? ""
-    }, undefined, event.taskId));
+    }, agentId, taskId ?? event.taskId);
   }
 
   private async recordEvent(event: RuntimeEvent): Promise<void> {
-    await this.appendSessionEvent(event.sessionId, event.kind, event.data);
-    await this.deps.bus.publish(this.toBusEnvelope(event));
-    await this.deps.observability.emit({
-      kind: event.kind.includes("failed") || event.kind.includes("rejected") ? "audit" : "trace",
-      at: this.deps.clock.now().toISOString(),
-      name: event.kind,
-      fields: event.data
-    });
+    try {
+      await this.appendSessionEvent(event.sessionId, event.kind, event.data);
+      await this.deps.bus.publish(this.toBusEnvelope(event));
+    } catch (error) {
+      throw new Error(kernelError("KERNEL_EVENT_PERSISTENCE_FAILED", error instanceof Error ? error.message : "Replayable event persistence failed", {
+        eventKind: event.kind
+      }).message);
+    }
+    try {
+      await this.deps.observability.emit({
+        kind: event.kind.includes("failed") || event.kind.includes("rejected") ? "audit" : "trace",
+        at: this.deps.clock.now().toISOString(),
+        name: event.kind,
+        fields: event.data
+      });
+    } catch (error) {
+      if (event.kind === "kernel.observability.degraded") return;
+      const degraded = this.event(
+        "kernel.observability.degraded",
+        event.sessionId,
+        event.trace,
+        {
+          sourceEventKind: event.kind,
+          reason: error instanceof Error ? error.message : "Observability emit failed"
+        },
+        event.agentId,
+        event.taskId,
+        kernelError("KERNEL_OBSERVABILITY_DEGRADED", "Observability emit failed")
+      );
+      await this.appendSessionEvent(degraded.sessionId, degraded.kind, degraded.data);
+      await this.deps.bus.publish(this.toBusEnvelope(degraded));
+    }
   }
 
   private async appendSessionEvent(sessionId: SessionId, kind: string, payload: JsonObject): Promise<void> {
@@ -548,6 +701,7 @@ export async function createDefaultRuntimeKernel(deps: RuntimeDependencies): Pro
 
 export class HeadlessAgentRuntime implements AgentRuntime {
   private disposed = false;
+  private kernel: RuntimeKernel | undefined;
 
   constructor(private readonly deps: RuntimeDependencies) {}
 
@@ -566,86 +720,17 @@ export class HeadlessAgentRuntime implements AgentRuntime {
     }
 
     const sessionId = request.sessionId ?? (await this.startSession(request.agentId ? { agentId: request.agentId } : {}));
-    const turnId = asId<"turn">(`turn-${sessionId}`);
-    const agentDefinition = request.agentId
-      ? (await this.deps.agents.listDefinitions()).find((definition) => definition.id === request.agentId) ?? (await this.deps.agents.getDefault())
-      : await this.deps.agents.getDefault();
-    const agent = await this.deps.agents.createInstance(agentDefinition.id, sessionId);
-    const trace = this.trace(sessionId, "runtime");
-
-    const started: RuntimeEvent = {
-      kind: "turn.started",
-      sessionId,
-      turnId,
-      agentId: agent.definition.id,
-      trace,
-      data: { prompt: request.prompt, agentInstanceId: agent.id }
-    };
-    await this.recordRuntimeEvent(started);
-    yield started;
-
-    const graph = await this.deps.workflow.createGraph({ sessionId, prompt: request.prompt });
-    for await (const event of this.deps.workflow.runGraph(graph, { sessionId, prompt: request.prompt })) {
-      await this.recordRuntimeEvent(event);
-      yield event;
+    if (!this.kernel) {
+      this.kernel = await createDefaultRuntimeKernel(this.deps);
     }
-
-    const busRecorded: RuntimeEvent = {
-      kind: "bus.recorded",
+    yield* this.kernel.execute({
+      capabilityId: runtimeEchoCapability.id,
+      caller: "headless-runtime",
+      input: { prompt: request.prompt },
       sessionId,
-      turnId,
-      taskId: graph.taskId,
-      agentId: agent.definition.id,
-      trace,
-      data: {
-        topic: "runtime.event",
-        replayRecords: this.deps.bus.getReplayRecords(sessionId).length
-      }
-    };
-    await this.recordRuntimeEvent(busRecorded);
-    yield busRecorded;
-
-    const checkpoint = await this.deps.workflow.createCheckpoint(graph, { reason: "single-turn-start" });
-    await this.deps.sessions.snapshot(sessionId, { checkpointId: checkpoint.id, workflowId: graph.id });
-
-    const projection = await this.deps.context.project(sessionId, request.prompt);
-    const tools = (await this.deps.capabilities.listModelVisible()).map((manifest) => ({
-      id: manifest.id,
-      name: manifest.name,
-      version: manifest.version,
-      sideEffect: manifest.sideEffect,
-      permissions: manifest.permissions
-    }));
-
-    const modelEvents = this.deps.models.stream({
-      profile: defaultDeepSeekProfile,
-      prompt: projection.prompt,
-      tools
+      ...(request.agentId ? { agentId: request.agentId } : {}),
+      timeoutMs: 30_000
     });
-
-    for await (const modelEvent of modelEvents) {
-      const runtimeEvent = await this.modelEventToRuntimeEvent(modelEvent, sessionId, turnId, agent.definition.id, trace);
-      if (runtimeEvent) {
-        await this.recordRuntimeEvent(runtimeEvent);
-        yield runtimeEvent;
-      }
-    }
-
-    const completed: RuntimeEvent = {
-      kind: "turn.completed",
-      sessionId,
-      turnId,
-      taskId: graph.taskId,
-      agentId: agent.definition.id,
-      trace,
-      data: {
-        workflowId: graph.id,
-        checkpointId: checkpoint.id,
-        status: "completed"
-      }
-    };
-    await this.recordRuntimeEvent(completed);
-    yield completed;
   }
 
   async interrupt(sessionId: SessionId, reason: string): Promise<void> {
@@ -654,68 +739,10 @@ export class HeadlessAgentRuntime implements AgentRuntime {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-  }
-
-  private async modelEventToRuntimeEvent(
-    modelEvent: ModelStreamEvent,
-    sessionId: SessionId,
-    turnId: TurnId,
-    agentId: AgentId,
-    trace: TraceContext
-  ): Promise<RuntimeEvent | undefined> {
-    if (modelEvent.kind === "delta") {
-      return {
-        kind: "model.delta",
-        sessionId,
-        turnId,
-        agentId,
-        trace,
-        data: { text: modelEvent.text }
-      };
+    if (this.kernel) {
+      await this.kernel.shutdown("runtime-disposed");
+      this.kernel = undefined;
     }
-    if (modelEvent.kind === "usage") {
-      await this.deps.usage.record({
-        sessionId,
-        inputTokens: modelEvent.inputTokens,
-        outputTokens: modelEvent.outputTokens,
-        costMicros: 0,
-        elapsedMs: 0
-      });
-      return {
-        kind: "usage.updated",
-        sessionId,
-        turnId,
-        agentId,
-        trace,
-        data: {
-          inputTokens: modelEvent.inputTokens,
-          outputTokens: modelEvent.outputTokens
-        }
-      };
-    }
-    if (modelEvent.kind === "error") {
-      return {
-        kind: "runtime.error",
-        sessionId,
-        turnId,
-        agentId,
-        trace,
-        data: {},
-        error: modelEvent.error
-      };
-    }
-    return undefined;
-  }
-
-  private async recordRuntimeEvent(event: RuntimeEvent): Promise<void> {
-    await this.appendSessionEvent(event.sessionId, event.kind, event.data);
-    await this.deps.bus.publish(this.toBusEnvelope(event));
-    await this.deps.observability.emit({
-      kind: event.kind === "usage.updated" ? "usage" : "trace",
-      at: new Date(0).toISOString(),
-      name: event.kind,
-      fields: event.data
-    });
   }
 
   private async appendSessionEvent(sessionId: SessionId, kind: string, payload: JsonObject): Promise<void> {
@@ -729,37 +756,6 @@ export class HeadlessAgentRuntime implements AgentRuntime {
       redaction: { class: "internal" }
     };
     await this.deps.sessions.append(event);
-  }
-
-  private toBusEnvelope(event: RuntimeEvent): BusEnvelope {
-    return {
-      protocolVersion: "1",
-      schemaVersion: "1.0.0",
-      id: `bus-${event.kind}-${event.sessionId}`,
-      type: "event",
-      createdAt: new Date(0).toISOString(),
-      trace: event.trace,
-      redaction: { class: "internal" },
-      compatibility: { schemaVersion: "1.0.0" },
-      payload: {
-        kind: event.kind,
-        data: event.data
-      },
-      topic: { name: "runtime.event", owner: "runtime", trustBoundary: "core" },
-      producer: "runtime",
-      correlationId: event.trace.correlationId,
-      sessionId: event.sessionId,
-      replayable: true
-    };
-  }
-
-  private trace(sessionId: SessionId, scope: string): TraceContext {
-    return {
-      traceId: asId<"trace">(`trace-${scope}-${sessionId}`),
-      spanId: asId<"span">(`span-${scope}-${sessionId}`),
-      correlationId: asId<"correlation">(`corr-${scope}-${sessionId}`),
-      sessionId
-    };
   }
 }
 

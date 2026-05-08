@@ -63,7 +63,7 @@ const conventions = {
     primitives: [
       {
         serviceNames: new Set(["capabilities", "capabilityRegistry"]),
-        methods: new Set(["execute"]),
+        methods: new Set(["execute", "resolveExecutable"]),
         ownerPackage: "capability-registry"
       },
       {
@@ -241,13 +241,28 @@ describe("architecture lint framework", () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activate(\"review\", {}); }\n");
       await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function badHost(deps) { await deps.scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
-      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 2, result.stderr || result.stdout);
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
 
       assert.deepEqual([...ruleIds], ["governed-execution/no-direct-primitive-bypass"]);
+    });
+  });
+
+  it("rejects legacy runtime direct execution paths inside runtime package", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/runtime/src/index.ts",
+        "export class HeadlessAgentRuntime { async *runTurn(deps) { yield* deps.models.stream({}); await deps.workflow.runGraph({}, {}); } }\n"
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("runtime/no-legacy-direct-execution"), true);
     });
   });
 });

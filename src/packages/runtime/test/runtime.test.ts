@@ -4,14 +4,22 @@ import { collectRuntimeEvents, createDefaultRuntimeKernel, createHeadlessRuntime
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 
 describe("headless runtime", () => {
-  it("emits session, workflow, model, usage, and completion events", async () => {
-    const runtime = createHeadlessRuntime(createDeterministicRuntimeDependencies());
+  it("delegates turns to the runtime kernel without direct model execution", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    let modelStreamCalled = false;
+    deps.models.stream = () => {
+      modelStreamCalled = true;
+      throw new Error("model stream must not be called by headless runtime");
+    };
+    const runtime = createHeadlessRuntime(deps);
     const events = await collectRuntimeEvents(runtime.runTurn({ prompt: "hello" }));
-    assert.deepEqual(
-      events.map((event) => event.kind),
-      ["turn.started", "workflow.step", "bus.recorded", "model.delta", "usage.updated", "turn.completed"]
-    );
+    assert.equal(modelStreamCalled, false);
+    assert.equal(events.some((event) => event.kind === "kernel.request.accepted"), true);
+    assert.equal(events.some((event) => event.kind === "scheduler.completed"), true);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.some((event) => event.kind === "model.delta"), false);
     assert.ok(events.every((event) => event.sessionId));
+    await runtime.dispose();
   });
 
   it("executes deterministic built-in capabilities through the runtime kernel", async () => {
@@ -33,6 +41,9 @@ describe("headless runtime", () => {
         "policy.decided",
         "sandbox.selected",
         "capability.started",
+        "scheduler.queued",
+        "scheduler.started",
+        "scheduler.completed",
         "capability.output",
         "capability.completed",
         "workflow.closed"

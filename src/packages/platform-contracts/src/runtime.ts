@@ -44,6 +44,7 @@ export type RuntimeEventKind =
   | "scheduler.failed"
   | "scheduler.cancelled"
   | "scheduler.timed-out"
+  | "kernel.observability.degraded"
   | "capability.started"
   | "capability.output"
   | "capability.completed"
@@ -80,10 +81,16 @@ export type KernelErrorCode =
   | "KERNEL_SHUTDOWN"
   | "KERNEL_CAPABILITY_NOT_FOUND"
   | "KERNEL_ENVELOPE_INVALID"
+  | "KERNEL_INVALID_TIMEOUT"
+  | "KERNEL_MALFORMED_TRACE"
   | "KERNEL_POLICY_DENIED"
   | "KERNEL_SCHEDULER_TIMEOUT"
+  | "KERNEL_QUEUE_BACKPRESSURE"
   | "KERNEL_CANCELLED"
-  | "KERNEL_EXECUTOR_FAILED";
+  | "KERNEL_EXECUTOR_FAILED"
+  | "KERNEL_EVENT_PERSISTENCE_FAILED"
+  | "KERNEL_OBSERVABILITY_DEGRADED"
+  | "KERNEL_LEGACY_EXECUTION_REJECTED";
 
 export interface KernelError extends RedactedError {
   readonly code: KernelErrorCode;

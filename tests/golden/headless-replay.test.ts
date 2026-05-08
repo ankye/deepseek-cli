@@ -17,10 +17,27 @@ describe("golden replay", () => {
       bus: deps.bus.getReplayRecords(sessionId),
       runtime: events,
       sessions: await deps.sessions.events(sessionId),
-      assertions: [{ expectedKind: "turn.completed" }]
+      assertions: [{ expectedKind: "capability.completed" }]
     });
     const replay = await deps.regression.replay(trace);
     assert.equal(replay.ok, true, replay.failures.join("\n"));
-    assert.equal((await deps.regression.assertSemantic(trace, { expectedKind: "turn.completed" })).ok, true);
+    assert.equal((await deps.regression.assertSemantic(trace, { expectedKind: "capability.completed" })).ok, true);
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      [
+        "kernel.request.accepted",
+        "workflow.opened",
+        "execution.envelope.created",
+        "policy.decided",
+        "sandbox.selected",
+        "capability.started",
+        "scheduler.queued",
+        "scheduler.started",
+        "scheduler.completed",
+        "capability.output",
+        "capability.completed",
+        "workflow.closed"
+      ]
+    );
   });
 });

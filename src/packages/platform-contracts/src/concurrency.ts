@@ -29,6 +29,7 @@ export interface TaskEvent {
   readonly status: TaskStatus;
   readonly at: string;
   readonly trace?: TraceContext;
+  readonly metadata?: JsonObject;
   readonly reason?: string;
 }
 
@@ -43,8 +44,13 @@ export interface QueuePolicy {
   readonly retryBudget: number;
 }
 
+export interface TaskExecutionContext {
+  readonly signal: AbortSignal;
+  readonly cancellationReason?: string;
+}
+
 export interface ConcurrencyOrchestrator {
-  run<T>(scope: TaskScope, work: () => Promise<T>): Promise<T>;
+  run<T>(scope: TaskScope, work: (context: TaskExecutionContext) => Promise<T>): Promise<T>;
   withLock<T>(lock: ResourceLock, work: () => Promise<T>): Promise<T>;
   cancel(taskId: TaskId, reason: string): Promise<void>;
   subscribe(listener: (event: TaskEvent) => void): () => void;

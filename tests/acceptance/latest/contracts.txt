@@ -3,75 +3,130 @@
 > tsx --test "tests/contracts/**/*.test.ts"
 
 TAP version 13
+# Subtest: capability registry hardening
+    # Subtest: returns immutable deep-copy host and model projections without executor bindings
+    ok 1 - returns immutable deep-copy host and model projections without executor bindings
+      ---
+      duration_ms: 1.1134
+      type: 'test'
+      ...
+    # Subtest: keeps stored manifests isolated from registration input and get() mutations
+    ok 2 - keeps stored manifests isolated from registration input and get() mutations
+      ---
+      duration_ms: 0.1633
+      type: 'test'
+      ...
+    1..2
+ok 1 - capability registry hardening
+  ---
+  duration_ms: 1.9087
+  type: 'suite'
+  ...
 # Subtest: architecture lint framework
     # Subtest: passes a valid minimal workspace
     ok 1 - passes a valid minimal workspace
       ---
-      duration_ms: 343.472
+      duration_ms: 388.4091
       type: 'test'
       ...
     # Subtest: reports stable rule ids for boundary violations
     ok 2 - reports stable rule ids for boundary violations
       ---
-      duration_ms: 338.5225
+      duration_ms: 371.4962
       type: 'test'
       ...
     # Subtest: allows governed execution primitives in runtime, owner packages, and tests
     ok 3 - allows governed execution primitives in runtime, owner packages, and tests
       ---
-      duration_ms: 325.208
+      duration_ms: 360.539
       type: 'test'
       ...
     # Subtest: rejects direct governed execution primitive bypasses outside approved owners
     ok 4 - rejects direct governed execution primitive bypasses outside approved owners
       ---
-      duration_ms: 321.8625
+      duration_ms: 642.6745
       type: 'test'
       ...
-    1..4
-ok 1 - architecture lint framework
+    # Subtest: rejects legacy runtime direct execution paths inside runtime package
+    ok 5 - rejects legacy runtime direct execution paths inside runtime package
+      ---
+      duration_ms: 346.142
+      type: 'test'
+      ...
+    1..5
+ok 2 - architecture lint framework
   ---
-  duration_ms: 1330.0134
+  duration_ms: 2110.5781
   type: 'suite'
   ...
 # Subtest: package boundaries
     # Subtest: passes dependency boundary checker
     ok 1 - passes dependency boundary checker
       ---
-      duration_ms: 477.7934
+      duration_ms: 563.3105
       type: 'test'
       ...
     1..1
-ok 2 - package boundaries
+ok 3 - package boundaries
   ---
-  duration_ms: 478.49
+  duration_ms: 563.9134
   type: 'suite'
   ...
 # Subtest: runtime kernel contracts
     # Subtest: constructs the kernel and validates execution envelopes
     ok 1 - constructs the kernel and validates execution envelopes
       ---
-      duration_ms: 2.0856
+      duration_ms: 2.9891
       type: 'test'
       ...
     # Subtest: returns typed rejection events for unknown capabilities
     ok 2 - returns typed rejection events for unknown capabilities
       ---
-      duration_ms: 0.9918
+      duration_ms: 1.2687
       type: 'test'
       ...
-    1..2
-ok 3 - runtime kernel contracts
+    # Subtest: rejects invalid timeout and malformed trace before policy or scheduler submission
+    ok 3 - rejects invalid timeout and malformed trace before policy or scheduler submission
+      ---
+      duration_ms: 1.7845
+      type: 'test'
+      ...
+    # Subtest: validates governance metadata shape directly
+    ok 4 - validates governance metadata shape directly
+      ---
+      duration_ms: 0.5074
+      type: 'test'
+      ...
+    # Subtest: prevents denied policy invocations from reaching the scheduler
+    ok 5 - prevents denied policy invocations from reaching the scheduler
+      ---
+      duration_ms: 1.562
+      type: 'test'
+      ...
+    # Subtest: fails closed when replayable session or bus event persistence fails
+    ok 6 - fails closed when replayable session or bus event persistence fails
+      ---
+      duration_ms: 2.0412
+      type: 'test'
+      ...
+    # Subtest: records explicit degraded observability events without failing successful execution
+    ok 7 - records explicit degraded observability events without failing successful execution
+      ---
+      duration_ms: 2.3526
+      type: 'test'
+      ...
+    1..7
+ok 4 - runtime kernel contracts
   ---
-  duration_ms: 3.7398
+  duration_ms: 13.7151
   type: 'suite'
   ...
-1..3
-# tests 7
-# suites 3
-# pass 7
+1..4
+# tests 15
+# suites 4
+# pass 15
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 1514.6476
+# duration_ms 2312.5841

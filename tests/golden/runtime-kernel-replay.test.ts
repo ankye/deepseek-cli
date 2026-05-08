@@ -27,6 +27,24 @@ describe("runtime kernel replay", () => {
     const replay = await deps.regression.replay(trace);
     assert.equal(replay.ok, true, replay.failures.join("\n"));
     assert.equal((await deps.regression.assertSemantic(trace, { expectedKind: "capability.completed" })).ok, true);
+    assert.deepEqual(
+      runtime.map((event) => event.kind),
+      [
+        "kernel.request.accepted",
+        "workflow.opened",
+        "execution.envelope.created",
+        "policy.decided",
+        "sandbox.selected",
+        "capability.started",
+        "scheduler.queued",
+        "scheduler.started",
+        "scheduler.completed",
+        "capability.output",
+        "capability.completed",
+        "workflow.closed"
+      ]
+    );
+    assert.equal(runtime.filter((event) => event.kind === "workflow.closed").length, 1);
     await kernel.shutdown();
   });
 });
