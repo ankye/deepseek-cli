@@ -1,0 +1,27 @@
+
+> deepseek-cli-platform@0.1.0 test:matrix
+> tsx --test "tests/matrix/**/*.test.ts"
+
+TAP version 13
+# Subtest: fake platform matrix
+    # Subtest: covers macOS, Windows, and Linux fallback behavior
+    ok 1 - covers macOS, Windows, and Linux fallback behavior
+      ---
+      duration_ms: 1.5354
+      type: 'test'
+      ...
+    1..1
+ok 1 - fake platform matrix
+  ---
+  duration_ms: 2.3531
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 389.8753

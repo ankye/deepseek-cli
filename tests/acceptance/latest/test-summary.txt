@@ -1,0 +1,264 @@
+
+> deepseek-cli-platform@0.1.0 test
+> tsx --test "src/**/*.test.ts" "tests/**/*.test.ts"
+
+TAP version 13
+# Subtest: cli host adapter
+    # Subtest: parses prompt mode and stream-json rendering
+    ok 1 - parses prompt mode and stream-json rendering
+      ---
+      duration_ms: 1.5849
+      type: 'test'
+      ...
+    # Subtest: runs as a thin host over runtime events
+    ok 2 - runs as a thin host over runtime events
+      ---
+      duration_ms: 3.5186
+      type: 'test'
+      ...
+    1..2
+ok 1 - cli host adapter
+  ---
+  duration_ms: 6.2519
+  type: 'suite'
+  ...
+# Subtest: vscode extension host adapter
+    # Subtest: exposes a thin bridge without CLI app imports
+    ok 1 - exposes a thin bridge without CLI app imports
+      ---
+      duration_ms: 1.2593
+      type: 'test'
+      ...
+    1..1
+ok 2 - vscode extension host adapter
+  ---
+  duration_ms: 2.0586
+  type: 'suite'
+  ...
+# Subtest: communication protocol
+    # Subtest: round-trips a versioned envelope
+    ok 1 - round-trips a versioned envelope
+      ---
+      duration_ms: 2.6734
+      type: 'test'
+      ...
+    1..1
+ok 3 - communication protocol
+  ---
+  duration_ms: 3.6301
+  type: 'suite'
+  ...
+# Subtest: deterministic scheduler
+    # Subtest: serializes work through explicit locks
+    ok 1 - serializes work through explicit locks
+      ---
+      duration_ms: 3.8999
+      type: 'test'
+      ...
+    # Subtest: emits terminal events for deadlines and cancellation
+    ok 2 - emits terminal events for deadlines and cancellation
+      ---
+      duration_ms: 2.6693
+      type: 'test'
+      ...
+    1..2
+ok 4 - deterministic scheduler
+  ---
+  duration_ms: 7.9651
+  type: 'suite'
+  ...
+# Subtest: platform-contracts boundary
+    # Subtest: does not import hosts, processes, SDKs, or implementation packages
+    ok 1 - does not import hosts, processes, SDKs, or implementation packages
+      ---
+      duration_ms: 24.9809
+      type: 'test'
+      ...
+    1..1
+ok 5 - platform-contracts boundary
+  ---
+  duration_ms: 26.0848
+  type: 'suite'
+  ...
+# Subtest: runtime message bus
+    # Subtest: records replayable envelopes in publish order
+    ok 1 - records replayable envelopes in publish order
+      ---
+      duration_ms: 1.9853
+      type: 'test'
+      ...
+    1..1
+ok 6 - runtime message bus
+  ---
+  duration_ms: 3.157
+  type: 'suite'
+  ...
+# Subtest: headless runtime
+    # Subtest: emits session, workflow, model, usage, and completion events
+    ok 1 - emits session, workflow, model, usage, and completion events
+      ---
+      duration_ms: 7.0831
+      type: 'test'
+      ...
+    1..1
+ok 7 - headless runtime
+  ---
+  duration_ms: 8.5641
+  type: 'suite'
+  ...
+# Subtest: workflow orchestration
+    # Subtest: creates a valid single-turn graph
+    ok 1 - creates a valid single-turn graph
+      ---
+      duration_ms: 0.9329
+      type: 'test'
+      ...
+    # Subtest: accepts workflow template contribution metadata
+    ok 2 - accepts workflow template contribution metadata
+      ---
+      duration_ms: 0.2305
+      type: 'test'
+      ...
+    1..2
+ok 8 - workflow orchestration
+  ---
+  duration_ms: 2.2351
+  type: 'suite'
+  ...
+# Subtest: compatibility checks
+    # Subtest: requires schemaVersion on persisted subjects
+    ok 1 - requires schemaVersion on persisted subjects
+      ---
+      duration_ms: 1.4363
+      type: 'test'
+      ...
+    1..1
+ok 9 - compatibility checks
+  ---
+  duration_ms: 2.4397
+  type: 'suite'
+  ...
+# Subtest: architecture lint framework
+    # Subtest: passes a valid minimal workspace
+    ok 1 - passes a valid minimal workspace
+      ---
+      duration_ms: 532.3834
+      type: 'test'
+      ...
+    # Subtest: reports stable rule ids for boundary violations
+    ok 2 - reports stable rule ids for boundary violations
+      ---
+      duration_ms: 427.8263
+      type: 'test'
+      ...
+    1..2
+ok 10 - architecture lint framework
+  ---
+  duration_ms: 961.5708
+  type: 'suite'
+  ...
+# Subtest: package boundaries
+    # Subtest: passes dependency boundary checker
+    ok 1 - passes dependency boundary checker
+      ---
+      duration_ms: 670.7589
+      type: 'test'
+      ...
+    1..1
+ok 11 - package boundaries
+  ---
+  duration_ms: 671.5703
+  type: 'suite'
+  ...
+# Subtest: host adapter smoke
+    # Subtest: runs CLI stream-json and activates VSCode bridge
+    ok 1 - runs CLI stream-json and activates VSCode bridge
+      ---
+      duration_ms: 2.5437
+      type: 'test'
+      ...
+    # Subtest: runs the built CLI binary with traceable runtime metadata
+    ok 2 - runs the built CLI binary with traceable runtime metadata
+      ---
+      duration_ms: 55.9975
+      type: 'test'
+      ...
+    # Subtest: keeps the VSCode bridge transport-backed and isolated from CLI rendering
+    ok 3 - keeps the VSCode bridge transport-backed and isolated from CLI rendering
+      ---
+      duration_ms: 0.3034
+      type: 'test'
+      ...
+    1..3
+ok 12 - host adapter smoke
+  ---
+  duration_ms: 59.4055
+  type: 'suite'
+  ...
+# Subtest: golden replay
+    # Subtest: replays a normalized minimal headless trace
+    ok 1 - replays a normalized minimal headless trace
+      ---
+      duration_ms: 3.321
+      type: 'test'
+      ...
+    1..1
+ok 13 - golden replay
+  ---
+  duration_ms: 4.0782
+  type: 'suite'
+  ...
+# Subtest: ecosystem and governance integration
+    # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
+    ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
+      ---
+      duration_ms: 2.482
+      type: 'test'
+      ...
+    # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
+    ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
+      ---
+      duration_ms: 1.8619
+      type: 'test'
+      ...
+    1..2
+ok 14 - ecosystem and governance integration
+  ---
+  duration_ms: 5.3084
+  type: 'suite'
+  ...
+# Subtest: runtime integration pipeline
+    # Subtest: records bus, session, usage, and observability state for a turn
+    ok 1 - records bus, session, usage, and observability state for a turn
+      ---
+      duration_ms: 3.7453
+      type: 'test'
+      ...
+    1..1
+ok 15 - runtime integration pipeline
+  ---
+  duration_ms: 4.6961
+  type: 'suite'
+  ...
+# Subtest: fake platform matrix
+    # Subtest: covers macOS, Windows, and Linux fallback behavior
+    ok 1 - covers macOS, Windows, and Linux fallback behavior
+      ---
+      duration_ms: 1.2314
+      type: 'test'
+      ...
+    1..1
+ok 16 - fake platform matrix
+  ---
+  duration_ms: 2.027
+  type: 'suite'
+  ...
+1..16
+# tests 23
+# suites 16
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1445.4483

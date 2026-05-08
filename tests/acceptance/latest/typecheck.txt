@@ -1,0 +1,4 @@
+
+> deepseek-cli-platform@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+

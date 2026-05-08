@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.cache/
+.codex/
+
+.env
+.env.*
+*.log
+
+# Local reference material, never publish.
+参考/
+
+Thumbs.db
+.DS_Store

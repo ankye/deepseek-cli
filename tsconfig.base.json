@@ -1,0 +1,111 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek/agent-management": [
+        "src/packages/agent-management/src/index.ts"
+      ],
+      "@deepseek/capability-registry": [
+        "src/packages/capability-registry/src/index.ts"
+      ],
+      "@deepseek/code-intelligence": [
+        "src/packages/code-intelligence/src/index.ts"
+      ],
+      "@deepseek/command-system": [
+        "src/packages/command-system/src/index.ts"
+      ],
+      "@deepseek/communication-protocol": [
+        "src/packages/communication-protocol/src/index.ts"
+      ],
+      "@deepseek/concurrency-orchestration": [
+        "src/packages/concurrency-orchestration/src/index.ts"
+      ],
+      "@deepseek/config": [
+        "src/packages/config/src/index.ts"
+      ],
+      "@deepseek/context-engine": [
+        "src/packages/context-engine/src/index.ts"
+      ],
+      "@deepseek/credential-auth-management": [
+        "src/packages/credential-auth-management/src/index.ts"
+      ],
+      "@deepseek/distribution-update-management": [
+        "src/packages/distribution-update-management/src/index.ts"
+      ],
+      "@deepseek/evolution-engine": [
+        "src/packages/evolution-engine/src/index.ts"
+      ],
+      "@deepseek/extension-system": [
+        "src/packages/extension-system/src/index.ts"
+      ],
+      "@deepseek/hook-system": [
+        "src/packages/hook-system/src/index.ts"
+      ],
+      "@deepseek/mcp-gateway": [
+        "src/packages/mcp-gateway/src/index.ts"
+      ],
+      "@deepseek/memory-cache-management": [
+        "src/packages/memory-cache-management/src/index.ts"
+      ],
+      "@deepseek/model-gateway": [
+        "src/packages/model-gateway/src/index.ts"
+      ],
+      "@deepseek/observability": [
+        "src/packages/observability/src/index.ts"
+      ],
+      "@deepseek/platform-abstraction": [
+        "src/packages/platform-abstraction/src/index.ts"
+      ],
+      "@deepseek/platform-contracts": [
+        "src/packages/platform-contracts/src/index.ts"
+      ],
+      "@deepseek/plugin-system": [
+        "src/packages/plugin-system/src/index.ts"
+      ],
+      "@deepseek/policy-sandbox": [
+        "src/packages/policy-sandbox/src/index.ts"
+      ],
+      "@deepseek/remote-runtime-connectivity": [
+        "src/packages/remote-runtime-connectivity/src/index.ts"
+      ],
+      "@deepseek/runtime": [
+        "src/packages/runtime/src/index.ts"
+      ],
+      "@deepseek/runtime-message-bus": [
+        "src/packages/runtime-message-bus/src/index.ts"
+      ],
+      "@deepseek/session-store": [
+        "src/packages/session-store/src/index.ts"
+      ],
+      "@deepseek/skill-system": [
+        "src/packages/skill-system/src/index.ts"
+      ],
+      "@deepseek/testing-regression": [
+        "src/packages/testing-regression/src/index.ts"
+      ],
+      "@deepseek/usage-budget-management": [
+        "src/packages/usage-budget-management/src/index.ts"
+      ],
+      "@deepseek/workflow-orchestration": [
+        "src/packages/workflow-orchestration/src/index.ts"
+      ],
+      "@deepseek/workspace-state-management": [
+        "src/packages/workspace-state-management/src/index.ts"
+      ]
+    }
+  }
+}

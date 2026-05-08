@@ -1,0 +1,27 @@
+
+> deepseek-cli-platform@0.1.0 test:golden
+> tsx --test "tests/golden/**/*.test.ts"
+
+TAP version 13
+# Subtest: golden replay
+    # Subtest: replays a normalized minimal headless trace
+    ok 1 - replays a normalized minimal headless trace
+      ---
+      duration_ms: 3.9369
+      type: 'test'
+      ...
+    1..1
+ok 1 - golden replay
+  ---
+  duration_ms: 4.8334
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 391.7373

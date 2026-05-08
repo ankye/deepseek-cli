@@ -1,0 +1,46 @@
+
+> deepseek-cli-platform@0.1.0 test:integration
+> tsx --test "tests/integration/**/*.test.ts"
+
+TAP version 13
+# Subtest: ecosystem and governance integration
+    # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
+    ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
+      ---
+      duration_ms: 2.7231
+      type: 'test'
+      ...
+    # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
+    ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
+      ---
+      duration_ms: 1.8068
+      type: 'test'
+      ...
+    1..2
+ok 1 - ecosystem and governance integration
+  ---
+  duration_ms: 5.8362
+  type: 'suite'
+  ...
+# Subtest: runtime integration pipeline
+    # Subtest: records bus, session, usage, and observability state for a turn
+    ok 1 - records bus, session, usage, and observability state for a turn
+      ---
+      duration_ms: 3.5444
+      type: 'test'
+      ...
+    1..1
+ok 2 - runtime integration pipeline
+  ---
+  duration_ms: 4.4351
+  type: 'suite'
+  ...
+1..2
+# tests 3
+# suites 2
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 421.4319

@@ -1,0 +1,10 @@
+
+> deepseek-cli-platform@0.1.0 smoke:headless
+> tsx src/apps/cli/src/index.ts -p "smoke" --output stream-json
+
+{"kind":"turn.started","sessionId":"session-1","turnId":"turn-session-1","agentId":"agent-default","trace":{"traceId":"trace-runtime-session-1","spanId":"span-runtime-session-1","correlationId":"corr-runtime-session-1","sessionId":"session-1"},"data":{"prompt":"smoke","agentInstanceId":"agent-instance-session-1"}}
+{"kind":"workflow.step","sessionId":"session-1","taskId":"task-session-1","trace":{"traceId":"trace-workflow-session-1","spanId":"span-workflow-session-1","correlationId":"corr-workflow-session-1","sessionId":"session-1"},"data":{"workflowId":"workflow-session-1","stepId":"step-model-response","status":"running"}}
+{"kind":"bus.recorded","sessionId":"session-1","turnId":"turn-session-1","taskId":"task-session-1","agentId":"agent-default","trace":{"traceId":"trace-runtime-session-1","spanId":"span-runtime-session-1","correlationId":"corr-runtime-session-1","sessionId":"session-1"},"data":{"topic":"runtime.event","replayRecords":2}}
+{"kind":"model.delta","sessionId":"session-1","turnId":"turn-session-1","agentId":"agent-default","trace":{"traceId":"trace-runtime-session-1","spanId":"span-runtime-session-1","correlationId":"corr-runtime-session-1","sessionId":"session-1"},"data":{"text":"DeepSeek mock response: smoke"}}
+{"kind":"usage.updated","sessionId":"session-1","turnId":"turn-session-1","agentId":"agent-default","trace":{"traceId":"trace-runtime-session-1","spanId":"span-runtime-session-1","correlationId":"corr-runtime-session-1","sessionId":"session-1"},"data":{"inputTokens":1,"outputTokens":6}}
+{"kind":"turn.completed","sessionId":"session-1","turnId":"turn-session-1","taskId":"task-session-1","agentId":"agent-default","trace":{"traceId":"trace-runtime-session-1","spanId":"span-runtime-session-1","correlationId":"corr-runtime-session-1","sessionId":"session-1"},"data":{"workflowId":"workflow-session-1","checkpointId":"checkpoint-workflow-session-1","status":"completed"}}

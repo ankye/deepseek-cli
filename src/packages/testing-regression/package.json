@@ -1,0 +1,42 @@
+{
+  "name": "@deepseek/testing-regression",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@deepseek/platform-contracts": "0.1.0",
+    "@deepseek/communication-protocol": "0.1.0",
+    "@deepseek/runtime-message-bus": "0.1.0",
+    "@deepseek/workflow-orchestration": "0.1.0",
+    "@deepseek/concurrency-orchestration": "0.1.0",
+    "@deepseek/agent-management": "0.1.0",
+    "@deepseek/model-gateway": "0.1.0",
+    "@deepseek/context-engine": "0.1.0",
+    "@deepseek/memory-cache-management": "0.1.0",
+    "@deepseek/capability-registry": "0.1.0",
+    "@deepseek/command-system": "0.1.0",
+    "@deepseek/skill-system": "0.1.0",
+    "@deepseek/hook-system": "0.1.0",
+    "@deepseek/mcp-gateway": "0.1.0",
+    "@deepseek/plugin-system": "0.1.0",
+    "@deepseek/extension-system": "0.1.0",
+    "@deepseek/evolution-engine": "0.1.0",
+    "@deepseek/credential-auth-management": "0.1.0",
+    "@deepseek/usage-budget-management": "0.1.0",
+    "@deepseek/workspace-state-management": "0.1.0",
+    "@deepseek/code-intelligence": "0.1.0",
+    "@deepseek/policy-sandbox": "0.1.0",
+    "@deepseek/platform-abstraction": "0.1.0",
+    "@deepseek/session-store": "0.1.0",
+    "@deepseek/remote-runtime-connectivity": "0.1.0",
+    "@deepseek/distribution-update-management": "0.1.0",
+    "@deepseek/config": "0.1.0",
+    "@deepseek/observability": "0.1.0"
+  }
+}

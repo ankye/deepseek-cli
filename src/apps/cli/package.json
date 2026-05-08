@@ -1,0 +1,22 @@
+{
+  "name": "deekseek-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js"
+  },
+  "dependencies": {},
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "deepseek": "./dist/index.js"
+  }
+}
