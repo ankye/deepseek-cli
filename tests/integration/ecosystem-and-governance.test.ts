@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { asId } from "@deepseek/platform-contracts";
+import { HOOK_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { createHookOutput } from "@deepseek/hook-system";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { createPlatformRuntime, FakePlatformRuntime } from "@deepseek/platform-abstraction";
 
@@ -50,18 +51,25 @@ describe("ecosystem and governance integration", () => {
     });
     assert.equal((await deps.skills.activateSkill({ schemaVersion: "1.0.0", name: "review", trigger: "explicit", context: {} })).summary?.name, "review");
 
-    await deps.hooks.register(
+    await deps.hooks.registerHook(
       {
         id: asId<"hook">("hook-before-turn"),
         name: "before-turn",
-        point: "turn.before",
-        order: 1,
+        version: "1.0.0",
+        point: "user-input.before",
+        source: "built-in",
+        trust: "trusted",
+        ordering: { priority: 1 },
         timeoutMs: 100,
-        failurePolicy: "fail"
+        failurePolicy: "block",
+        isolation: "in-process-observe-only",
+        permissions: [],
+        inputSchema: {},
+        outputSchema: {}
       },
-      async () => ({ ok: true, value: { checked: true } })
+      async () => ({ ok: true, value: createHookOutput(asId<"hook">("hook-before-turn"), "observation", { checked: true }) })
     );
-    assert.equal((await deps.hooks.run("turn.before", {})).length, 1);
+    assert.equal((await deps.hooks.invokeHooks({ schemaVersion: HOOK_SCHEMA_VERSION, point: "user-input.before", input: {} })).executions.length, 1);
 
     await deps.mcp.connect({
       id: asId<"mcpServer">("mcp-fake"),

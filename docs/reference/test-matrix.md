@@ -28,3 +28,7 @@ observability/privacy v1 覆盖位于 unit、contract、integration、golden、c
 Skills v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, summary-first loading, trust inertness, context projection, redaction, and no live plugin/catalog dependency.
 
 skills v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、summary-first loading、trust inertness、context projection、redaction，且不依赖 live plugin/catalog。
+
+Hooks v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, deterministic ordering, observe-only output typing, timeout containment, failure policies, redaction, and no live plugin/host dependency.
+
+hooks v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、deterministic ordering、observe-only output typing、timeout containment、failure policies、redaction，且不依赖 live plugin/host。

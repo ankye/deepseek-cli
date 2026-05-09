@@ -82,7 +82,7 @@ export const lintConventions = {
       },
       {
         serviceNames: new Set(["hooks", "hookSystem"]),
-        methods: new Set(["run"]),
+        methods: new Set(["invokeHooks", "registerHook", "projectOrder"]),
         ownerPackage: "hook-system"
       },
       {

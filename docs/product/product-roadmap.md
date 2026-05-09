@@ -197,9 +197,9 @@ Product outcome: users can extend DeepSeek with skills, commands, hooks, MCP, an
 
 产品结果：用户可以在 policy 控制下通过 skills、commands、hooks、MCP 和 plugins 扩展 DeepSeek。
 
-Current status: started, with canonical skills v1 implemented as the first governed extension unit.
+Current status: started, with canonical skills v1 and hooks v1 implemented as the first governed extension units.
 
-当前状态：已启动，canonical skills v1 已作为第一个受治理扩展单元实现。
+当前状态：已启动，canonical skills v1 与 hooks v1 已作为第一批受治理扩展单元实现。
 
 Product scope / 产品范围:
 
@@ -224,7 +224,6 @@ Acceptance gate / 验收门禁:
 
 Next OpenSpecs / 后续 OpenSpec:
 
-- `implement-hooks-v1`
 - `implement-mcp-gateway-v1`
 - `implement-plugin-lockfile-v1`
 - `implement-mcp-and-plugin-auth-boundaries`
@@ -232,6 +231,7 @@ Next OpenSpecs / 后续 OpenSpec:
 Implemented OpenSpecs / 已实现 OpenSpec:
 
 - `implement-skills-v1`
+- `implement-hooks-v1`
 
 ### R4 IDE And Server / R4 IDE 与 Server
 
@@ -369,12 +369,11 @@ Next OpenSpecs / 后续 OpenSpec:
 
 ## Immediate Recommended Sequence / 近期推荐顺序
 
-1. Follow skills v1 with `implement-hooks-v1`. / 在 skills v1 之后推进 `implement-hooks-v1`。
-2. Add `implement-mcp-gateway-v1`. / 增加 `implement-mcp-gateway-v1`。
-3. Add `implement-plugin-lockfile-v1`. / 增加 `implement-plugin-lockfile-v1`。
-4. Add `implement-mcp-and-plugin-auth-boundaries`. / 增加 `implement-mcp-and-plugin-auth-boundaries`。
-5. Then revisit R4 with `implement-vscode-event-projection`. / 然后回到 R4 推进 `implement-vscode-event-projection`。
+1. Add `implement-mcp-gateway-v1`. / 增加 `implement-mcp-gateway-v1`。
+2. Add `implement-plugin-lockfile-v1`. / 增加 `implement-plugin-lockfile-v1`。
+3. Add `implement-mcp-and-plugin-auth-boundaries`. / 增加 `implement-mcp-and-plugin-auth-boundaries`。
+4. Then revisit R4 with `implement-vscode-event-projection`. / 然后回到 R4 推进 `implement-vscode-event-projection`。
 
-Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy. R3 has started with skills because skills create the smallest governed extension unit before hooks, MCP, and plugins.
+Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy. R3 has established canonical skills/hooks v1 before moving to external connectors and plugin packaging.
 
-理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy。R3 已从 skills 启动，因为 skills 是 hooks、MCP 和 plugins 之前最小的受治理扩展单元。
+理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy。R3 已先建立 canonical skills/hooks v1，然后再推进外部连接器与 plugin packaging。

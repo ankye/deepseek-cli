@@ -1,11 +1,5 @@
-# hook-system Specification
+## MODIFIED Requirements
 
-## Purpose
-Define DeepSeek's governed hook model for lifecycle extension points, deterministic ordering, observe-only invocation, failure policy, timeout containment, and replayable evidence.
-
-定义 DeepSeek 受治理的 hook 模型，覆盖 lifecycle extension points、确定性排序、observe-only invocation、failure policy、timeout containment 和可 replay evidence。
-
-## Requirements
 ### Requirement: Governed Hook System
 
 The platform SHALL define a governed hook system for lifecycle extension points before and after user input, model calls, tool execution, skill activation, workflow steps, file edits, session changes, plugin lifecycle actions, and host rendering.
@@ -77,6 +71,8 @@ hook system 必须在 hook 能 block、rewrite、mutate runtime state、call too
 - **WHEN** a hook executes code, calls tools, mutates runtime state, touches filesystem/process/network, changes memory/cache/workspace, or requires sandbox controls
 - **THEN** it creates or is rejected until it can create a governed execution envelope with policy, approval, sandbox, bus, audit, and replay metadata
 - **中文** 当 hook 执行代码、调用工具、修改 runtime state、触碰 filesystem/process/network、改变 memory/cache/workspace 或需要 sandbox controls 时，它必须创建 governed execution envelope；如果当前不能创建，则必须被拒绝，并带有 policy、approval、sandbox、bus、audit 和 replay metadata 要求。
+
+## ADDED Requirements
 
 ### Requirement: Canonical HookSystem V1 API
 

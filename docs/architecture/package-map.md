@@ -29,7 +29,7 @@ This page maps packages to architectural ownership. It is a developer reference 
 | `core-coding-tools` | File/search/edit/shell/git/todo tool foundation. / 文件、搜索、编辑、shell、git、todo 工具基础。 |
 | `command-system` | Host-agnostic commands and interactive controls. / host-agnostic 命令和交互控制。 |
 | `skill-system` | Canonical skills v1 manifest validation, summary-first progressive loading, trust inertness, activation, and context-only projection. / canonical skills v1 manifest 校验、summary-first 渐进加载、trust inertness、activation 与 context-only projection。 |
-| `hook-system` | Hook metadata and runtime contribution surface. / hook metadata 与 runtime contribution surface。 |
+| `hook-system` | Canonical hooks v1 manifest validation, deterministic ordering, observe-only invocation, timeout containment, and failure policy. / canonical hooks v1 manifest 校验、确定性排序、observe-only invocation、超时隔离与失败策略。 |
 | `mcp-gateway` | MCP server/tool/resource normalization. / MCP server、tool、resource 归一化。 |
 | `plugin-system` | Plugin manifest and installed contribution model. / plugin manifest 与安装贡献模型。 |
 | `extension-system` | Shared extension contribution contracts. / 共享 extension contribution 契约。 |

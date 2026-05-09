@@ -1,6 +1,7 @@
 import { platformContractsArePure } from "./contracts.mjs";
 import { noDirectContextProjectionBypass } from "./context-projection.mjs";
 import { noDirectGovernedExecutionBypass } from "./governed-execution.mjs";
+import { noLegacyHookSystemApi } from "./hook-system.mjs";
 import { noAppToAppImports, noCrossPackageRelativeImports, noInternalPackageSrcImports } from "./imports.mjs";
 import { packageJsonBoundaryRule } from "./package-json.mjs";
 import { noDirectPlatformPrimitiveAccess } from "./platform.mjs";
@@ -18,6 +19,7 @@ export const architectureRules = [
   noLegacyRuntimeDirectExecution,
   noDirectContextProjectionBypass,
   noDirectGovernedExecutionBypass,
+  noLegacyHookSystemApi,
   noDirectPlatformPrimitiveAccess,
   noDirectProviderCredentialAccess,
   noDirectSecretSandboxBypass,

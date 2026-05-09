@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
+import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
 import { requireSchemaVersion } from "@deepseek/testing-regression";
@@ -99,5 +100,55 @@ describe("compatibility checks", () => {
     assert.deepEqual(requireSchemaVersion(activation), []);
     assert.deepEqual(requireSchemaVersion(activation.contextSegments[0]), []);
     assert.equal((await skills.validateManifest({ ...activation.manifest, schemaVersion: "999.0.0" } as never)).ok, false);
+  });
+
+  it("requires schemaVersion on hook manifests, summaries, invocation results, and output records", async () => {
+    const hooks = new InMemoryHookSystem();
+    await hooks.registerHook(
+      {
+        id: asId<"hook">("hook-compat"),
+        name: "compat-hook",
+        version: "1.0.0",
+        point: "user-input.before",
+        source: "built-in",
+        trust: "trusted",
+        ordering: { priority: 1 },
+        timeoutMs: 100,
+        failurePolicy: "continue",
+        isolation: "in-process-observe-only",
+        permissions: [],
+        inputSchema: {},
+        outputSchema: {}
+      },
+      async () => ({ ok: true, value: createHookOutput(asId<"hook">("hook-compat"), "observation", { ok: true }) })
+    );
+    const [summary] = await hooks.listHooks();
+    const order = await hooks.projectOrder({ schemaVersion: HOOK_SCHEMA_VERSION, point: "user-input.before" });
+    const invocation = await hooks.invokeHooks({ schemaVersion: HOOK_SCHEMA_VERSION, point: "user-input.before", input: {} });
+
+    assert.equal(summary?.schemaVersion, HOOK_SCHEMA_VERSION);
+    assert.equal(order.schemaVersion, HOOK_SCHEMA_VERSION);
+    assert.equal(invocation.schemaVersion, HOOK_SCHEMA_VERSION);
+    assert.equal(invocation.executions[0]?.outputs[0]?.schemaVersion, HOOK_SCHEMA_VERSION);
+    assert.deepEqual(requireSchemaVersion(summary), []);
+    assert.deepEqual(requireSchemaVersion(order), []);
+    assert.deepEqual(requireSchemaVersion(invocation), []);
+    assert.deepEqual(requireSchemaVersion(invocation.executions[0]?.outputs[0]), []);
+    assert.equal((await hooks.validateManifest({
+      id: asId<"hook">("hook-unsupported-compat"),
+      name: "unsupported",
+      version: "1.0.0",
+      point: "user-input.before",
+      source: "built-in",
+      trust: "trusted",
+      ordering: { priority: 1 },
+      timeoutMs: 100,
+      failurePolicy: "continue",
+      isolation: "in-process-observe-only",
+      permissions: [],
+      inputSchema: {},
+      outputSchema: {},
+      schemaVersion: "999.0.0"
+    })).ok, false);
   });
 });

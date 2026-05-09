@@ -77,7 +77,7 @@ const conventions = {
       },
       {
         serviceNames: new Set(["hooks", "hookSystem"]),
-        methods: new Set(["run"]),
+        methods: new Set(["invokeHooks", "registerHook", "projectOrder"]),
         ownerPackage: "hook-system"
       },
       {
@@ -262,7 +262,7 @@ describe("architecture lint framework", () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function badHost(deps) { await deps.scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
-      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); await deps.hooks.invokeHooks({ schemaVersion: \"1.0.0\", point: \"turn.before\", input: {} }); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 2, result.stderr || result.stdout);
@@ -289,6 +289,26 @@ describe("architecture lint framework", () => {
       assert.equal(result.status, 2, result.stderr || result.stdout);
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
       assert.equal(ruleIds.has("skill-system/no-legacy-generic-api"), true);
+    });
+  });
+
+  it("rejects legacy generic hook system APIs", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/platform-contracts/src/hook.ts",
+        "export interface HookSystem { register(manifest: unknown): Promise<void>; run(point: string): Promise<unknown[]>; }\n"
+      );
+      await writeFixtureFile(
+        root,
+        "src/packages/hook-system/src/index.ts",
+        "export class InMemoryHookSystem { register() {} run() { return []; } }\n"
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("hook-system/no-legacy-generic-api"), true);
     });
   });
 
