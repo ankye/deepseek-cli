@@ -16,3 +16,7 @@
 Checkpoint/undo coverage lives in unit, contract, integration, golden, and matrix suites.
 
 checkpoint/undo 覆盖位于 unit、contract、integration、golden 和 matrix suites。
+
+Code intelligence v1 coverage lives in unit, contract, integration, golden, and matrix suites with deterministic local analyzer fixtures and no live IDE/LSP dependency.
+
+code intelligence v1 覆盖位于 unit、contract、integration、golden 和 matrix suites，使用 deterministic local analyzer fixtures，且不依赖 live IDE/LSP。

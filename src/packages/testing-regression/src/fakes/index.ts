@@ -1,7 +1,7 @@
 import type { RuntimeDependencies } from "@deepseek/platform-contracts";
 import { InMemoryAgentManager } from "@deepseek/agent-management";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
-import { NullCodeIntelligenceService } from "@deepseek/code-intelligence";
+import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
 import { InMemoryCommandSystem } from "@deepseek/command-system";
 import { PipelineProtocolRouter } from "@deepseek/communication-protocol";
 import { DeterministicScheduler } from "@deepseek/concurrency-orchestration";
@@ -70,7 +70,7 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     sessions: new InMemorySessionStore(),
     platform,
     evolution: new InMemoryEvolutionEngine(),
-    codeIntelligence: new NullCodeIntelligenceService(),
+    codeIntelligence: new DeterministicCodeIntelligenceService(platform),
     remote: new NoopRemoteRuntimeConnectivity(),
     distribution: new StaticDistributionUpdateManager(),
     config: new InMemoryConfigStore(),

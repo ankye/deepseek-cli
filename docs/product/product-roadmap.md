@@ -138,9 +138,9 @@ Product outcome: longer coding sessions remain accurate, safe, and budgeted.
 
 产品结果：长时间 coding session 仍能保持准确、安全，并受预算控制。
 
-Current status: active, with context projection, secret/sandbox hardening, and checkpoint/undo v1 implemented.
+Current status: active, with context projection, secret/sandbox hardening, checkpoint/undo v1, and code intelligence v1 implemented.
 
-当前状态：推进中，已实现 context projection、secret/sandbox hardening 与 checkpoint/undo v1。
+当前状态：推进中，已实现 context projection、secret/sandbox hardening、checkpoint/undo v1 与 code intelligence v1。
 
 Product scope / 产品范围:
 
@@ -172,12 +172,12 @@ Next OpenSpecs / 后续 OpenSpec:
 
 - `implement-context-graph-projection`
 - `harden-secret-and-sandbox-policy`
-- `implement-code-intelligence-v1`
 - `implement-observability-privacy-v1`
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
 - `implement-checkpoint-undo`
+- `implement-code-intelligence-v1`
 
 ### R3 Extensibility Platform / R3 可扩展平台
 
