@@ -36,7 +36,7 @@ model gateway 必须接受 agent-loop model requests，包含 projected context�
 - **THEN** the gateway returns a typed unsupported-capability error before sending a provider request
 - **中文** 当 agent loop request 要求 tools、reasoning、streaming 或 context features，而配置的 model profile 不支持时，gateway 必须在发送 provider request 前返回 typed unsupported-capability error。
 
-### Requirement: Live Agent Loop Smoke Compatibility / Live Agent Loop Smoke 兼容性
+### Requirement: Live Agent Loop Smoke Version Contract / Live Agent Loop Smoke 版本契约
 
 The model gateway SHALL support opt-in live DeepSeek smoke checks for the agent loop that validate provider reachability, streaming shape, tool-call shape when requested, usage metadata, and redacted diagnostics without asserting exact generated text.
 
@@ -44,6 +44,6 @@ model gateway 必须支持 agent loop 的 opt-in live DeepSeek smoke checks，�
 
 #### Scenario: Live smoke validates structure / Live smoke 验证结构
 
-- **WHEN** live agent-loop smoke is enabled with credentials and a compatible model profile
+- **WHEN** live agent-loop smoke is enabled with credentials and a model profile that declares the required live-test capabilities
 - **THEN** the gateway returns structural evidence for stream events, terminal status, latency, usage when available, and redacted provider metadata
-- **中文** 当启用 live agent-loop smoke 且具备凭证与兼容 model profile 时，gateway 必须返回 stream events、terminal status、latency、可用时的 usage 和 redacted provider metadata 的结构化证据。
+- **中文** 当启用 live agent-loop smoke、具备凭证，且 model profile 声明所需 live-test capabilities 时，gateway 必须返回 stream events、terminal status、latency、可用时的 usage 和 redacted provider metadata 的结构化证据。

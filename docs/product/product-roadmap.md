@@ -15,7 +15,7 @@ Roadmap node / 路线图节点: R1 MVP Coding Agent
 Launch gate / 发布门禁: internal-alpha | alpha | beta | stable | enterprise
 Owner packages / 责任包: runtime, capability-registry, policy-sandbox
 Dependencies / 依赖: R0 runtime kernel, provider gateway
-Required tests / 必需测试: unit, contract, integration, golden, e2e, matrix, compatibility, optional-live
+Required tests / 必需测试: unit, contract, integration, golden, e2e, matrix, versioning, optional-live
 Acceptance evidence / 验收证据: CLI smoke, VSCode smoke, trace replay, policy audit, docs
 Risk class / 风险等级: low | medium | high | critical
 Data/privacy class / 数据与隐私等级: none | local | sensitive | secret | regulated
@@ -103,14 +103,14 @@ Implemented OpenSpecs / 已实现 OpenSpec:
 
 ### R1 MVP Coding Agent / R1 最小可用 Coding Agent
 
-Product outcome: `deepseek -p` and a basic interactive CLI can inspect, edit, and test a local repository with safe tools.
+Product outcome: `deepseek run` and `deepseek chat` can inspect, edit, and test a local repository with safe tools.
 
-产品结果：`deepseek -p` 和基础交互式 CLI 能够通过安全工具检查、编辑并测试本地仓库。
+产品结果：`deepseek run` 与 `deepseek chat` 能够通过安全工具检查、编辑并测试本地仓库。
 
 Product scope / 产品范围:
 
-- Headless prompt and stream-json output. / headless prompt 与 stream-json 输出。
-- Interactive terminal loop with minimal renderer. / 带最小 renderer 的交互式终端循环。
+- `deepseek run "<task>"` and JSON/JSONL output. / `deepseek run "<task>"` 与 JSON/JSONL 输出。
+- `deepseek chat` terminal loop with minimal renderer. / 带最小 renderer 的 `deepseek chat` 终端循环。
 - Read, write, edit, glob, grep/search, shell/process, git diff/status, todo/plan tools. / read、write、edit、glob、grep/search、shell/process、git diff/status、todo/plan 工具。
 - Basic permissions: allow, ask, deny. / 基础权限：allow、ask、deny。
 - Local readiness commands: login/API-key setup, logout, config/settings, init, doctor, privacy settings, and install verification. / 本地可用性命令：login/API-key setup、logout、config/settings、init、doctor、privacy settings 和 install verification。
@@ -126,13 +126,13 @@ Acceptance gate / 验收门禁:
 - E2E covers summarizing a repo, reading files, proposing an edit, applying an edit, and running a test command through policy. / E2E 覆盖仓库总结、读取文件、提出编辑、应用编辑、通过 policy 执行测试命令。
 - Local readiness smoke covers init, config validation, credential reference setup, doctor diagnostics, privacy setting, and install/package verification without live provider access by default. / local readiness smoke 覆盖 init、config validation、credential reference setup、doctor diagnostics、privacy setting 和 install/package verification，默认不访问 live provider。
 - Golden trace covers a minimal coding turn with one read and one edit intent. / golden trace 覆盖包含一次 read 和一次 edit intent 的最小 coding turn。
-- CLI and stream-json outputs consume the same runtime events. / CLI 与 stream-json 输出消费同一套 runtime events。
+- CLI text, JSON, and JSONL outputs consume the same runtime events. / CLI text、JSON 与 JSONL 输出消费同一套 runtime events。
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
 - `implement-core-coding-tools`
 - `implement-local-readiness-commands`
-- `implement-minimal-interactive-cli`
+- `deliver-first-usable-agent-loop`
 - `implement-session-resume-and-fork`
 
 Next OpenSpecs / 后续 OpenSpec:
@@ -246,7 +246,7 @@ Product scope / 产品范围:
 - Local daemon/server transport. / 本地 daemon/server transport。
 - Remote runtime connectivity v1. / remote runtime connectivity v1。
 - Public runtime SDK and control API with versioned schemas. / 带版本化 schemas 的公共 runtime SDK 与 control API。
-- Protocol versioning and compatibility tests. / protocol versioning 与 compatibility tests。
+- Protocol versioning and fail-closed version tests. / protocol versioning 与 fail-closed version tests。
 
 Platform scope / 平台范围:
 
@@ -256,7 +256,7 @@ Acceptance gate / 验收门禁:
 
 - VSCode smoke runs without importing CLI rendering. / VSCode smoke 不导入 CLI rendering 即可运行。
 - Server/daemon e2e uses protocol fixtures, not stdout parsing. / server/daemon e2e 使用 protocol fixtures，而不是解析 stdout。
-- Protocol compatibility test covers persisted session and event schemas. / protocol compatibility test 覆盖持久化 session 与 event schemas。
+- Protocol versioning test covers persisted session and event schemas. / protocol versioning test 覆盖持久化 session 与 event schemas。
 - SDK/control API fixtures cover request, event, control, cancellation, replay, and backward-compatible additive schema changes. / SDK/control API fixtures 覆盖 request、event、control、cancellation、replay 和 backward-compatible additive schema changes。
 
 Next OpenSpecs / 后续 OpenSpec:
@@ -358,7 +358,7 @@ Acceptance gate / 验收门禁:
 - Managed policy cannot be bypassed by local config. / managed policy 不能被 local config 绕过。
 - Signed plugin verification and blocklist tests pass. / signed plugin verification 与 blocklist tests 通过。
 - Audit export is redacted and replay-consistent. / audit export 脱敏且 replay-consistent。
-- Release channel metadata declares compatibility and rollback plan. / release channel metadata 声明 compatibility 与 rollback plan。
+- Release channel metadata declares versioning status and rollback plan. / release channel metadata 声明 versioning 状态与 rollback plan。
 
 Next OpenSpecs / 后续 OpenSpec:
 

@@ -67,18 +67,18 @@ The framework SHALL provide serializable, versioned, host-agnostic contracts and
 - **WHEN** contract tests construct fake runtime dependencies
 - **THEN** the fakes satisfy the public contracts without importing production implementations
 
-### Requirement: Headless Runtime Smoke Acceptance
+### Requirement: Run Runtime Smoke Acceptance
 
-The framework SHALL provide a minimal deterministic `deepseek -p` headless smoke path that runs through protocol, runtime, workflow, concurrency, model gateway, context, session, observability, and regression hooks using fake dependencies.
+The framework SHALL provide a minimal deterministic `deepseek run` smoke path that runs through protocol, runtime, workflow, concurrency, model gateway, context, session, observability, and regression hooks using fake dependencies.
 
-框架必须提供最小 deterministic `deepseek -p` headless smoke path，并使用 fake dependencies 跑通 protocol、runtime、workflow、concurrency、model gateway、context、session、observability 和 regression hooks。
+框架必须提供最小 deterministic `deepseek run` smoke path，并使用 fake dependencies 跑通 protocol、runtime、workflow、concurrency、model gateway、context、session、observability 和 regression hooks。
 
-#### Scenario: Headless smoke emits structured events
+#### Scenario: Run smoke emits structured events
 
 - **WHEN** the smoke command runs with deterministic fakes
 - **THEN** it emits structured protocol/runtime events containing session id, trace id, agent metadata, workflow metadata, task scope metadata, usage metadata, and terminal completion status
 
-#### Scenario: Headless smoke does not require live provider
+#### Scenario: Run smoke does not require live provider
 
 - **WHEN** default smoke tests run
 - **THEN** they do not require live model credentials, external network access, real filesystem mutation, real plugin marketplaces, real MCP servers, or host UI
@@ -174,10 +174,10 @@ The framework SHALL persist deterministic session events, checkpoints, redacted 
 - **WHEN** the smoke trace is replayed through the regression harness
 - **THEN** normalized protocol, bus, runtime, workflow, task, session, audit, and usage events match expected golden outputs
 
-#### Scenario: Compatibility checks gate persisted schemas
+#### Scenario: Versioning checks gate persisted schemas
 
 - **WHEN** persisted event, manifest, trace, memory/cache, workspace, credential, usage, or session schemas change incompatibly
-- **THEN** compatibility checks fail unless an evolution migration or rejection path is declared
+- **THEN** versioning checks fail unless an evolution migration or rejection path is declared
 
 ### Requirement: Host Adapter Acceptance
 
@@ -246,4 +246,3 @@ framework acceptance 必须在路线图节点包含 local readiness、credential
 - **WHEN** a node touches credentials, telemetry, diagnostics, memory, persisted traces, or support bundles
 - **THEN** acceptance evidence proves redaction, opt-out behavior, data/privacy class, and no raw secret persistence
 - **中文** 当节点涉及 credentials、telemetry、diagnostics、memory、persisted traces 或 support bundles 时，验收证据必须证明 redaction、opt-out behavior、data/privacy class 和 no raw secret persistence。
-

@@ -37,7 +37,7 @@ DeepSeek CLI 沿着这个方向推进，但从更干净的平台架构开始：
 - One execution envelope for every capability. / 所有能力统一进入 execution envelope。
 - One protocol event stream for CLI, VSCode, server, and SDK. / CLI、VSCode、server、SDK 消费同一协议事件流。
 - One platform abstraction for macOS, Linux, Windows, WSL, CI, and remote environments. / macOS、Linux、Windows、WSL、CI、remote 统一走 platform abstraction。
-- One quality system: architecture lint, contract tests, integration tests, golden replay, compatibility tests, matrix tests, and e2e. / 统一质量系统：architecture lint、contract、integration、golden replay、compatibility、matrix、e2e。
+- One quality system: architecture lint, contract tests, integration tests, golden replay, versioning tests, matrix tests, and e2e. / 统一质量系统：architecture lint、contract、integration、golden replay、versioning、matrix、e2e。
 
 ## Architecture Blueprint / 总体架构图
 
@@ -237,9 +237,9 @@ Upper layers do not call shell utilities as assumptions. Search, file, process, 
 
 ### 5. Quality Is A Control Plane / 质量系统是控制平面
 
-Architecture rules are enforced through AST lint and manifest lint. Runtime behavior is enforced through contract, integration, golden, compatibility, matrix, and e2e tests. Live DeepSeek API tests are opt-in and never required for default deterministic CI.
+Architecture rules are enforced through AST lint and manifest lint. Runtime behavior is enforced through contract, integration, golden, versioning, matrix, and e2e tests. Live DeepSeek API tests are opt-in and never required for default deterministic CI.
 
-架构规则通过 AST lint 和 manifest lint 强制。运行时行为通过 contract、integration、golden、compatibility、matrix、e2e 测试强制。DeepSeek live API 测试是可选开关，不作为默认确定性 CI 的前置条件。
+架构规则通过 AST lint 和 manifest lint 强制。运行时行为通过 contract、integration、golden、versioning、matrix、e2e 测试强制。DeepSeek live API 测试是可选开关，不作为默认确定性 CI 的前置条件。
 
 ## Comparison With Claude Code And Codex / 与 Claude Code、Codex 的对比
 
@@ -257,7 +257,7 @@ Public references:
 | Multi-agent / 多 Agent | Both ecosystems are moving toward subagents, workflows, background tasks, and remote/long-running work. / 生态正在走向 subagent、workflow、background task 和长任务。 | `agent-management`, `workflow-orchestration`, and `concurrency-orchestration` are core platform packages, not later patches. / 多 Agent、workflow、并发调度是核心包，不是后补能力。 |
 | Cross-platform / 跨平台 | Must support terminal, IDE, desktop/web, Windows/macOS/Linux/WSL differences. / 必须处理多 host 和多 OS 差异。 | Platform capability matrix is explicit; unsupported behavior is rejected or degraded with evidence. / 平台能力矩阵显式化，不支持行为拒绝或带证据降级。 |
 | Safety / 安全 | Permissions, sandboxing, credentials, and enterprise policy are product-critical. / 权限、沙箱、凭证、企业策略是关键能力。 | Fail-closed policy, secret redaction, sandbox metadata, credential references, and audit evidence are platform contracts. / fail-closed、secret redaction、sandbox metadata、credential reference、audit evidence 是平台契约。 |
-| Testing / 测试 | Product behavior must be trusted across surfaces. / 多端产品行为必须可信。 | Default test loop is deterministic and layered: lint, typecheck, unit, contract, integration, golden, compatibility, matrix, e2e. / 默认测试分层且确定性。 |
+| Testing / 测试 | Product behavior must be trusted across surfaces. / 多端产品行为必须可信。 | Default test loop is deterministic and layered: lint, typecheck, unit, contract, integration, golden, versioning, matrix, e2e. / 默认测试分层且确定性。 |
 | Provider strategy / 模型策略 | Claude is Anthropic-native; Codex is OpenAI-native. / 各自原生绑定自家模型生态。 | DeepSeek-first provider gateway, OpenAI-compatible transport, provider-specific validation and repair isolated behind gateway. / DeepSeek-first，OpenAI-compatible，provider-specific 修复隔离在 gateway 后。 |
 
 ### Capability Comparison Matrix / 能力对比矩阵
@@ -269,7 +269,7 @@ This table compares public product surfaces, not private implementation internal
 | Capability / 能力 | Claude Code public surface / Claude Code 公开能力 | Codex public surface / Codex 公开能力 | DeepSeek CLI design / DeepSeek CLI 设计 | Improvement point / 改进点 |
 | --- | --- | --- | --- | --- |
 | Interactive coding loop / 交互式编码循环 | Terminal coding agent with tools, subagents, hooks, MCP, plugins, skills. / 终端 agent，具备工具、subagent、hook、MCP、plugin、skill。 | CLI TUI can read repos, edit, run commands, show plans/diffs, approve/reject actions. / CLI TUI 可读仓库、编辑、运行命令、展示计划与 diff、审批动作。 | CLI is only a renderer over runtime events. / CLI 只是 runtime event renderer。 | Avoid host-specific state machines; VSCode/server reuse the same kernel. / 避免 host 状态机分裂。 |
-| Non-interactive automation / 非交互自动化 | Programmatic usage and hooks support automation. / 支持 programmatic usage 与 hooks 自动化。 | `codex exec` runs non-interactively and can be scripted into workflows. / `codex exec` 可脚本化。 | `deepseek -p`, `run`, `stream-json`, SDK/server all share protocol events. / headless、run、stream-json、SDK/server 共享协议事件。 | Machine output is a stable protocol, not stdout scraping. / 机器输出是稳定协议，不解析 stdout。 |
+| Non-interactive automation / 非交互自动化 | Programmatic usage and hooks support automation. / 支持 programmatic usage 与 hooks 自动化。 | `codex exec` runs non-interactively and can be scripted into workflows. / `codex exec` 可脚本化。 | `deepseek run`, `deepseek chat`, `json`, `jsonl`, SDK/server all share protocol events. / run、chat、json、jsonl、SDK/server 共享协议事件。 | Machine output is a stable protocol, not stdout scraping. / 机器输出是稳定协议，不解析 stdout。 |
 | Cloud/background work / 云端与后台任务 | Subagents can run foreground or background; agent teams coordinate separate sessions. / subagent 可前台或后台运行，agent teams 协调独立 session。 | Codex cloud can run background and parallel tasks in cloud environments. / Codex cloud 支持后台与并行云任务。 | Local first, with `remote-runtime-connectivity` as future transport over same protocol. / 本地优先，未来 remote runtime 仍走同一协议。 | Background/cloud work is a transport choice, not a second runtime. / 后台或云端是 transport 选择，不是第二套 runtime。 |
 | Subagents / 子 Agent | Built-in and custom subagents, tool restrictions, models, memory, background, worktree isolation, hooks, MCP, skills. / 内置与自定义 subagent，支持工具限制、模型、记忆、后台、worktree 隔离、hooks、MCP、skills。 | Codex documents subagents, Agents SDK orchestration, and sandbox agents. / Codex 文档包含 subagents、Agents SDK orchestration、sandbox agents。 | `agent-management` defines agent lifecycle, scope, budget, tools, parent/child lineage. / `agent-management` 定义生命周期、范围、预算、工具和 lineage。 | Agent is a scheduled resource with auditable scope. / agent 是可调度资源，范围可审计。 |
 | Parallel work / 并行任务 | Public docs describe parallel research with multiple subagents and chained subagents for multi-step workflows. / 文档描述多 subagent 并行研究和链式 subagent。 | Codex cloud supports parallel background tasks; CLI cloud exec supports best-of-N attempts. / cloud 支持并行后台任务，CLI cloud exec 支持 best-of-N attempts。 | `concurrency-orchestration` owns resource locks, queue limits, cancellation, timeout, backpressure. / 并发调度负责资源锁、队列、取消、超时、背压。 | Parallelism is deterministic and resource-aware, not just “spawn more agents”. / 并行具备确定性和资源感知。 |
@@ -282,7 +282,7 @@ This table compares public product surfaces, not private implementation internal
 | Memory and context / 记忆与上下文 | Subagents can have separate context and persistent memory scopes. / subagent 独立上下文，可持久记忆。 | Codex docs expose memories, compaction, prompt caching, conversation state. / Codex 文档包含 memories、compaction、prompt caching、conversation state。 | `context-engine` + `memory-cache-management` own projection, redaction, cache, compaction. / 上下文和记忆缓存统一治理。 | Memory is not hidden global state; it enters projection as scoped evidence. / memory 不是隐藏全局状态，而是 scoped evidence。 |
 | Safety and approvals / 安全与审批 | Permissions, tool restrictions, hooks, subagent permissions, managed settings. / 权限、工具限制、hooks、subagent permissions、managed settings。 | Approval and sandbox settings, agent approvals/security, cyber safety docs. / approval、sandbox、agent security。 | `policy-sandbox` fail-closes before scheduler submission. / policy-sandbox 在调度前 fail-close。 | Unsafe work never reaches scheduler. / 不安全任务不进入调度器。 |
 | Cross-platform / 跨平台 | Docs include macOS/Linux/WSL and Windows shell examples. / 文档覆盖 macOS/Linux/WSL 与 Windows 示例。 | Codex docs expose Windows and sandbox configuration. / Codex 文档包含 Windows 与 sandbox 配置。 | `platform-abstraction` owns shell/search/process/fs/network/native capability matrix. / 平台层拥有能力矩阵。 | No upper-layer `grep`/shell assumptions. / 上层不假设 grep 或 shell 存在。 |
-| Regression loop / 回归闭环 | Hooks can enforce formatting/logging/custom permissions; product behavior is user-facing. / hooks 可做格式化、日志、权限控制。 | Agents SDK docs include evaluate agent workflows; Codex use cases include scored improvement loops. / Agents SDK 包含 workflow eval，Codex 用例包含 scored loop。 | `testing-regression` owns fakes, golden replay, matrix, compatibility, e2e, optional live tests. / 测试回归包统一 fake、golden、matrix、compat、e2e、live。 | Product evolution is gated by replayable tests, not manual confidence. / 产品演进由可 replay 测试门禁。 |
+| Regression loop / 回归闭环 | Hooks can enforce formatting/logging/custom permissions; product behavior is user-facing. / hooks 可做格式化、日志、权限控制。 | Agents SDK docs include evaluate agent workflows; Codex use cases include scored improvement loops. / Agents SDK 包含 workflow eval，Codex 用例包含 scored loop。 | `testing-regression` owns fakes, golden replay, matrix, versioning, e2e, optional live tests. / 测试回归包统一 fake、golden、matrix、versioning、e2e、live。 | Product evolution is gated by replayable tests, not manual confidence. / 产品演进由可 replay 测试门禁。 |
 
 ## Architecture Advantages / 架构优势
 
@@ -326,7 +326,7 @@ This table compares public product surfaces, not private implementation internal
 | Node / 节点 | Outcome / 结果 |
 | --- | --- |
 | R0 Foundation / 基础 | Governed runtime platform with contracts, provider gateway, scheduling, policy, tests, and lint. / 受治理 runtime 平台。 |
-| R1 MVP Coding Agent / 最小可用 Agent | `deepseek -p` and minimal interactive CLI inspect, edit, and test local repositories through governed tools. / CLI 可通过受治理工具检查、编辑、测试本地仓库。 |
+| R1 MVP Coding Agent / 最小可用 Agent | `deepseek run` and `deepseek chat` inspect, edit, and test local repositories through governed tools. / `run` 与 `chat` 可通过受治理工具检查、编辑、测试本地仓库。 |
 | R2 Context And Safety / 上下文与安全 | Context graph, memory/cache, compaction, sandbox matrix, budgets, checkpoints, code intelligence, secret hardening. / 上下文图、记忆缓存、压缩、沙箱矩阵、预算、checkpoint、代码智能、secret 加固。 |
 | R3 Extensibility / 扩展平台 | Skills, hooks, MCP, plugins, commands, permission diff, lockfiles, scoped credentials. / skills、hooks、MCP、plugins、commands、权限 diff、lockfile、scoped credentials。 |
 | R4 IDE And Server / IDE 与 Server | CLI, VSCode, local daemon/server, and SDK share one protocol and session model. / CLI、VSCode、本地 daemon/server、SDK 共享协议和会话模型。 |
@@ -361,7 +361,8 @@ npm run smoke:headless
 Try local flows:
 
 ```bash
-npx tsx src/apps/cli/src/index.ts -p "smoke" --output stream-json
+npx tsx src/apps/cli/src/index.ts run "smoke" --output jsonl
+npx tsx src/apps/cli/src/index.ts chat --output jsonl
 npx tsx src/apps/cli/src/index.ts init
 npx tsx src/apps/cli/src/index.ts config set model deepseek-v4-flash --output json
 npx tsx src/apps/cli/src/index.ts doctor --fake-live --output json
@@ -373,6 +374,7 @@ Optional live DeepSeek checks require explicit environment opt-in and local cred
 
 ```bash
 DEEPSEEK_LIVE_TESTS=1 npm run smoke:live:deepseek
+DEEPSEEK_LIVE_AGENT_LOOP_TESTS=1 npm run smoke:live:agent-loop
 DEEPSEEK_LIVE_AUTH_TESTS=1 npm test -- tests/live/deepseek-auth-live-verification.test.ts
 ```
 

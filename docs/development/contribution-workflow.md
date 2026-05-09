@@ -53,7 +53,7 @@ Implementation should follow existing package ownership.
 
 | Risk / 风险 | Minimum test / 最小测试 |
 | --- | --- |
-| DTO/schema change / DTO 或 schema 变更 | Contract + compatibility tests. / contract + compatibility tests。 |
+| DTO/schema change / DTO 或 schema 变更 | Contract + versioning tests. / contract + versioning tests。 |
 | Runtime path change / runtime 路径变更 | Unit + integration + golden tests. / unit + integration + golden tests。 |
 | Platform behavior / 平台行为 | Matrix tests. / matrix tests。 |
 | Host behavior / host 行为 | E2E tests. / e2e tests。 |

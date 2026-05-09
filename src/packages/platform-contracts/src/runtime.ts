@@ -1,5 +1,5 @@
 import type { Clock, JsonObject, RedactedError, TraceContext } from "./common.js";
-import type { AgentId, CapabilityId, IdFactory, SessionId, TaskId, TurnId, WorkflowId } from "./ids.js";
+import type { AgentId, CapabilityId, CredentialRef, IdFactory, ModelProviderId, ModelProfileId, SessionId, TaskId, TurnId, WorkflowId } from "./ids.js";
 import type { AgentManager } from "./agent.js";
 import type { CapabilityRegistry } from "./capability.js";
 import type { CacheManager, MemoryManager } from "./memory.js";
@@ -14,7 +14,7 @@ import type { EvolutionEngine } from "./evolution.js";
 import type { ExtensionManager } from "./extension.js";
 import type { HookSystem } from "./hook.js";
 import type { McpGateway } from "./mcp.js";
-import type { ModelGateway } from "./model.js";
+import type { ModelGateway, ModelProfile, ModelReasoningOptions } from "./model.js";
 import type { ToolIntentPreflightService } from "./tool-intent.js";
 import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
@@ -54,6 +54,10 @@ export type RuntimeEventKind =
   | "capability.cancelled"
   | "session.started"
   | "turn.started"
+  | "agent.loop.started"
+  | "agent.loop.completed"
+  | "agent.loop.failed"
+  | "model.requested"
   | "context.projection.started"
   | "context.projection.cache-hit"
   | "context.projection.degraded"
@@ -62,6 +66,13 @@ export type RuntimeEventKind =
   | "workflow.step"
   | "bus.recorded"
   | "model.delta"
+  | "model.reasoning"
+  | "model.tool.intent"
+  | "model.tool.repaired"
+  | "model.tool.rejected"
+  | "model.tool.result"
+  | "model.finished"
+  | "model.done"
   | "usage.updated"
   | "turn.completed"
   | "runtime.error"
@@ -192,6 +203,49 @@ export interface RuntimeRequest extends JsonObject {
   readonly agentId?: AgentId;
 }
 
+export type AgentLoopOutputMode = "text" | "json" | "jsonl";
+export type AgentLoopTerminalStatus = "completed" | "failed" | "cancelled" | "timed-out" | "rejected";
+
+export interface AgentLoopLimits extends JsonObject {
+  readonly maxModelIterations: number;
+  readonly maxToolCalls: number;
+  readonly turnTimeoutMs: number;
+  readonly toolTimeoutMs: number;
+  readonly maxOutputBytes: number;
+  readonly maxRetries: number;
+}
+
+export interface AgentLoopRequest extends JsonObject {
+  readonly prompt: string;
+  readonly sessionId?: SessionId;
+  readonly agentId?: AgentId;
+  readonly caller: string;
+  readonly workspaceRoot: string;
+  readonly outputMode: AgentLoopOutputMode;
+  readonly profile: ModelProfile;
+  readonly credentialRef?: CredentialRef;
+  readonly reasoning?: ModelReasoningOptions;
+  readonly timeoutMs?: number;
+  readonly limits?: Partial<AgentLoopLimits>;
+  readonly live?: boolean;
+  readonly trace?: TraceContext;
+}
+
+export interface AgentLoopSummary extends JsonObject {
+  readonly schemaVersion: string;
+  readonly status: AgentLoopTerminalStatus;
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly traceId: string;
+  readonly assistantText: string;
+  readonly iterations: number;
+  readonly toolCalls: number;
+  readonly modelProvider?: ModelProviderId;
+  readonly modelProfile?: ModelProfileId;
+  readonly diagnostics: readonly RedactedError[];
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
 export interface RuntimeEvent extends JsonObject {
   readonly kind: RuntimeEventKind;
   readonly sessionId: SessionId;
@@ -213,6 +267,8 @@ export interface RunTurnRequest {
   readonly prompt: string;
   readonly agentId?: AgentId;
 }
+
+export interface RunAgentLoopRequest extends AgentLoopRequest {}
 
 export interface RuntimeDependencies {
   readonly protocol: ProtocolRouter;

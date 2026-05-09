@@ -99,9 +99,9 @@ provider adapters 不得直接执行 capabilities、commands、skills、hooks、
 
 ### Requirement: Model Capability Governance Roadmap / 模型能力治理路线图
 
-The model gateway SHALL include roadmap requirements for model capability metadata, default model policy, provider feature flags, fallback decisions, migration gates, and compatibility fixtures.
+The model gateway SHALL include roadmap requirements for model capability metadata, default model policy, provider feature flags, fallback decisions, migration gates, and versioning fixtures.
 
-model gateway 必须包含 model capability metadata、default model policy、provider feature flags、fallback decisions、migration gates 和 compatibility fixtures 的路线图要求。
+model gateway 必须包含 model capability metadata、default model policy、provider feature flags、fallback decisions、migration gates 和 versioning fixtures 的路线图要求。
 
 #### Scenario: Provider capability is declared before projection / provider 能力投影前必须声明
 
@@ -112,8 +112,8 @@ model gateway 必须包含 model capability metadata、default model policy、pr
 #### Scenario: Model migration requires fixture evidence / 模型迁移需要 fixture 证据
 
 - **WHEN** default model policy, provider capability mapping, or model migration changes
-- **THEN** compatibility fixtures cover migration, rollback, unsupported capability rejection, and provider fallback decision recording
-- **中文** 当 default model policy、provider capability mapping 或 model migration 变化时，compatibility fixtures 必须覆盖 migration、rollback、unsupported capability rejection 和 provider fallback decision recording。
+- **THEN** versioning fixtures cover migration, rollback, unsupported capability rejection, and provider fallback decision recording
+- **中文** 当 default model policy、provider capability mapping 或 model migration 变化时，versioning fixtures 必须覆盖 migration、rollback、unsupported capability rejection 和 provider fallback decision recording。
 
 ### Requirement: OpenAI SDK DeepSeek Live Transport / OpenAI SDK DeepSeek Live Transport
 

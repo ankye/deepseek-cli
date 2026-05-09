@@ -18,9 +18,9 @@ export const deepSeekToolIntentProfile: ToolIntentProviderProfile = {
   providerId: deepSeekProviderId,
   pathFields: ["path", "file", "filePath", "target", "cwd"],
   toolNameAliases: {
-    readFile: "read_file",
-    read_file: "read_file",
-    "fs.readFile": "read_file"
+    readFile: "core.file.read",
+    read_file: "core.file.read",
+    "fs.readFile": "core.file.read"
   },
   unwrapArgumentsField: "arguments",
   strictJsonArguments: false
@@ -51,7 +51,7 @@ export class DeterministicToolIntentPreflight implements ToolIntentPreflightServ
       const normalized = normalizeWorkspacePath(value, request.workspaceRoot, request.platform, field);
       diagnostics.push(...normalized.diagnostics);
       repairs.push(...normalized.repairs);
-      if (normalized.value) repairedInput[field] = normalized.value;
+      if (normalized.value) repairedInput[field] = normalized.value.executorValue;
     }
 
     if (diagnostics.length > 0) {
@@ -118,7 +118,7 @@ export function normalizeWorkspacePath(
   workspaceRoot: string,
   platform: ToolIntentPreflightRequest["platform"],
   field = "path"
-): { readonly value?: string; readonly repairs: readonly ToolIntentRepairAction[]; readonly diagnostics: readonly ToolIntentDiagnostic[] } {
+): { readonly value?: { readonly modelValue: string; readonly executorValue: string }; readonly repairs: readonly ToolIntentRepairAction[]; readonly diagnostics: readonly ToolIntentDiagnostic[] } {
   const repairs: ToolIntentRepairAction[] = [];
   const diagnostics: ToolIntentDiagnostic[] = [];
   const trimmed = value.trim();
@@ -166,10 +166,11 @@ export function normalizeWorkspacePath(
   }
 
   const normalizedRoot = workspaceRoot.replace(/[\\/]+$/, "");
+  const modelValue = normalizedRoot ? `${normalizedRoot}${separator}${next}` : next;
   return {
-    value: normalizedRoot ? `${normalizedRoot}${separator}${next}` : next,
+    value: { modelValue, executorValue: next },
     diagnostics,
-    repairs: normalizedRoot ? [...repairs, repair("path-normalized", field, value, `${normalizedRoot}${separator}${next}`)] : repairs
+    repairs: normalizedRoot ? [...repairs, repair("path-normalized", field, value, modelValue, next)] : repairs
   };
 }
 
@@ -209,13 +210,14 @@ function diagnostic(code: string, message: string, field: string): ToolIntentDia
   };
 }
 
-function repair(kind: ToolIntentRepairAction["kind"], field: string, before: string, after: string): ToolIntentRepairAction {
+function repair(kind: ToolIntentRepairAction["kind"], field: string, before: string, after: string, executorValue?: string): ToolIntentRepairAction {
   return {
     kind,
     field,
     before,
     after,
-    confidence: 1
+    confidence: 1,
+    ...(executorValue ? { modelValue: after, executorValue } : {})
   };
 }
 

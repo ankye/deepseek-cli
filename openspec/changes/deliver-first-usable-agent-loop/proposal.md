@@ -17,7 +17,8 @@ This change defines the first usable agent loop so the project can move from fra
 - Require tool-call repair and preflight validation before execution, including provider-specific normalization for DeepSeek OpenAI-compatible outputs.
 - Expose a stable CLI event presentation contract with human-readable streaming output and machine-readable JSON/JSONL modes.
 - Add deterministic tests, golden replay fixtures, live-provider smoke gates, and CLI e2e coverage for the first usable agent loop.
-- No breaking API change is intended, but legacy/direct execution paths remain forbidden by lint and tests.
+- Because the product is pre-release, no legacy CLI compatibility is preserved: old prompt flags and stream names are replaced by the explicit `run`/`chat` and `text`/`json`/`jsonl` contracts.
+- Legacy/direct execution paths remain forbidden by lint and tests.
 
 - 新增 `deepseek chat` 交互式会话命令，通过受治理 runtime 串流一个或多个 turn。
 - 新增 `deepseek run "<task>"` 非交互一次性任务命令，面向脚本、CI 和回归测试。
@@ -26,7 +27,8 @@ This change defines the first usable agent loop so the project can move from fra
 - 要求工具调用执行前经过 repair 与 preflight validation，包括 DeepSeek OpenAI-compatible outputs 的 provider-specific normalization。
 - 暴露稳定 CLI event presentation contract，支持 human-readable streaming output 与 machine-readable JSON/JSONL modes。
 - 增加 deterministic tests、golden replay fixtures、live-provider smoke gates 和 CLI e2e 覆盖。
-- 不计划引入 breaking API change，但 lint 与测试继续禁止 legacy/direct execution paths。
+- 因为产品仍处于 pre-release，不保留旧 CLI 兼容：旧 prompt flags 与 stream names 被显式 `run`/`chat` 和 `text`/`json`/`jsonl` 契约替换。
+- lint 与测试继续禁止 legacy/direct execution paths。
 
 ## Capabilities
 

@@ -35,7 +35,7 @@ openspec validate --specs --strict
 npm run test:contracts
 npm run test:integration
 npm run test:golden
-npm run test:compatibility
+npm run test:versioning
 npm run test:matrix
 npm run test:e2e
 npm run build:cli

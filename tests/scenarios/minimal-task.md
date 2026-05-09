@@ -1,6 +1,6 @@
 # Minimal Self-Regression Scenario
 
-Input: `deepseek -p "summarize the framework"`
+Input: `deepseek run "summarize the framework"`
 
 Stable semantic outcome:
 

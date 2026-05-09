@@ -13,7 +13,9 @@ async function capture(args: readonly string[]): Promise<readonly string[]> {
   const cwd = await mkdtemp(join(tmpdir(), "deepseek-cli-e2e-"));
   try {
     process.chdir(cwd);
-    await runCli(args, (line) => lines.push(line));
+    await runCli(args, (line: string) => {
+      lines.push(line);
+    });
     return lines;
   } finally {
     process.chdir(previousCwd);
@@ -55,7 +57,9 @@ describe("local readiness CLI", () => {
     const cwd = await mkdtemp(join(tmpdir(), "deepseek-cli-e2e-"));
     try {
       process.chdir(cwd);
-      await runCli(["init", "--output", "json"], (line) => lines.push(line));
+      await runCli(["init", "--output", "json"], (line: string) => {
+        lines.push(line);
+      });
       const parsed = JSON.parse(lines[0] ?? "{}") as { command?: string; metadata?: { initialized?: boolean; initializedThisRun?: boolean; workspaceMetadataPath?: string } };
       const configPath = join(cwd, ".deepseek", "config.json");
       const document = JSON.parse(await readFile(configPath, "utf8")) as { values?: Record<string, unknown> };

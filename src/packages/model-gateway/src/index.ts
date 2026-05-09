@@ -138,12 +138,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
   buildProviderRequest(request: ModelRequest, credentialValue = ""): ModelProviderRequest {
     const body: JsonObject = {
       model: request.profile.model,
-      messages: [
-        {
-          role: "user",
-          content: request.prompt
-        }
-      ],
+      messages: providerMessagesFrom(request),
       stream: true,
       temperature: request.profile.temperature ?? 0,
       ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
@@ -172,6 +167,34 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
       model: profile.model
     };
   }
+}
+
+function providerMessagesFrom(request: ModelRequest): readonly JsonObject[] {
+  const sourceMessages = request.messages && request.messages.length > 0
+    ? request.messages
+    : [{ role: "user" as const, content: request.prompt }];
+  return sourceMessages.map((message) => {
+    if (message.role === "tool") {
+      return {
+        role: "tool",
+        content: message.content,
+        tool_call_id: message.toolCallId ?? message.toolName ?? "tool-call"
+      };
+    }
+    const toolCalls = message.toolCalls?.map((toolCall) => ({
+      id: toolCall.id,
+      type: "function",
+      function: {
+        name: toolCall.name,
+        arguments: JSON.stringify(toolCall.input)
+      }
+    }));
+    return {
+      role: message.role,
+      content: message.content,
+      ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
+    };
+  });
 }
 
 export class StaticCredentialProvider implements ModelCredentialProvider {

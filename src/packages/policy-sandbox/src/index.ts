@@ -28,6 +28,7 @@ import { SECRET_SANDBOX_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 export const SECRET_REDACTION_TOKEN = "[REDACTED:secret]";
 
 const credentialKeyPattern = /(api[_-]?key|secret|token|password|credential|auth)/i;
+const providerApiKeyPattern = /\b(?:sk|ds)-[A-Za-z0-9_-]{8,}\b|\bdeepseek-[A-Za-z0-9_-]{24,}\b/g;
 
 const secretPatterns: readonly {
   readonly kind: Exclude<SecretKind, "none" | "redaction-class">;
@@ -66,7 +67,7 @@ const secretPatterns: readonly {
   },
   {
     kind: "api-key",
-    pattern: /\b(?:sk|ds|deepseek)-[A-Za-z0-9_-]{8,}\b/g,
+    pattern: providerApiKeyPattern,
     replacement: "[REDACTED:api-key]",
     reasonCode: "secret.api-key",
     exposure: "raw"

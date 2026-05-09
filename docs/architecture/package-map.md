@@ -8,7 +8,7 @@ This page maps packages to architectural ownership. It is a developer reference 
 
 | Package / 包 | Responsibility / 职责 |
 | --- | --- |
-| `src/apps/cli` | CLI host adapter, npm package entry, text and stream-json rendering. / CLI host 适配器、npm 入口、text 与 stream-json 渲染。 |
+| `src/apps/cli` | CLI host adapter, npm package entry, text, JSON, and JSONL rendering. / CLI host 适配器、npm 入口、text、JSON 与 JSONL 渲染。 |
 | `src/apps/vscode-extension` | VSCode host adapter skeleton, event projection, editor-context bridge. / VSCode host 适配器骨架、事件投影、编辑器上下文桥接。 |
 
 ## Core Platform Packages / 核心平台包
@@ -27,7 +27,7 @@ This page maps packages to architectural ownership. It is a developer reference 
 | --- | --- |
 | `capability-registry` | Manifest registry and executor binding. / manifest registry 与 executor binding。 |
 | `core-coding-tools` | File/search/edit/shell/git/todo tool foundation. / 文件、搜索、编辑、shell、git、todo 工具基础。 |
-| `command-system` | Host-agnostic commands and interactive controls. / host-agnostic 命令和交互控制。 |
+| `command-system` | Host-agnostic commands and chat controls. / host-agnostic 命令和交互控制。 |
 | `skill-system` | Canonical skills v1 manifest validation, summary-first progressive loading, trust inertness, activation, and context-only projection. / canonical skills v1 manifest 校验、summary-first 渐进加载、trust inertness、activation 与 context-only projection。 |
 | `hook-system` | Canonical hooks v1 manifest validation, deterministic ordering, observe-only invocation, timeout containment, and failure policy. / canonical hooks v1 manifest 校验、确定性排序、observe-only invocation、超时隔离与失败策略。 |
 | `mcp-gateway` | Canonical MCP gateway v1 manifest validation, deterministic fake/in-process server connection, tool/resource/prompt discovery, governed calls/reads, fail-closed real transport diagnostics, and replay evidence. / canonical MCP gateway v1 manifest 校验、deterministic fake/in-process server connection、tool/resource/prompt discovery、受治理 calls/reads、真实 transport 安全失败 diagnostics 与 replay evidence。 |

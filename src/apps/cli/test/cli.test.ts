@@ -1,170 +1,171 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { asId } from "@deepseek/platform-contracts";
-import { createDefaultRuntimeKernel, runtimeEchoCapability } from "@deepseek/runtime";
+import type { ModelGateway, ModelRequest, ModelStreamEvent } from "@deepseek/platform-contracts";
+import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import {
   cliUsageLines,
   parseCliArgs,
-  parseInteractiveInput,
-  runCli,
-  runInteractiveCli
+  runCli
 } from "../src/index.js";
 
 describe("cli host adapter", () => {
-  it("parses prompt mode and stream-json rendering", () => {
-    assert.deepEqual(parseCliArgs(["-p", "hello", "--output", "stream-json"]), {
-      command: "turn",
+  it("parses the new run and chat commands without legacy prompt compatibility", () => {
+    assert.deepEqual(parseCliArgs(["run", "hello", "--output", "jsonl"]), {
+      command: "run",
       prompt: "hello",
-      output: "stream-json",
-      capabilityId: "runtime.echo"
+      output: "jsonl",
+      live: false
     });
-  });
-
-  it("parses interactive mode and non-tty no-arg help safely", () => {
-    assert.deepEqual(parseCliArgs(["interactive"], { stdinIsTTY: false, stdoutIsTTY: false }), {
-      command: "interactive",
+    assert.deepEqual(parseCliArgs(["chat", "--output", "json", "--live", "--timeout-ms", "1000"]), {
+      command: "chat",
       prompt: "",
-      output: "text"
+      output: "json",
+      live: true,
+      timeoutMs: 1000
     });
-    assert.deepEqual(parseCliArgs([], { stdinIsTTY: true, stdoutIsTTY: true }), {
-      command: "interactive",
-      prompt: "",
-      output: "text"
-    });
-    assert.deepEqual(parseCliArgs([], { stdinIsTTY: false, stdoutIsTTY: true }), {
+    assert.deepEqual(parseCliArgs(["-p", "hello"]), {
       command: "help",
       prompt: "",
-      output: "text"
+      output: "text",
+      live: false
     });
   });
 
-  it("parses interactive prompt and control lines", () => {
-    assert.deepEqual(parseInteractiveInput("hello"), { kind: "prompt", text: "hello" });
-    assert.deepEqual(parseInteractiveInput("/help"), { kind: "command", name: "help", raw: "/help", args: [] });
-    assert.deepEqual(parseInteractiveInput("/resume session-1"), { kind: "command", name: "resume", raw: "/resume session-1", args: ["session-1"] });
-    assert.deepEqual(parseInteractiveInput("/nope"), { kind: "unknown-command", name: "nope", raw: "/nope" });
-    assert.deepEqual(parseInteractiveInput("  "), { kind: "empty" });
-  });
-
-  it("prints deterministic help without blocking non-tty no-arg usage", async () => {
+  it("prints deterministic help for no-arg usage", async () => {
     const lines: string[] = [];
-    await runCli([], (line) => lines.push(line), [], { stdinIsTTY: false, stdoutIsTTY: false });
+    await runCli([], (line: string) => {
+      lines.push(line);
+    }, [], { stdinIsTTY: true, stdoutIsTTY: true });
     assert.deepEqual(lines, cliUsageLines());
+    assert.equal(lines.join("\n").includes("stream-json"), false);
+    assert.equal(lines.join("\n").includes(" -p "), false);
   });
 
-  it("runs as a thin host over runtime events", async () => {
+  it("runs one-shot tasks through the runtime-owned agent loop as JSONL", async () => {
     const lines: string[] = [];
-    await runCli(["-p", "hello", "--output", "stream-json"], (line) => lines.push(line));
-    assert.ok(lines.some((line) => JSON.parse(line).kind === "scheduler.completed"));
-    assert.ok(lines.some((line) => JSON.parse(line).kind === "capability.completed"));
-    assert.equal(lines.some((line) => JSON.parse(line).kind === "model.delta"), false);
-  });
-
-  it("runs interactive help and exit controls with structured output", async () => {
-    const lines: string[] = [];
-    const result = await runInteractiveCli({
-      input: ["/help\n/exit\n"],
-      output: "stream-json",
-      write: (line) => {
-        lines.push(line);
-      }
+    await runCli(["run", "hello", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
     });
-    const events = lines.map((line) => JSON.parse(line));
-    assert.equal(result.status, "completed");
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "help"), true);
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "exit"), true);
-    assert.equal(events.at(-1)?.kind, "interactive.completed");
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; data?: Record<string, unknown> });
+
+    assert.equal(events[0]?.kind, "agent.loop.started");
+    assert.equal(events.some((event) => event.kind === "model.requested"), true);
+    assert.equal(events.some((event) => event.kind === "model.delta"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
   });
 
-  it("runs interactive prompts through kernel-backed runtime events", async () => {
+  it("renders one-shot final JSON summaries", async () => {
     const lines: string[] = [];
-    const result = await runInteractiveCli({
-      input: ["hello interactive\n/exit\n"],
-      output: "stream-json",
-      write: (line) => {
-        lines.push(line);
-      }
+    await runCli(["run", "summary", "--output", "json"], (line: string) => {
+      lines.push(line);
     });
-    const events = lines.map((line) => JSON.parse(line));
-    assert.equal(result.prompts, 1);
+    const summary = JSON.parse(lines[0] ?? "{}") as { status?: string; assistantText?: string; traceId?: string };
+
+    assert.equal(lines.length, 1);
+    assert.equal(summary.status, "completed");
+    assert.equal(summary.assistantText?.includes("DeepSeek mock response"), true);
+    assert.equal(typeof summary.traceId, "string");
+  });
+
+  it("runs scripted chat turns with one session id", async () => {
+    const lines: string[] = [];
+    await runCli(["chat", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    }, ["first\nsecond\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false });
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; sessionId?: string });
+    const completed = events.filter((event) => event.kind === "agent.loop.completed");
+
+    assert.equal(completed.length, 2);
+    assert.equal(completed[0]?.sessionId, completed[1]?.sessionId);
+  });
+
+  it("preserves chat session id across runtime submissions", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await registerRuntimeCoreTools(deps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["one\ntwo\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; sessionId?: string });
+    const sessionIds = new Set(events.filter((event) => event.kind === "agent.loop.completed").map((event) => event.sessionId));
+
+    assert.deepEqual([...sessionIds].length, 1);
+  });
+
+  it("routes model tool calls through preflight and governed execution", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const toolDeps = { ...deps, models: new ToolCallingModelGateway() };
+    await toolDeps.platform.writeFile("/workspace/README.md", "tool loop\n");
+    await registerRuntimeCoreTools(toolDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(toolDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "read README", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => {
+          return { deps: toolDeps, kernel };
+        }
+      }
+    );
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; data?: Record<string, unknown> });
+
+    assert.equal(events.some((event) => event.kind === "model.tool.intent"), true);
+    assert.equal(events.some((event) => event.kind === "model.tool.repaired"), true);
     assert.equal(events.some((event) => event.kind === "execution.envelope.created"), true);
     assert.equal(events.some((event) => event.kind === "capability.completed"), true);
-    assert.equal(events.some((event) => event.kind === "interactive.completed"), true);
+    assert.equal(events.some((event) => event.kind === "model.tool.result"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
   });
 
   it("runs scriptable session commands with typed failures for unknown sessions", async () => {
     const resumeLines: string[] = [];
-    await runCli(["session", "resume", "session-missing", "--output", "stream-json"], (line) => resumeLines.push(line));
-    const resume = JSON.parse(resumeLines[0] ?? "{}");
+    await runCli(["session", "resume", "session-missing", "--output", "json"], (line: string) => {
+      resumeLines.push(line);
+    });
+    const resume = JSON.parse(resumeLines[0] ?? "{}") as { ok?: boolean; error?: { code?: string } };
     assert.equal(resume.ok, false);
-    assert.equal(resume.error.code, "SESSION_NOT_FOUND");
+    assert.equal(resume.error?.code, "SESSION_NOT_FOUND");
 
     const forkLines: string[] = [];
-    await runCli(["session", "fork", "session-missing", "--output", "stream-json"], (line) => forkLines.push(line));
-    const fork = JSON.parse(forkLines[0] ?? "{}");
+    await runCli(["session", "fork", "session-missing", "--output", "json"], (line: string) => {
+      forkLines.push(line);
+    });
+    const fork = JSON.parse(forkLines[0] ?? "{}") as { ok?: boolean; error?: { code?: string } };
     assert.equal(fork.ok, false);
-    assert.equal(fork.error.code, "SESSION_NOT_FOUND");
-  });
-
-  it("reports unknown interactive slash commands as structured host events", async () => {
-    const lines: string[] = [];
-    await runInteractiveCli({
-      input: ["/missing\n/exit\n"],
-      output: "stream-json",
-      write: (line) => {
-        lines.push(line);
-      }
-    });
-    const events = lines.map((line) => JSON.parse(line));
-    assert.equal(events.some((event) => event.kind === "interactive.command.failed" && event.data.code === "INTERACTIVE_COMMAND_NOT_FOUND"), true);
-  });
-
-  it("cancels the active interactive turn through the runtime kernel", async () => {
-    const deps = createDeterministicRuntimeDependencies();
-    const slowCapabilityId = asId<"capability">("runtime.slow-interactive");
-    await deps.capabilities.register(
-      {
-        ...runtimeEchoCapability,
-        id: slowCapabilityId,
-        name: "Slow Interactive Runtime"
-      },
-      async (_input, context) => {
-        await new Promise<void>((resolve) => {
-          context.signal.addEventListener("abort", () => resolve(), { once: true });
-        });
-        return {
-          ok: false,
-          error: {
-            code: "SLOW_ABORTED",
-            message: context.cancellationReason ?? "aborted",
-            retryable: false,
-            redaction: { class: "public" }
-          }
-        };
-      }
-    );
-
-    async function* scriptedInput(): AsyncIterable<string> {
-      yield "cancel me\n";
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      yield "/cancel\n/exit\n";
-    }
-
-    const lines: string[] = [];
-    const result = await runInteractiveCli({
-      input: scriptedInput(),
-      output: "stream-json",
-      capabilityId: slowCapabilityId,
-      createKernel: () => createDefaultRuntimeKernel(deps),
-      write: (line) => {
-        lines.push(line);
-      }
-    });
-    const events = lines.map((line) => JSON.parse(line));
-    assert.equal(result.cancellations, 1);
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "cancel"), true);
-    assert.equal(events.some((event) => event.kind === "scheduler.cancelled"), true);
-    assert.equal(events.some((event) => event.kind === "capability.cancelled" || event.kind === "capability.failed"), true);
+    assert.equal(fork.error?.code, "SESSION_NOT_FOUND");
   });
 });
+
+class ToolCallingModelGateway implements ModelGateway {
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "Read completed." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "tool-call", id: "call-readme", name: "core.file.read", input: { path: "./README.md" } };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}

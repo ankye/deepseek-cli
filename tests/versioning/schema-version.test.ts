@@ -8,7 +8,7 @@ import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
 import { requireSchemaVersion } from "@deepseek/testing-regression";
 
-describe("compatibility checks", () => {
+describe("versioning checks", () => {
   it("requires schemaVersion on persisted subjects", () => {
     assert.deepEqual(requireSchemaVersion({ schemaVersion: "1.0.0" }), []);
     assert.deepEqual(requireSchemaVersion({}), ["missing schemaVersion"]);

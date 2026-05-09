@@ -15,8 +15,8 @@ command system 必须提供 `deepseek run` 与 `deepseek chat` 命令，通过 p
 #### Scenario: Chat command submits multiple turns / Chat 命令提交多个 turns
 
 - **WHEN** a user executes `deepseek chat`
-- **THEN** the command opens an interactive prompt loop and submits each user message as a runtime turn using the active session id
-- **中文** 当用户执行 `deepseek chat` 时，该命令必须打开交互式 prompt loop，并使用 active session id 把每条 user message 提交为 runtime turn。
+- **THEN** the command opens a chat prompt loop and submits each user message as a runtime turn using the active session id
+- **中文** 当用户执行 `deepseek chat` 时，该命令必须打开 chat prompt loop，并使用 active session id 把每条 user message 提交为 runtime turn。
 
 ### Requirement: Agent CLI Output Modes / Agent CLI 输出模式
 

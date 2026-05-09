@@ -102,6 +102,6 @@ The roadmap SHALL explicitly place local readiness, personal credentials, observ
 #### Scenario: R4 includes public SDK/control API / R4 包含公共 SDK/control API
 
 - **WHEN** R4 IDE And Server is scoped
-- **THEN** it includes versioned public runtime SDK/control API schemas and compatibility fixtures
-- **中文** 当定义 R4 IDE And Server 范围时，必须包含版本化 public runtime SDK/control API schemas 和 compatibility fixtures。
+- **THEN** it includes versioned public runtime SDK/control API schemas and versioning fixtures
+- **中文** 当定义 R4 IDE And Server 范围时，必须包含版本化 public runtime SDK/control API schemas 和 versioning fixtures。
 

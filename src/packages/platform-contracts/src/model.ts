@@ -12,7 +12,7 @@ export interface ModelProviderConfig extends JsonObject {
   readonly credentialRef?: CredentialRef;
 }
 
-export interface ModelProfile {
+export interface ModelProfile extends JsonObject {
   readonly id: ModelProfileId;
   readonly providerId: ModelProviderId;
   readonly model: string;
@@ -25,9 +25,26 @@ export interface ModelReasoningOptions extends JsonObject {
   readonly effort?: "low" | "medium" | "high";
 }
 
+export type ModelChatMessageRole = "system" | "user" | "assistant" | "tool";
+
+export interface ModelChatToolCall extends JsonObject {
+  readonly id: string;
+  readonly name: string;
+  readonly input: JsonObject;
+}
+
+export interface ModelChatMessage extends JsonObject {
+  readonly role: ModelChatMessageRole;
+  readonly content: string;
+  readonly toolCallId?: string;
+  readonly toolName?: string;
+  readonly toolCalls?: readonly ModelChatToolCall[];
+}
+
 export interface ModelRequest {
   readonly profile: ModelProfile;
   readonly prompt: string;
+  readonly messages?: readonly ModelChatMessage[];
   readonly credentialRef?: CredentialRef;
   readonly timeoutMs?: number;
   readonly tools?: readonly JsonObject[];

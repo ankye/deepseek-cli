@@ -19,28 +19,34 @@ before(() => {
 });
 
 describe("host adapter smoke", () => {
-  it("runs CLI stream-json and activates VSCode bridge", async () => {
+  it("runs CLI jsonl and activates VSCode bridge", async () => {
     const lines: string[] = [];
-    await runCli(["-p", "e2e", "--output", "stream-json"], (line) => lines.push(line));
-    assert.ok(lines.some((line) => JSON.parse(line).kind === "capability.completed"));
-    assert.ok(lines.some((line) => JSON.parse(line).kind === "scheduler.completed"));
+    await runCli(["run", "e2e", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    assert.ok(lines.some((line) => JSON.parse(line).kind === "agent.loop.completed"));
+    assert.ok(lines.some((line) => JSON.parse(line).kind === "model.delta"));
     const bridge = activate({ subscriptions: [] });
     assert.equal(bridge.context.hostKind, "vscode");
   });
 
-  it("runs CLI kernel-backed command in stream-json mode", async () => {
+  it("runs CLI one-shot command in JSON summary mode", async () => {
     const lines: string[] = [];
-    await runCli(["run", "-p", "kernel e2e", "--output", "stream-json"], (line) => lines.push(line));
-    const events = lines.map((line) => JSON.parse(line));
-    assert.equal(events.some((event) => event.kind === "execution.envelope.created"), true);
-    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
-    assert.equal(events.some((event) => event.trace?.traceId), true);
+    await runCli(["run", "kernel e2e", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const summary = JSON.parse(lines[0] ?? "{}") as { status?: string; sessionId?: string; traceId?: string };
+    assert.equal(summary.status, "completed");
+    assert.equal(typeof summary.sessionId, "string");
+    assert.equal(typeof summary.traceId, "string");
   });
 
   it("runs CLI core tools smoke through runtime events without live provider access", async () => {
     const lines: string[] = [];
-    await runCli(["tools-smoke", "--output", "stream-json"], (line) => lines.push(line));
-    const events = lines.map((line) => JSON.parse(line));
+    await runCli(["tools-smoke", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; error?: { code?: string } });
 
     assert.equal(events.filter((event) => event.kind === "execution.envelope.created").length, 3);
     assert.equal(events.some((event) => event.kind === "capability.completed"), true);
@@ -49,38 +55,41 @@ describe("host adapter smoke", () => {
     assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
   });
 
-  it("runs scripted minimal interactive CLI prompt, help, and exit", async () => {
+  it("runs scripted chat prompts and exits cleanly", async () => {
     const lines: string[] = [];
-    await runCli(["interactive", "--output", "stream-json"], (line) => lines.push(line), ["/help\nhello e2e\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false });
-    const events = lines.map((line) => JSON.parse(line));
+    await runCli(["chat", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    }, ["hello e2e\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false });
+    const events = lines.map((line) => JSON.parse(line) as { kind: string });
 
-    assert.equal(events.some((event) => event.kind === "interactive.started"), true);
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "help"), true);
-    assert.equal(events.some((event) => event.kind === "execution.envelope.created"), true);
-    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "exit"), true);
-    assert.equal(events.at(-1)?.kind, "interactive.completed");
+    assert.equal(events.some((event) => event.kind === "agent.loop.started"), true);
+    assert.equal(events.some((event) => event.kind === "model.delta"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
     assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
   });
 
   it("runs scriptable session resume and fork failures without live provider access", async () => {
     const resumeLines: string[] = [];
-    await runCli(["session", "resume", "session-missing", "--output", "stream-json"], (line) => resumeLines.push(line));
-    const resume = JSON.parse(resumeLines[0] ?? "{}");
+    await runCli(["session", "resume", "session-missing", "--output", "json"], (line: string) => {
+      resumeLines.push(line);
+    });
+    const resume = JSON.parse(resumeLines[0] ?? "{}") as { ok?: boolean; error?: { code?: string } };
     assert.equal(resume.ok, false);
-    assert.equal(resume.error.code, "SESSION_NOT_FOUND");
+    assert.equal(resume.error?.code, "SESSION_NOT_FOUND");
 
     const forkLines: string[] = [];
-    await runCli(["session", "fork", "session-missing", "--output", "stream-json"], (line) => forkLines.push(line));
-    const fork = JSON.parse(forkLines[0] ?? "{}");
+    await runCli(["session", "fork", "session-missing", "--output", "json"], (line: string) => {
+      forkLines.push(line);
+    });
+    const fork = JSON.parse(forkLines[0] ?? "{}") as { ok?: boolean; error?: { code?: string } };
     assert.equal(fork.ok, false);
-    assert.equal(fork.error.code, "SESSION_NOT_FOUND");
+    assert.equal(fork.error?.code, "SESSION_NOT_FOUND");
     assert.equal([...resumeLines, ...forkLines].join("\n").includes("sk-live-secret-value"), false);
   });
 
   it("runs the built CLI binary with traceable runtime metadata", () => {
     assert.equal(existsSync("src/apps/cli/dist/index.js"), true, "run npm run build:cli before npm run test:e2e");
-    const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "-p", "built e2e", "--output", "stream-json"], {
+    const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "run", "built e2e", "--output", "jsonl"], {
       encoding: "utf8"
     });
     assert.equal(result.status, 0, result.stderr);
@@ -89,24 +98,21 @@ describe("host adapter smoke", () => {
       .trim()
       .split(/\r?\n/)
       .filter(Boolean)
-      .map((line) => JSON.parse(line));
+      .map((line) => JSON.parse(line) as { kind: string; sessionId?: string; trace?: { traceId?: string; correlationId?: string } });
     assert.deepEqual(
       events.map((event) => event.kind),
       [
+        "agent.loop.started",
+        "turn.started",
         "context.projection.started",
         "context.projection.completed",
-        "kernel.request.accepted",
-        "workflow.opened",
-        "execution.envelope.created",
-        "policy.decided",
-        "sandbox.selected",
-        "capability.started",
-        "scheduler.queued",
-        "scheduler.started",
-        "scheduler.completed",
-        "capability.output",
-        "capability.completed",
-        "workflow.closed"
+        "model.requested",
+        "model.delta",
+        "usage.updated",
+        "model.finished",
+        "model.done",
+        "turn.completed",
+        "agent.loop.completed"
       ]
     );
 
@@ -115,17 +121,15 @@ describe("host adapter smoke", () => {
       assert.equal(typeof event.trace?.traceId, "string");
       assert.equal(typeof event.trace?.correlationId, "string");
     }
-    assert.equal(events.some((event) => event.taskId), true);
-    assert.equal(events.some((event) => event.kind === "model.delta"), false);
   });
 
-  it("keeps raw secret fixtures out of CLI text and stream-json output", () => {
+  it("keeps raw secret fixtures out of CLI text and jsonl output", () => {
     const secret = "sk-live-1234567890";
-    const text = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "-p", secret], {
+    const text = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "run", secret], {
       cwd: process.cwd(),
       encoding: "utf8"
     });
-    const stream = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "-p", secret, "--output", "stream-json"], {
+    const stream = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "run", secret, "--output", "jsonl"], {
       cwd: process.cwd(),
       encoding: "utf8"
     });
@@ -137,23 +141,22 @@ describe("host adapter smoke", () => {
     assert.equal(stream.stdout.includes("[REDACTED"), true);
   });
 
-  it("runs the built CLI binary in scripted interactive mode", () => {
+  it("runs the built CLI binary in scripted chat mode", () => {
     assert.equal(existsSync("src/apps/cli/dist/index.js"), true, "run npm run build:cli before npm run test:e2e");
-    const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "interactive", "--output", "stream-json"], {
+    const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "chat", "--output", "jsonl"], {
       encoding: "utf8",
-      input: "/help\nbuilt interactive\n/cancel\n/exit\n"
+      input: "built chat\n/exit\n"
     });
     assert.equal(result.status, 0, result.stderr);
     const events = result.stdout
       .trim()
       .split(/\r?\n/)
       .filter(Boolean)
-      .map((line) => JSON.parse(line));
+      .map((line) => JSON.parse(line) as { kind: string });
 
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "help"), true);
-    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "cancel"), true);
-    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
-    assert.equal(events.at(-1)?.kind, "interactive.completed");
+    assert.equal(events.some((event) => event.kind === "agent.loop.started"), true);
+    assert.equal(events.some((event) => event.kind === "model.delta"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
   });
 
   it("keeps the VSCode bridge transport-backed and isolated from CLI rendering", async () => {

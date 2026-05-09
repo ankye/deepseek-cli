@@ -49,6 +49,11 @@ export const noLegacyRuntimeDirectExecution = createRule({
     const classEnd = classStart >= 0 ? source.indexOf("\nexport function createRuntimeKernel", classStart) : -1;
     const insideKernel = classStart >= 0 && classEnd >= 0 && node.getStart(node.getSourceFile()) > classStart && node.getStart(node.getSourceFile()) < classEnd;
     if (insideKernel && serviceName === "bus" && methodName === "publish") return;
+    const agentLoopStart = prefix.lastIndexOf("export async function* runAgentLoop");
+    const agentLoopEnd = agentLoopStart >= 0 ? source.indexOf("\nexport async function* executeProjectedRuntimeTurn", agentLoopStart) : -1;
+    const insideRuntimeAgentLoop = agentLoopStart >= 0 && agentLoopEnd >= 0 && node.getStart(node.getSourceFile()) > agentLoopStart && node.getStart(node.getSourceFile()) < agentLoopEnd;
+    if (insideRuntimeAgentLoop && serviceName === "models" && methodName === "stream") return;
+
     const recorderStart = prefix.lastIndexOf("async function recordRuntimeAdapterEvent");
     const recorderEnd = recorderStart >= 0 ? source.indexOf("\nfunction runtimeTrace", recorderStart) : -1;
     const insideRuntimeAdapterRecorder = recorderStart >= 0 && recorderEnd >= 0 && node.getStart(node.getSourceFile()) > recorderStart && node.getStart(node.getSourceFile()) < recorderEnd;

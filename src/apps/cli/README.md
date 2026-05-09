@@ -4,8 +4,9 @@ Future-ready DeepSeek coding-agent CLI framework preview.
 
 ```bash
 npm install -g deekseek-cli
-deepseek -p "smoke"
-deepseek -p "smoke" --output stream-json
+deepseek run "smoke"
+deepseek run "smoke" --output jsonl
+deepseek chat --output jsonl
 ```
 
-This first package contains the deterministic headless smoke path and thin CLI host adapter. Production model credentials and live provider behavior are intentionally outside this initial framework preview.
+This package exposes the first runtime-owned agent loop through thin CLI adapters. Local runs are deterministic by default; live DeepSeek provider behavior is opt-in through `--live` and local credentials.

@@ -33,7 +33,7 @@ Default gates:
 - Result: passed
 
 Security evidence:
-- Raw secret fixture did not appear in stdout or stream-json.
+- Raw secret fixture did not appear in stdout or JSONL output.
 ```
 
 ## Rule / 规则

@@ -13,7 +13,7 @@ The protocol layer is responsible for:
 - versioned envelopes / 版本化 envelope
 - routing between host/runtime/server / host、runtime、server 之间的路由
 - redaction metadata / 脱敏 metadata
-- compatibility metadata / 兼容 metadata
+- version contract metadata / 版本契约 metadata
 - replayable payloads / 可 replay payload
 - typed errors / typed errors
 
@@ -61,8 +61,8 @@ Changes to event shape should be treated as protocol changes.
 
 | Change / 变更 | Handling / 处理 |
 | --- | --- |
-| Add optional field / 增加可选字段 | Usually additive; update compatibility tests when persisted. / 通常是增量；若持久化则更新兼容测试。 |
-| Rename field / 字段重命名 | Breaking; needs OpenSpec and migration/compatibility plan. / breaking；需要 OpenSpec 和迁移/兼容计划。 |
+| Add optional field / 增加可选字段 | Usually additive; update versioning tests when persisted. / 通常是增量；若持久化则更新 versioning 测试。 |
+| Rename field / 字段重命名 | Breaking; needs OpenSpec and explicit migration or fail-closed rejection plan. / breaking；需要 OpenSpec 和显式迁移或 fail-closed 拒绝方案。 |
 | Remove field / 删除字段 | Breaking; avoid until versioned protocol boundary exists. / breaking；在版本化协议边界前避免。 |
 | Add event kind / 增加事件类型 | Add docs, tests, and host rendering behavior. / 增加文档、测试和 host 渲染行为。 |
 | Change redaction / 改变脱敏 | Security-sensitive; update secret/sandbox tests. / 安全敏感；更新 secret/sandbox 测试。 |

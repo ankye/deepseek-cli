@@ -49,7 +49,7 @@ plugin system 必须建模 built-in、local directory、workspace、user、enter
 #### Scenario: Workspace plugin requires trust
 
 - **WHEN** a workspace plugin is discovered
-- **THEN** it remains disabled until workspace trust, policy, and compatibility checks allow it
+- **THEN** it remains disabled until workspace trust, policy, and versioning checks allow it
 
 ### Requirement: Plugin Lifecycle Management
 
@@ -59,7 +59,7 @@ plugin system 必须支持 discovery、validation、install、enable、disable�
 
 #### Scenario: Startup health check quarantines plugin
 
-- **WHEN** a plugin fails validation, dependency resolution, compatibility checks, or policy checks during startup
+- **WHEN** a plugin fails validation, dependency resolution, versioning checks, or policy checks during startup
 - **THEN** it is quarantined or disabled without preventing the base runtime from starting
 
 #### Scenario: Plugin update has rollback path

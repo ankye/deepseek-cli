@@ -353,7 +353,7 @@ function stableHash(value: string): string {
 
 function redactSecretText(text: string): string {
   return text
-    .replace(/\b(?:sk|ds|deepseek)-[A-Za-z0-9_-]{8,}\b/g, "[REDACTED:api-key]")
+    .replace(/\b(?:sk|ds)-[A-Za-z0-9_-]{8,}\b|\bdeepseek-[A-Za-z0-9_-]{24,}\b/g, "[REDACTED:api-key]")
     .replace(/\b[A-Z0-9_]*(?:API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)[A-Z0-9_]*\s*=\s*["']?[^"'\s]+/gi, "[REDACTED:env-credential]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, "[REDACTED:bearer-token]");
 }

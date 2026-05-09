@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { asId } from "@deepseek/platform-contracts";
 import { DeterministicToolIntentPreflight, deepSeekToolIntentProfile, normalizeWorkspacePath, prepareProviderIntent } from "../src/index.js";
 
-const visible = [asId<"capability">("read_file")];
+const visible = [asId<"capability">("core.file.read")];
 const deepseek = asId<"modelProvider">("provider-deepseek");
 
 describe("tool intent preflight", () => {
@@ -11,7 +11,7 @@ describe("tool intent preflight", () => {
     const preflight = new DeterministicToolIntentPreflight();
     const result = await preflight.check({
       intent: {
-        name: "read_file",
+        name: "core.file.read",
         source: "model",
         input: { path: "./src/packages/model-gateway/src/index.ts" }
       },
@@ -22,7 +22,8 @@ describe("tool intent preflight", () => {
 
     assert.equal(result.status, "repaired");
     assert.equal(result.diagnostics.length, 0);
-    assert.deepEqual(result.repaired?.input, { path: "/repo/src/packages/model-gateway/src/index.ts" });
+    assert.deepEqual(result.repaired?.input, { path: "src/packages/model-gateway/src/index.ts" });
+    assert.equal(result.repairs.some((repair) => repair.modelValue === "/repo/src/packages/model-gateway/src/index.ts"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "path-prefix-removed"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "path-normalized"), true);
   });
@@ -31,7 +32,7 @@ describe("tool intent preflight", () => {
     const preflight = new DeterministicToolIntentPreflight();
     const result = await preflight.check({
       intent: {
-        name: "read_file",
+        name: "core.file.read",
         source: "model",
         input: { path: "src/packages/model-gateway/src/index.ts" }
       },
@@ -41,7 +42,8 @@ describe("tool intent preflight", () => {
     });
 
     assert.equal(result.status, "repaired");
-    assert.deepEqual(result.repaired?.input, { path: "C:\\repo\\src\\packages\\model-gateway\\src\\index.ts" });
+    assert.deepEqual(result.repaired?.input, { path: "src\\packages\\model-gateway\\src\\index.ts" });
+    assert.equal(result.repairs.some((repair) => repair.modelValue === "C:\\repo\\src\\packages\\model-gateway\\src\\index.ts"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "path-separator-normalized"), true);
   });
 
@@ -95,8 +97,8 @@ describe("tool intent preflight", () => {
     });
 
     assert.equal(result.status, "repaired");
-    assert.equal(result.capabilityId, "read_file");
-    assert.deepEqual(result.repaired?.input, { path: "/repo/src/packages/model-gateway/src/index.ts" });
+    assert.equal(result.capabilityId, "core.file.read");
+    assert.deepEqual(result.repaired?.input, { path: "src/packages/model-gateway/src/index.ts" });
     assert.equal(result.provider?.matched, true);
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-arguments-unwrapped"), true);
@@ -112,7 +114,7 @@ describe("tool intent preflight", () => {
       deepSeekToolIntentProfile
     );
 
-    assert.equal(prepared.intent.name, "read_file");
+    assert.equal(prepared.intent.name, "core.file.read");
     assert.equal(prepared.diagnostics[0]?.code, "TOOL_INTENT_PROVIDER_ARGUMENTS_INVALID_JSON");
   });
 });

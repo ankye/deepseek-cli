@@ -29,7 +29,7 @@ openspec validate --specs --strict
 npm run test:contracts
 npm run test:integration
 npm run test:golden
-npm run test:compatibility
+npm run test:versioning
 npm run test:matrix
 npm run test:e2e
 npm run build:cli
@@ -47,7 +47,7 @@ npm run smoke:headless
 | Contract tests / 契约测试 | `npm run test:contracts` | DTOs, schemas, boundaries, manifests, persisted shapes. / DTO、schema、边界、manifest、持久化形态。 |
 | Integration tests / 集成测试 | `npm run test:integration` | Kernel, policy, scheduler, bus, session, capability pipeline. / kernel、policy、scheduler、bus、session、capability 管线。 |
 | Golden tests / Golden 测试 | `npm run test:golden` | Replayable trace shape and deterministic evidence. / 可 replay trace 与确定性证据。 |
-| Compatibility tests / 兼容测试 | `npm run test:compatibility` | Schema version and persisted artifact requirements. / schema version 与持久化产物要求。 |
+| Versioning tests / 版本契约测试 | `npm run test:versioning` | Schema version, persisted artifact requirements, and fail-closed unsupported versions. / schema version、持久化产物要求，以及不支持版本的 fail-closed 行为。 |
 | Matrix tests / 矩阵测试 | `npm run test:matrix` | Platform and scenario matrix behavior. / 平台与场景矩阵行为。 |
 | E2E tests / E2E | `npm run test:e2e` | CLI and VSCode host adapters consume runtime events correctly. / CLI 与 VSCode host 正确消费 runtime events。 |
 

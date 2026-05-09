@@ -90,7 +90,7 @@ export interface ConfigService {
 export interface DeepSeekConfigValues extends JsonObject {
   readonly model?: string;
   readonly profile?: string;
-  readonly output?: "text" | "stream-json" | "json";
+  readonly output?: "text" | "json" | "jsonl";
   readonly telemetry?: "disabled" | "local" | "enabled";
   readonly privacy?: "local" | "redacted" | "strict";
   readonly sandbox?: "ask" | "allow" | "deny";

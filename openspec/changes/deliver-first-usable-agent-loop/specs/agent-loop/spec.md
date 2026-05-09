@@ -20,9 +20,9 @@ The system SHALL provide a product-grade agent loop that can accept user tasks, 
 
 ### Requirement: Chat Session Loop / 交互式 Chat Session Loop
 
-The system SHALL provide an interactive chat loop that preserves session identity across multiple user turns while using the same runtime event loop and governance boundaries as one-shot runs.
+The system SHALL provide a chat loop that preserves session identity across multiple user turns while using the same runtime event loop and governance boundaries as one-shot runs.
 
-系统必须提供交互式 chat loop，在多个 user turns 之间保留 session identity，并与 one-shot runs 使用同一 runtime event loop 和治理边界。
+系统必须提供 chat loop，在多个 user turns 之间保留 session identity，并与 one-shot runs 使用同一 runtime event loop 和治理边界。
 
 #### Scenario: Chat preserves session id / Chat 保留 session id
 

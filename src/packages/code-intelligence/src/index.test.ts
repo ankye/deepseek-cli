@@ -39,6 +39,23 @@ describe("deterministic code intelligence service", () => {
     assert.match(serialized, /REDACTED/);
   });
 
+  it("keeps provider model identifiers visible in diagnostics", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    await platform.writeFile(`${workspaceRoot}/model.ts`, "// TODO use model deepseek-v4-flash\nexport const model = 'deepseek-v4-flash';\n");
+    const service = new DeterministicCodeIntelligenceService(platform);
+    const result = await service.contextNodes({
+      sessionId: asId<"session">("session-code-intelligence-model"),
+      root: workspaceRoot,
+      includeDiagnostics: true,
+      includeSymbols: false
+    });
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.ok, true);
+    assert.equal(serialized.includes("deepseek-v4-flash"), true);
+    assert.equal(serialized.includes("[REDACTED:api-key]"), false);
+  });
+
   it("refreshes diagnostics after path-scoped invalidation", async () => {
     const platform = new FakePlatformRuntime("fake", workspaceRoot);
     const path = `${workspaceRoot}/app.ts`;

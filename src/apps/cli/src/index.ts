@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { CapabilityId, JsonObject, ModelLiveVerificationResult, ReadinessCommandName, ReadinessCommandResult, RuntimeEvent, RuntimeKernel } from "@deepseek/platform-contracts";
+import type {
+  AgentLoopOutputMode,
+  AgentLoopSummary,
+  JsonObject,
+  ModelLiveVerificationResult,
+  ModelProfile,
+  ReadinessCommandName,
+  ReadinessCommandResult,
+  RuntimeDependencies,
+  RuntimeEvent,
+  RuntimeKernel,
+  SessionForkResult,
+  SessionId,
+  SessionResumeResult
+} from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { invokeInteractiveCommand, invokeLocalReadinessCommand, isInteractiveControlCommandName } from "@deepseek/command-system";
-import type { InteractiveControlCommandName, InteractiveControlResult } from "@deepseek/command-system";
+import { invokeLocalReadinessCommand } from "@deepseek/command-system";
 import type { LocalReadinessEnvironment } from "@deepseek/command-system";
 import { PersistentConfigService } from "@deepseek/config";
 import {
@@ -12,23 +25,25 @@ import {
   createDeepSeekCredentialAuthServiceFromEnv,
   createDeepSeekCredentialPresenceEnv
 } from "@deepseek/credential-auth-management";
+import { coreToolIds } from "@deepseek/core-coding-tools";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
-import { collectRuntimeEvents, createDefaultRuntimeKernel, executeProjectedRuntimeTurn, registerRuntimeCoreTools, runtimeEchoCapability } from "@deepseek/runtime";
+import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies, registerDeterministicCoreTools } from "@deepseek/testing-regression";
-import { coreToolIds } from "@deepseek/core-coding-tools";
-import type { RuntimeDependencies, SessionForkResult, SessionId, SessionResumeResult } from "@deepseek/platform-contracts";
 
 export interface CliTerminalFlags {
   readonly stdinIsTTY: boolean;
   readonly stdoutIsTTY: boolean;
 }
 
+export type CliCommand = "run" | "chat" | "readiness" | "tools-smoke" | "help" | "session";
+
 export interface CliOptions {
-  readonly command: "turn" | "run" | "readiness" | "tools-smoke" | "interactive" | "help" | "session";
+  readonly command: CliCommand;
   readonly prompt: string;
-  readonly output: "text" | "stream-json";
-  readonly capabilityId?: CapabilityId;
+  readonly output: AgentLoopOutputMode;
+  readonly live: boolean;
+  readonly timeoutMs?: number;
   readonly readinessCommand?: ReadinessCommandName;
   readonly readinessInput?: JsonObject;
   readonly sessionAction?: "resume" | "fork";
@@ -36,38 +51,52 @@ export interface CliOptions {
   readonly parentSessionId?: SessionId;
 }
 
+export type CliWrite = (line: string) => void | Promise<void>;
+export type CliInputChunk = Uint8Array | string;
+export type CliInputStream = AsyncIterable<CliInputChunk> | Iterable<CliInputChunk>;
+
+export interface CliRuntimeFactoryOptions {
+  readonly live: boolean;
+  readonly workspaceRoot: string;
+}
+
+export interface CliRunOptions {
+  readonly createRuntime?: (options: CliRuntimeFactoryOptions) => Promise<{ readonly deps: RuntimeDependencies; readonly kernel: RuntimeKernel }>;
+}
+
 const readinessCommands = new Set<ReadinessCommandName>(["init", "config", "auth", "doctor", "privacy", "verify-install"]);
 const defaultTerminalFlags: CliTerminalFlags = { stdinIsTTY: false, stdoutIsTTY: false };
+const defaultOutputMode: AgentLoopOutputMode = "text";
 
 interface TerminalFlagSource {
   readonly isTTY?: boolean;
 }
 
-export function parseCliArgs(args: readonly string[], terminal: CliTerminalFlags = defaultTerminalFlags): CliOptions {
+export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlags = defaultTerminalFlags): CliOptions {
+  const output = parseOutputMode(args);
+  const timeoutMs = parsePositiveNumberFlag(args, "--timeout-ms");
+  const live = args.includes("--live");
   const first = args[0];
-  const outputFlagIndex = args.indexOf("--output");
-  const output = outputFlagIndex >= 0 && args[outputFlagIndex + 1] === "stream-json" ? "stream-json" : "text";
-  if (!first) {
-    return terminal.stdinIsTTY && terminal.stdoutIsTTY
-      ? { command: "interactive", prompt: "", output }
-      : { command: "help", prompt: "", output };
+  if (!first || first === "help" || first === "--help" || first === "-h") {
+    return { command: "help", prompt: "", output, live };
   }
-  if (first === "interactive") {
-    return { command: "interactive", prompt: "", output };
+  if (first === "run") {
+    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}) };
   }
-  if (first === "help" || first === "--help" || first === "-h") {
-    return { command: "help", prompt: "", output };
+  if (first === "chat") {
+    return { command: "chat", prompt: "", output, live, ...(timeoutMs ? { timeoutMs } : {}) };
   }
   if (first === "tools-smoke") {
-    return { command: "tools-smoke", prompt: "", output };
+    return { command: "tools-smoke", prompt: "", output, live };
   }
   if (first === "session") {
     const action = args[1] === "fork" ? "fork" : "resume";
-    const sessionId = args[2] ? asId<"session">(args[2]) : undefined;
+    const sessionId = args[2] && !args[2].startsWith("-") ? asId<"session">(args[2]) : undefined;
     const base: CliOptions = {
       command: "session",
       prompt: "",
       output,
+      live,
       sessionAction: action
     };
     if (action === "fork" && sessionId) return { ...base, parentSessionId: sessionId };
@@ -75,366 +104,192 @@ export function parseCliArgs(args: readonly string[], terminal: CliTerminalFlags
     return base;
   }
   if (isReadinessCommand(first)) {
-    const readinessOutput = outputFlagIndex >= 0 && (args[outputFlagIndex + 1] === "json" || args[outputFlagIndex + 1] === "stream-json") ? "stream-json" : "text";
-    return { command: "readiness", readinessCommand: first, prompt: "", output: readinessOutput, readinessInput: parseReadinessInput(first, args) };
+    return { command: "readiness", readinessCommand: first, prompt: "", output, live, readinessInput: parseReadinessInput(first, args) };
   }
-  if (!args.includes("-p") && !args.includes("--capability") && first.startsWith("-")) {
-    return { command: "help", prompt: "", output };
-  }
-  const command = args[0] === "run" ? "run" : "turn";
-  const effectiveArgs = command === "run" ? args.slice(1) : args;
-  const promptIndex = effectiveArgs.indexOf("-p");
-  const prompt = promptIndex >= 0 ? effectiveArgs[promptIndex + 1] ?? "" : effectiveArgs.filter((arg) => arg !== "--output" && arg !== "stream-json").join(" ");
-  const capabilityIndex = effectiveArgs.indexOf("--capability");
-  const capabilityId = capabilityIndex >= 0 ? asId<"capability">(effectiveArgs[capabilityIndex + 1] ?? String(runtimeEchoCapability.id)) : runtimeEchoCapability.id;
-  return { command, prompt, output, capabilityId };
+  return { command: "help", prompt: "", output, live };
 }
 
 export function cliUsageLines(): readonly string[] {
   return [
     "DeepSeek CLI",
     "Usage:",
-    "  deepseek interactive",
-    "  deepseek -p <prompt> [--output stream-json]",
-    "  deepseek run -p <prompt> [--capability <id>]",
-    "  deepseek session resume <session-id> [--output stream-json]",
-    "  deepseek session fork <session-id> [--output stream-json]",
-    "  deepseek tools-smoke [--output stream-json]",
-    "  deepseek <init|config|auth|doctor|privacy|verify-install>"
+    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
+    "  deepseek chat [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
+    "  deepseek session resume <session-id> [--output text|json]",
+    "  deepseek session fork <session-id> [--output text|json]",
+    "  deepseek tools-smoke [--output text|jsonl]",
+    "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]"
   ];
 }
 
-export interface InteractivePromptInput {
-  readonly kind: "prompt";
-  readonly text: string;
-}
-
-export interface InteractiveCommandInput {
-  readonly kind: "command";
-  readonly name: InteractiveControlCommandName;
-  readonly raw: string;
-  readonly args: readonly string[];
-}
-
-export interface InteractiveUnknownCommandInput {
-  readonly kind: "unknown-command";
-  readonly name: string;
-  readonly raw: string;
-}
-
-export interface InteractiveEmptyInput {
-  readonly kind: "empty";
-}
-
-export type InteractiveParsedInput = InteractivePromptInput | InteractiveCommandInput | InteractiveUnknownCommandInput | InteractiveEmptyInput;
-
-export function parseInteractiveInput(line: string): InteractiveParsedInput {
-  const text = line.trim();
-  if (!text) return { kind: "empty" };
-  if (!text.startsWith("/")) return { kind: "prompt", text };
-  const commandName = text.slice(1).split(/\s+/)[0] ?? "";
-  const args = text.slice(1).split(/\s+/).slice(1);
-  if (isInteractiveControlCommandName(commandName)) {
-    return { kind: "command", name: commandName, raw: text, args };
-  }
-  return { kind: "unknown-command", name: commandName, raw: text };
-}
-
-export type CliWrite = (line: string) => void | Promise<void>;
-export type InteractiveInputChunk = Uint8Array | string;
-export type InteractiveInputStream = AsyncIterable<InteractiveInputChunk> | Iterable<InteractiveInputChunk>;
-
-export interface InteractiveCliOptions {
-  readonly input: InteractiveInputStream;
-  readonly write: CliWrite;
-  readonly output?: CliOptions["output"];
-  readonly capabilityId?: CapabilityId;
-  readonly createKernel?: () => Promise<RuntimeKernel>;
-  readonly createDependencies?: () => Promise<RuntimeDependencies> | RuntimeDependencies;
-  readonly caller?: string;
-  readonly promptTimeoutMs?: number;
-}
-
-export interface InteractiveCliResult extends JsonObject {
-  readonly status: "completed" | "failed";
-  readonly prompts: number;
-  readonly commands: number;
-  readonly cancellations: number;
-  readonly activeSessionId?: string;
-}
-
-interface ActiveInteractiveTurn {
-  invocationId?: string;
-  cancelRequested?: string;
-  done: Promise<void>;
-}
-
-export async function runInteractiveCli(options: InteractiveCliOptions): Promise<InteractiveCliResult> {
-  const output = options.output ?? "text";
-  const capabilityId = options.capabilityId ?? runtimeEchoCapability.id;
-  const deps = options.createKernel ? undefined : await createCliRuntimeDependencies();
-  const kernel = options.createKernel ? await options.createKernel() : await createDefaultRuntimeKernel(deps as RuntimeDependencies);
-  const write = (line: string) => Promise.resolve(options.write(line));
-  let active: ActiveInteractiveTurn | undefined;
-  let activeSessionId: SessionId | undefined;
-  let prompts = 0;
-  let commands = 0;
-  let cancellations = 0;
-  let failed = false;
-
-  await writeInteractiveLine(write, output, { kind: "interactive.started", data: { controls: ["/help", "/exit", "/quit", "/clear", "/cancel"] } });
-
-  const startPromptTurn = (prompt: string): void => {
-    prompts += 1;
-    const turn: ActiveInteractiveTurn = {
-      done: Promise.resolve()
-    };
-    turn.done = (async () => {
-      try {
-        const eventStream = deps
-          ? executeProjectedRuntimeTurn(deps, kernel, {
-              capabilityId,
-              caller: options.caller ?? "cli.interactive",
-              input: { text: prompt, prompt },
-              prompt,
-              ...(activeSessionId ? { sessionId: activeSessionId } : {}),
-              timeoutMs: options.promptTimeoutMs ?? 30_000
-            })
-          : kernel.execute({
-              capabilityId,
-              caller: options.caller ?? "cli.interactive",
-              input: { text: prompt, prompt },
-              ...(activeSessionId ? { sessionId: activeSessionId } : {}),
-              timeoutMs: options.promptTimeoutMs ?? 30_000
-            });
-        for await (const event of eventStream) {
-          activeSessionId = event.sessionId;
-          const envelope = event.kind === "execution.envelope.created" ? event.data.envelope : undefined;
-          if (isEnvelopeWithInvocationId(envelope)) {
-            turn.invocationId = envelope.invocationId;
-            if (turn.cancelRequested) {
-              await kernel.cancel(turn.invocationId, turn.cancelRequested);
-            }
-          }
-          await write(output === "stream-json" ? renderStreamJson(event) : renderText(event));
-        }
-      } catch (error) {
-        failed = true;
-        await writeInteractiveLine(write, output, {
-          kind: "interactive.error",
-          data: { message: error instanceof Error ? error.message : "Interactive prompt failed" }
-        });
-      } finally {
-        if (active === turn) active = undefined;
-      }
-    })();
-    active = turn;
-  };
-
-  for await (const line of readInteractiveLines(options.input)) {
-    const parsed = parseInteractiveInput(line);
-    if (parsed.kind === "empty") continue;
-    if (parsed.kind === "prompt") {
-      if (active) {
-        await writeInteractiveLine(write, output, { kind: "interactive.busy", data: { message: "A turn is already active. Use /cancel before submitting another prompt." } });
-        continue;
-      }
-      startPromptTurn(parsed.text);
-      continue;
-    }
-    if (parsed.kind === "unknown-command") {
-      commands += 1;
-      await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, code: "INTERACTIVE_COMMAND_NOT_FOUND" } });
-      continue;
-    }
-
-    commands += 1;
-    const result = await invokeInteractiveCommand(parsed.name, {
-      reason: "interactive command",
-      sessionId: parsed.args[0] ?? "",
-      parentSessionId: parsed.args[0] ?? ""
-    });
-    if (!result.ok || !result.value) {
-      failed = true;
-      await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, error: result.error ?? {} } });
-      continue;
-    }
-    if (result.value.action === "cancel") {
-      cancellations += 1;
-      if (active?.invocationId) {
-        await kernel.cancel(active.invocationId, result.value.message);
-      } else if (active) {
-        active.cancelRequested = result.value.message;
-      }
-      await writeInteractiveControlResult(write, output, active ? result.value : { ...result.value, message: "No active turn to cancel." });
-      continue;
-    }
-    if (result.value.action === "resume") {
-      if (!deps) {
-        await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, code: "INTERACTIVE_SESSION_UNAVAILABLE" } });
-        continue;
-      }
-      const sessionId = typeof result.value.sessionId === "string" && result.value.sessionId ? asId<"session">(result.value.sessionId) : undefined;
-      const resumed = sessionId ? await deps.sessions.resume(sessionId) : { ok: false, error: cliSessionError("SESSION_ID_REQUIRED", "Resume requires a session id") };
-      const resumedValue = "value" in resumed ? resumed.value : undefined;
-      if (!resumed.ok || !resumedValue) {
-        await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, error: resumed.error ?? {} } });
-        continue;
-      }
-      activeSessionId = resumedValue.sessionId;
-      await writeInteractiveControlResult(write, output, { ...result.value, sessionId: activeSessionId, message: `Resumed session ${activeSessionId}` });
-      continue;
-    }
-    if (result.value.action === "fork") {
-      if (!deps) {
-        await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, code: "INTERACTIVE_SESSION_UNAVAILABLE" } });
-        continue;
-      }
-      const parentSessionId = typeof result.value.parentSessionId === "string" && result.value.parentSessionId ? asId<"session">(result.value.parentSessionId) : activeSessionId;
-      const forked = parentSessionId ? await deps.sessions.fork({ parentSessionId, reason: "interactive fork" }) : { ok: false, error: cliSessionError("SESSION_ID_REQUIRED", "Fork requires a parent session id") };
-      const forkedValue = "value" in forked ? forked.value : undefined;
-      if (!forked.ok || !forkedValue) {
-        await writeInteractiveLine(write, output, { kind: "interactive.command.failed", data: { command: parsed.raw, error: forked.error ?? {} } });
-        continue;
-      }
-      activeSessionId = forkedValue.childSessionId;
-      await writeInteractiveControlResult(write, output, { ...result.value, sessionId: activeSessionId, parentSessionId: forkedValue.parentSessionId, message: `Forked session ${forkedValue.parentSessionId} -> ${activeSessionId}` });
-      continue;
-    }
-    await writeInteractiveControlResult(write, output, result.value);
-    if (result.value.action === "exit") break;
-  }
-
-  if (active) await active.done;
-  await kernel.shutdown("interactive-exit");
-  await writeInteractiveLine(write, output, { kind: "interactive.completed", data: { prompts, commands, cancellations, status: failed ? "failed" : "completed" } });
-  return { status: failed ? "failed" : "completed", prompts, commands, cancellations, ...(activeSessionId ? { activeSessionId } : {}) };
-}
-
-async function createCliRuntimeDependencies(workspaceRoot = process.cwd()): Promise<RuntimeDependencies> {
-  const deps = createDeterministicRuntimeDependencies();
-  await registerRuntimeCoreTools(deps, workspaceRoot);
-  return deps;
-}
-
-async function* readInteractiveLines(input: InteractiveInputStream): AsyncIterable<string> {
-  let pending = "";
-  for await (const chunk of input) {
-    pending += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-    const lines = pending.split(/\r?\n/);
-    pending = lines.pop() ?? "";
-    for (const line of lines) yield line;
-  }
-  if (pending.length > 0) yield pending;
-}
-
-async function writeInteractiveControlResult(write: (line: string) => Promise<void>, output: CliOptions["output"], result: InteractiveControlResult): Promise<void> {
-  await writeInteractiveLine(write, output, { kind: "interactive.command.completed", data: result });
-}
-
-async function writeInteractiveLine(write: (line: string) => Promise<void>, output: CliOptions["output"], event: JsonObject): Promise<void> {
-  if (output === "stream-json") {
-    await write(JSON.stringify(event));
-    return;
-  }
-  const kind = String(event.kind ?? "interactive.event");
-  const data = event.data && typeof event.data === "object" && !Array.isArray(event.data) ? event.data as JsonObject : {};
-  if (kind === "interactive.started") {
-    await write("DeepSeek interactive");
-    await write("Type /help for controls.");
-    return;
-  }
-  if (kind === "interactive.completed") {
-    await write("[interactive completed]");
-    return;
-  }
-  if (kind === "interactive.command.completed") {
-    await write(String(data.message ?? "[command completed]"));
-    if (Array.isArray(data.controls)) {
-      for (const control of data.controls) {
-        if (control && typeof control === "object" && "name" in control) {
-          await write(`- ${String((control as { name?: unknown }).name)}`);
-        }
-      }
-    }
-    return;
-  }
-  if (kind === "interactive.command.failed") {
-    await write(`[command failed] ${String(data.command ?? data.code ?? "")}`.trim());
-    return;
-  }
-  if (kind === "interactive.busy") {
-    await write(`[busy] ${String(data.message ?? "")}`.trim());
-    return;
-  }
-  if (kind === "interactive.error") {
-    await write(`[interactive error] ${String(data.message ?? "")}`.trim());
-  }
-}
-
-function isEnvelopeWithInvocationId(value: unknown): value is { readonly invocationId: string } {
-  return typeof value === "object" && value !== null && "invocationId" in value && typeof (value as { invocationId?: unknown }).invocationId === "string";
-}
-
-function terminalFlagsFromProcess(stdin: TerminalFlagSource = process.stdin, stdout: TerminalFlagSource = process.stdout): CliTerminalFlags {
-  return { stdinIsTTY: stdin.isTTY === true, stdoutIsTTY: stdout.isTTY === true };
-}
-
-export function renderText(event: RuntimeEvent): string {
-  if (event.kind === "model.delta") return String(event.data.text ?? "");
-  if (event.kind === "capability.output") return String((event.data.output as { text?: string } | undefined)?.text ?? "");
-  if (event.kind === "capability.completed") return "[kernel completed]";
-  if (event.kind === "execution.rejected") return `[rejected] ${event.error?.message ?? ""}`.trim();
-  if (event.kind === "turn.completed") return "[completed]";
-  return `[${event.kind}]`;
-}
-
-export function renderStreamJson(event: RuntimeEvent): string {
-  return JSON.stringify(event);
-}
-
-export async function runCli(args: readonly string[], write: (line: string) => void = console.log, input: InteractiveInputStream = process.stdin, terminal: CliTerminalFlags = terminalFlagsFromProcess()): Promise<void> {
+export async function runCli(
+  args: readonly string[],
+  write: CliWrite = console.log,
+  input: CliInputStream = process.stdin,
+  terminal: CliTerminalFlags = terminalFlagsFromProcess(),
+  runOptions: CliRunOptions = {}
+): Promise<void> {
   const options = parseCliArgs(args, terminal);
+  const writer = (line: string) => Promise.resolve(write(line));
   if (options.command === "help") {
-    for (const line of cliUsageLines()) write(line);
-    return;
-  }
-  if (options.command === "interactive") {
-    await runInteractiveCli({ input, write, output: options.output });
+    for (const line of cliUsageLines()) await writer(line);
     return;
   }
   if (options.command === "readiness") {
-    await runReadinessCommand(options, write);
+    await runReadinessCommand(options, writer);
     return;
   }
   if (options.command === "tools-smoke") {
-    await runCoreToolsSmoke(write, options.output);
+    await runCoreToolsSmoke(writer, options.output);
     return;
   }
   if (options.command === "session") {
-    await runSessionCommand(options, write);
+    await runSessionCommand(options, writer);
     return;
   }
+  if (options.command === "chat") {
+    await runChatCommand(options, writer, input, runOptions);
+    return;
+  }
+  await runOneShotCommand(options, writer, runOptions);
+}
 
-  const deps = createDeterministicRuntimeDependencies();
-  await registerRuntimeCoreTools(deps, process.cwd());
-  const kernel = await createDefaultRuntimeKernel(deps);
+async function runOneShotCommand(options: CliOptions, write: (line: string) => Promise<void>, runOptions: CliRunOptions): Promise<void> {
+  const workspaceRoot = process.cwd();
+  const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
   try {
-    for await (const event of executeProjectedRuntimeTurn(deps, kernel, {
-      capabilityId: options.capabilityId ?? runtimeEchoCapability.id,
-      caller: options.command === "run" ? "cli.run" : "cli.turn",
-      input: { text: options.prompt, prompt: options.prompt },
+    const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
       prompt: options.prompt,
-      timeoutMs: 30_000
-    })) {
-      write(options.output === "stream-json" ? renderStreamJson(event) : renderText(event));
-    }
+      outputMode: options.output,
+      workspaceRoot,
+      caller: "cli.run",
+      profile: defaultDeepSeekProfile,
+      live: options.live,
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
+    }, write);
+    await renderFinalJsonIfNeeded(options.output, events, write);
   } finally {
-    await kernel.shutdown();
+    await runtime.kernel.shutdown("cli-run-completed");
   }
 }
 
-async function runSessionCommand(options: CliOptions, write: (line: string) => void): Promise<void> {
+async function runChatCommand(options: CliOptions, write: (line: string) => Promise<void>, input: CliInputStream, runOptions: CliRunOptions): Promise<void> {
+  const workspaceRoot = process.cwd();
+  const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
+  let sessionId: SessionId | undefined;
+  let turns = 0;
+  try {
+    if (options.output === "text") {
+      await write("DeepSeek chat");
+      await write("Type /exit or /quit to close.");
+    }
+    for await (const line of readCliLines(input)) {
+      const prompt = line.trim();
+      if (!prompt) continue;
+      if (prompt === "/exit" || prompt === "/quit") break;
+      turns += 1;
+      const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
+        prompt,
+        ...(sessionId ? { sessionId } : {}),
+        outputMode: options.output,
+        workspaceRoot,
+        caller: "cli.chat",
+        profile: defaultDeepSeekProfile,
+        live: options.live,
+        ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
+      }, write);
+      const terminal = finalAgentLoopEvent(events);
+      sessionId = terminal?.sessionId ?? sessionId;
+      await renderFinalJsonIfNeeded(options.output, events, write);
+    }
+    if (options.output === "text") {
+      await write(`[chat completed] turns=${turns}${sessionId ? ` session=${sessionId}` : ""}`);
+    }
+  } finally {
+    await runtime.kernel.shutdown("cli-chat-completed");
+  }
+}
+
+async function emitAgentLoop(
+  deps: RuntimeDependencies,
+  kernel: RuntimeKernel,
+  request: Parameters<typeof runAgentLoop>[2],
+  write: (line: string) => Promise<void>
+): Promise<readonly RuntimeEvent[]> {
+  const events: RuntimeEvent[] = [];
+  for await (const event of runAgentLoop(deps, kernel, request)) {
+    events.push(event);
+    if (request.outputMode === "jsonl") {
+      await write(renderJsonLine(event));
+      continue;
+    }
+    if (request.outputMode === "text") {
+      const line = renderText(event);
+      if (line) await write(line);
+    }
+  }
+  return events;
+}
+
+async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, runOptions: CliRunOptions): Promise<{ readonly deps: RuntimeDependencies; readonly kernel: RuntimeKernel }> {
+  if (runOptions.createRuntime) return runOptions.createRuntime(options);
+  const baseDeps = createDeterministicRuntimeDependencies();
+  const deps: RuntimeDependencies = options.live
+    ? {
+        ...baseDeps,
+        models: new DeepSeekOpenAIProvider({
+          credentials: new CredentialAuthModelCredentialProvider(await createDeepSeekCredentialAuthServiceFromEnv()),
+          transport: new OpenAIModelProviderTransport(),
+          timeoutMs: 90_000
+        })
+      }
+    : baseDeps;
+  await registerRuntimeCoreTools(deps, options.workspaceRoot);
+  return { deps, kernel: await createDefaultRuntimeKernel(deps) };
+}
+
+function renderText(event: RuntimeEvent): string {
+  if (event.kind === "model.delta") return String(event.data.text ?? "");
+  if (event.kind === "model.reasoning") return "[reasoning]";
+  if (event.kind === "model.requested") return `[model] request iteration=${String(event.data.iteration ?? "")}`;
+  if (event.kind === "model.tool.intent") return `[tool] ${String(event.data.name ?? "")}`;
+  if (event.kind === "model.tool.repaired") return "[tool repaired]";
+  if (event.kind === "model.tool.rejected") return `[tool rejected] ${event.error?.message ?? ""}`.trim();
+  if (event.kind === "model.tool.result") return `[tool result] ${String(event.data.terminalKind ?? "")}`;
+  if (event.kind === "agent.loop.completed") {
+    const summary = event.data as AgentLoopSummary;
+    return `[completed] trace=${summary.traceId} session=${summary.sessionId}`;
+  }
+  if (event.kind === "agent.loop.failed") return `[failed] ${event.error?.message ?? ""}`.trim();
+  if (event.kind === "runtime.error") return `[error] ${event.error?.message ?? ""}`.trim();
+  return "";
+}
+
+function renderJsonLine(event: RuntimeEvent): string {
+  return JSON.stringify(event);
+}
+
+async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, events: readonly RuntimeEvent[], write: (line: string) => Promise<void>): Promise<void> {
+  if (output !== "json") return;
+  const terminal = finalAgentLoopEvent(events);
+  const fallback = events.at(-1);
+  await write(JSON.stringify({
+    schemaVersion: "1.0.0",
+    status: String(terminal?.data.status ?? (terminal?.kind === "agent.loop.completed" ? "completed" : "failed")),
+    sessionId: terminal?.sessionId ?? fallback?.sessionId ?? "",
+    turnId: terminal?.turnId ?? fallback?.turnId ?? "",
+    traceId: String(terminal?.trace.traceId ?? fallback?.trace.traceId ?? ""),
+    assistantText: String(terminal?.data.assistantText ?? ""),
+    diagnostics: Array.isArray(terminal?.data.diagnostics) ? terminal?.data.diagnostics : [],
+    redaction: terminal?.data.redaction ?? { class: "internal" }
+  }));
+}
+
+function finalAgentLoopEvent(events: readonly RuntimeEvent[]): RuntimeEvent | undefined {
+  return [...events].reverse().find((event) => event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed");
+}
+
+async function runSessionCommand(options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
   const deps = await createCliRuntimeDependencies();
   let result: { ok: boolean; value?: SessionResumeResult | SessionForkResult; error?: JsonObject };
   if (options.sessionAction === "fork") {
@@ -446,26 +301,32 @@ async function runSessionCommand(options: CliOptions, write: (line: string) => v
       ? await deps.sessions.resume(options.sessionId)
       : { ok: false, error: cliSessionError("SESSION_ID_REQUIRED", "session resume requires a session id") };
   }
-  if (options.output === "stream-json") {
-    write(JSON.stringify(result));
+  if (options.output !== "text") {
+    await write(JSON.stringify(result));
     return;
   }
   if (!result.ok || !result.value) {
-    write(`[session failed] ${String(result.error?.message ?? options.sessionAction ?? "session")}`);
+    await write(`[session failed] ${String(result.error?.message ?? options.sessionAction ?? "session")}`);
     return;
   }
   if ("childSessionId" in result.value) {
-    write(`forked ${result.value.parentSessionId} -> ${result.value.childSessionId}`);
+    await write(`forked ${result.value.parentSessionId} -> ${result.value.childSessionId}`);
     return;
   }
-  write(`resumed ${result.value.sessionId} (${result.value.eventCount} events)`);
+  await write(`resumed ${result.value.sessionId} (${result.value.eventCount} events)`);
+}
+
+async function createCliRuntimeDependencies(workspaceRoot = process.cwd()): Promise<RuntimeDependencies> {
+  const deps = createDeterministicRuntimeDependencies();
+  await registerRuntimeCoreTools(deps, workspaceRoot);
+  return deps;
 }
 
 function cliSessionError(code: string, message: string): JsonObject {
   return { code, message, retryable: false, redaction: { class: "public" } };
 }
 
-async function runCoreToolsSmoke(write: (line: string) => void, output: CliOptions["output"]): Promise<void> {
+async function runCoreToolsSmoke(write: (line: string) => Promise<void>, output: AgentLoopOutputMode): Promise<void> {
   const deps = createDeterministicRuntimeDependencies();
   const workspaceRoot = "/workspace";
   await deps.platform.writeFile(`${workspaceRoot}/README.md`, "hello core tools\n");
@@ -477,15 +338,24 @@ async function runCoreToolsSmoke(write: (line: string) => void, output: CliOptio
       { capabilityId: coreToolIds.fileEdit, input: { path: "README.md", expected: "hello", replacement: "hello governed", workspaceRoot } },
       { capabilityId: coreToolIds.testRun, input: { command: "npm", args: ["test"], workspaceRoot, intent: "smoke" } }
     ];
+    const events: RuntimeEvent[] = [];
     for (const step of sequences) {
-      const events = await collectRuntimeEvents(kernel.execute({
+      const stepEvents = await collectRuntimeEvents(kernel.execute({
         capabilityId: step.capabilityId,
         caller: "cli.tools-smoke",
         input: step.input
       }));
-      for (const event of events) {
-        write(output === "stream-json" ? renderStreamJson(event) : renderText(event));
+      events.push(...stepEvents);
+      for (const event of stepEvents) {
+        if (output === "jsonl") await write(renderJsonLine(event));
+        if (output === "text") {
+          const line = renderText(event);
+          if (line) await write(line);
+        }
       }
+    }
+    if (output === "json") {
+      await write(JSON.stringify({ schemaVersion: "1.0.0", status: "completed", eventCount: events.length, redaction: { class: "internal" } }));
     }
   } finally {
     await kernel.shutdown();
@@ -503,19 +373,19 @@ export function renderReadinessText(result: ReadinessCommandResult): readonly st
   return lines;
 }
 
-async function runReadinessCommand(options: CliOptions, write: (line: string) => void): Promise<void> {
+async function runReadinessCommand(options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
   if (!options.readinessCommand) return;
   const environment = await createCliReadinessEnvironment(options);
   const result = await invokeLocalReadinessCommand(options.readinessCommand, options.readinessInput ?? {}, environment);
   if (!result.ok || !result.value) {
-    write(options.output === "stream-json" ? JSON.stringify(result) : `[readiness failed] ${result.error?.message ?? options.readinessCommand}`);
+    await write(options.output === "text" ? `[readiness failed] ${result.error?.message ?? options.readinessCommand}` : JSON.stringify(result));
     return;
   }
-  if (options.output === "stream-json") {
-    write(JSON.stringify(result.value));
+  if (options.output !== "text") {
+    await write(JSON.stringify(result.value));
     return;
   }
-  for (const line of renderReadinessText(result.value)) write(line);
+  for (const line of renderReadinessText(result.value)) await write(line);
 }
 
 async function createCliReadinessEnvironment(options: CliOptions): Promise<LocalReadinessEnvironment> {
@@ -572,16 +442,16 @@ async function createCliReadinessEnvironment(options: CliOptions): Promise<Local
         const gateway = options.readinessInput?.fakeLive === true ? new DeterministicMockModelGateway() : provider;
         return gateway.verify
           ? gateway.verify({ profile: defaultDeepSeekProfile, prompt: "Reply with exactly this text: ok", timeoutMs: 90000 })
-          : missingLiveVerifierResult();
+          : missingLiveVerifierResult(defaultDeepSeekProfile);
       }
     : undefined;
 
-  const environment: LocalReadinessEnvironment = {
+  return {
     cwd: workspaceRoot,
     nodeVersion: process.version,
     platform: `${platformDescriptor.os}:${platformDescriptor.environmentKind}`,
     packageName: "deekseek-cli",
-    packageVersion: "0.1.0",
+    packageVersion: "0.1.2",
     env: createDeepSeekCredentialPresenceEnv(),
     ignoredPaths: [".env", ".env.*", "参考/"],
     availableCommands: ["node", "npm"],
@@ -594,19 +464,29 @@ async function createCliReadinessEnvironment(options: CliOptions): Promise<Local
     initialized: Boolean(existingWorkspaceDocument),
     initializedThisRun: initializedThisRun && Boolean(workspaceDocument)
   };
-  return environment;
 }
 
-function missingLiveVerifierResult(): ModelLiveVerificationResult {
+function missingLiveVerifierResult(profile: ModelProfile): ModelLiveVerificationResult {
   return {
     ok: false,
-    provider: { provider: "deepseek", protocol: "openai-chat-completions", model: defaultDeepSeekProfile.model },
+    provider: { provider: "deepseek", protocol: "openai-chat-completions", model: profile.model },
     reachable: false,
     terminalStatus: "failed",
     eventKinds: [],
     diagnostics: [],
     redaction: { class: "internal" }
   };
+}
+
+async function* readCliLines(input: CliInputStream): AsyncIterable<string> {
+  let pending = "";
+  for await (const chunk of input) {
+    pending += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+    const lines = pending.split(/\r?\n/);
+    pending = lines.pop() ?? "";
+    for (const line of lines) yield line;
+  }
+  if (pending.length > 0) yield pending;
 }
 
 function parseReadinessInput(command: ReadinessCommandName, args: readonly string[]): JsonObject {
@@ -633,8 +513,40 @@ function parseConfigValue(value: string): string | boolean | number {
   return value.trim() !== "" && Number.isFinite(numberValue) ? numberValue : value;
 }
 
+function parseOutputMode(args: readonly string[]): AgentLoopOutputMode {
+  const index = args.indexOf("--output");
+  const value = index >= 0 ? args[index + 1] : undefined;
+  return value === "json" || value === "jsonl" || value === "text" ? value : defaultOutputMode;
+}
+
+function parsePositiveNumberFlag(args: readonly string[], name: string): number | undefined {
+  const index = args.indexOf(name);
+  if (index < 0) return undefined;
+  const value = Number(args[index + 1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function promptFromArgs(args: readonly string[]): string {
+  const filtered: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (!value) continue;
+    if (value === "--output" || value === "--timeout-ms") {
+      index += 1;
+      continue;
+    }
+    if (value === "--live") continue;
+    filtered.push(value);
+  }
+  return filtered.join(" ").trim();
+}
+
 function isReadinessCommand(value: string | undefined): value is ReadinessCommandName {
   return typeof value === "string" && readinessCommands.has(value as ReadinessCommandName);
+}
+
+function terminalFlagsFromProcess(stdin: TerminalFlagSource = process.stdin, stdout: TerminalFlagSource = process.stdout): CliTerminalFlags {
+  return { stdinIsTTY: stdin.isTTY === true, stdoutIsTTY: stdout.isTTY === true };
 }
 
 export function isCliEntryPoint(entryPath = process.argv[1]): boolean {
@@ -643,5 +555,8 @@ export function isCliEntryPoint(entryPath = process.argv[1]): boolean {
 }
 
 if (isCliEntryPoint()) {
-  await runCli(process.argv.slice(2));
+  void runCli(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : "DeepSeek CLI failed.");
+    process.exitCode = 1;
+  });
 }

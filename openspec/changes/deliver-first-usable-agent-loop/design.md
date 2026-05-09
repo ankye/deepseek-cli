@@ -136,30 +136,34 @@ Alternatives considered:
 
 ## Migration Plan
 
-1. Add agent-loop contracts and tests without changing existing CLI commands.
-2. Implement runtime loop behind deterministic tests.
-3. Add `deepseek run` and `deepseek chat` commands as thin adapters.
-4. Add JSON/JSONL output and golden replay fixtures.
-5. Add opt-in live DeepSeek smoke test command or test target.
-6. Update README and docs with first usable workflow.
+This project is pre-release, so this change performs a product-surface reset instead of preserving compatibility. Legacy prompt flags, legacy interactive entry names, and old stream naming are removed from the public CLI contract.
 
-1. 增加 agent-loop contracts 与 tests，不改变现有 CLI commands。
+本项目仍处于 pre-release，因此本变更执行产品界面重置，而不是保留兼容。旧 prompt flags、旧 interactive entry names 与旧 stream naming 都从 public CLI contract 中移除。
+
+1. Add agent-loop contracts and tests as the new public runtime surface.
+2. Implement runtime loop behind deterministic tests.
+3. Replace old CLI entry points with `deepseek run` and `deepseek chat` thin adapters.
+4. Add `text`, `json`, and `jsonl` output contracts and golden replay fixtures.
+5. Add opt-in live DeepSeek agent-loop smoke test target.
+6. Update README and docs with the first usable workflow.
+
+1. 增加 agent-loop contracts 与 tests，作为新的 public runtime surface。
 2. 在 deterministic tests 后实现 runtime loop。
-3. 添加 `deepseek run` 与 `deepseek chat` 作为 thin adapters。
-4. 添加 JSON/JSONL output 与 golden replay fixtures。
-5. 添加 opt-in live DeepSeek smoke test command 或 test target。
+3. 用 `deepseek run` 与 `deepseek chat` thin adapters 替换旧 CLI 入口。
+4. 添加 `text`、`json`、`jsonl` output contracts 与 golden replay fixtures。
+5. 添加 opt-in live DeepSeek agent-loop smoke test target。
 6. 更新 README 与 docs，说明第一个可用 workflow。
 
-Rollback strategy: because this is pre-1.0, rollback means disabling the new CLI commands or feature flagging the loop while retaining tests and contracts for diagnosis.
+Rollback strategy: because this is pre-1.0, rollback means disabling the new CLI commands or feature flagging the loop while retaining tests and contracts for diagnosis. It does not restore old public compatibility.
 
-回滚策略：由于项目仍处于 pre-1.0，回滚方式是禁用新 CLI commands 或通过 feature flag 关闭 loop，同时保留 tests 与 contracts 用于诊断。
+回滚策略：由于项目仍处于 pre-1.0，回滚方式是禁用新 CLI commands 或通过 feature flag 关闭 loop，同时保留 tests 与 contracts 用于诊断；不恢复旧 public compatibility。
 
 ## Open Questions
 
-- Should `deepseek chat` default to interactive stdin prompts or require explicit `--interactive` when stdin is not a TTY?
+- Should `deepseek chat` later add rich TUI controls after the minimal stdin loop proves runtime semantics?
 - Should the first loop expose tool approval prompts immediately, or only policy-driven automatic allow/deny with structured events?
 - Should JSONL be the primary machine-readable format, with JSON reserved for final summaries?
 
-- `deepseek chat` 是否在 stdin 不是 TTY 时默认进入交互提示，还是要求显式 `--interactive`？
+- `deepseek chat` 是否应在最小 stdin loop 证明 runtime semantics 后，再加入 rich TUI controls？
 - 第一版 loop 是否立即暴露 tool approval prompts，还是先只提供 policy-driven automatic allow/deny 与 structured events？
 - JSONL 是否应作为主要 machine-readable format，而 JSON 仅用于 final summaries？

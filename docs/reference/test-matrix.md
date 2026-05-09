@@ -8,7 +8,7 @@
 | Contracts | `npm run test:contracts` | Platform owners | DTO/schema/package boundary guarantees. / DTO、schema、包边界保证。 |
 | Integration | `npm run test:integration` | Runtime owners | End-to-end runtime pipeline across packages. / 跨包 runtime 管线。 |
 | Golden | `npm run test:golden` | Runtime/testing owners | Replayable event shape and deterministic evidence. / 可 replay 事件形态和确定性证据。 |
-| Compatibility | `npm run test:compatibility` | Contract owners | Persisted schema/version requirements. / 持久化 schema/version 要求。 |
+| Versioning | `npm run test:versioning` | Contract owners | Persisted schema/version requirements and fail-closed unsupported versions. / 持久化 schema/version 要求，以及不支持版本的 fail-closed 行为。 |
 | Matrix | `npm run test:matrix` | Platform/testing owners | Cross-platform and scenario matrix behavior. / 跨平台与场景矩阵行为。 |
 | E2E | `npm run test:e2e` | Host owners | CLI and VSCode host adapter behavior. / CLI 与 VSCode host adapter 行为。 |
 | Live | opt-in env flags | Provider owners | Real DeepSeek provider connectivity. / 真实 DeepSeek provider 连通性。 |
@@ -21,18 +21,18 @@ Code intelligence v1 coverage lives in unit, contract, integration, golden, and 
 
 code intelligence v1 覆盖位于 unit、contract、integration、golden 和 matrix suites，使用 deterministic local analyzer fixtures，且不依赖 live IDE/LSP。
 
-Observability/privacy v1 coverage lives in unit, contract, integration, golden, compatibility, and matrix suites with local-only diagnostic bundle fixtures, privacy opt-out/export-denial checks, and no raw secret persistence.
+Observability/privacy v1 coverage lives in unit, contract, integration, golden, versioning, and matrix suites with local-only diagnostic bundle fixtures, privacy opt-out/export-denial checks, and no raw secret persistence.
 
-observability/privacy v1 覆盖位于 unit、contract、integration、golden、compatibility 和 matrix suites，使用 local-only diagnostic bundle fixtures、privacy opt-out/export-denial checks，并验证无 raw secret persistence。
+observability/privacy v1 覆盖位于 unit、contract、integration、golden、versioning 和 matrix suites，使用 local-only diagnostic bundle fixtures、privacy opt-out/export-denial checks，并验证无 raw secret persistence。
 
-Skills v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, summary-first loading, trust inertness, context projection, redaction, and no live plugin/catalog dependency.
+Skills v1 coverage lives in unit, contract, integration, golden, versioning, matrix, and lint suites with canonical API enforcement, summary-first loading, trust inertness, context projection, redaction, and no live plugin/catalog dependency.
 
-skills v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、summary-first loading、trust inertness、context projection、redaction，且不依赖 live plugin/catalog。
+skills v1 覆盖位于 unit、contract、integration、golden、versioning、matrix 和 lint suites，包含 canonical API enforcement、summary-first loading、trust inertness、context projection、redaction，且不依赖 live plugin/catalog。
 
-Hooks v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, deterministic ordering, observe-only output typing, timeout containment, failure policies, redaction, and no live plugin/host dependency.
+Hooks v1 coverage lives in unit, contract, integration, golden, versioning, matrix, and lint suites with canonical API enforcement, deterministic ordering, observe-only output typing, timeout containment, failure policies, redaction, and no live plugin/host dependency.
 
-hooks v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、deterministic ordering、observe-only output typing、timeout containment、failure policies、redaction，且不依赖 live plugin/host。
+hooks v1 覆盖位于 unit、contract、integration、golden、versioning、matrix 和 lint suites，包含 canonical API enforcement、deterministic ordering、observe-only output typing、timeout containment、failure policies、redaction，且不依赖 live plugin/host。
 
-MCP gateway v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, manifest validation, namespace collision rejection, deterministic fake/in-process adapters, fail-closed real transports, governed calls/reads, timeout containment, redaction, and no real MCP server/network/process dependency.
+MCP gateway v1 coverage lives in unit, contract, integration, golden, versioning, matrix, and lint suites with canonical API enforcement, manifest validation, namespace collision rejection, deterministic fake/in-process adapters, fail-closed real transports, governed calls/reads, timeout containment, redaction, and no real MCP server/network/process dependency.
 
-MCP gateway v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、manifest validation、namespace collision rejection、deterministic fake/in-process adapters、真实 transport 安全失败、受治理 calls/reads、timeout containment、redaction，且不依赖 real MCP server/network/process。
+MCP gateway v1 覆盖位于 unit、contract、integration、golden、versioning、matrix 和 lint suites，包含 canonical API enforcement、manifest validation、namespace collision rejection、deterministic fake/in-process adapters、真实 transport 安全失败、受治理 calls/reads、timeout containment、redaction，且不依赖 real MCP server/network/process。

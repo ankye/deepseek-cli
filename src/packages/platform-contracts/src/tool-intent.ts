@@ -24,6 +24,8 @@ export interface ToolIntentRepairAction extends JsonObject {
   readonly before: string;
   readonly after: string;
   readonly confidence: number;
+  readonly modelValue?: string;
+  readonly executorValue?: string;
 }
 
 export interface ToolIntentDiagnostic extends RedactedError {

@@ -51,11 +51,12 @@ describe("provider tool intent preflight integration", () => {
       providerId: asId<"modelProvider">("provider-deepseek"),
       workspaceRoot: "/repo",
       platform: "linux",
-      modelVisibleCapabilities: [asId<"capability">("read_file")]
+      modelVisibleCapabilities: [asId<"capability">("core.file.read")]
     });
 
     assert.equal(result.status, "repaired");
-    assert.deepEqual(result.repaired?.input, { path: "/repo/src/packages/model-gateway/src/index.ts" });
+    assert.deepEqual(result.repaired?.input, { path: "src/packages/model-gateway/src/index.ts" });
+    assert.equal(result.repairs.some((repair) => repair.modelValue === "/repo/src/packages/model-gateway/src/index.ts"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "path-separator-normalized"), true);
   });
 });

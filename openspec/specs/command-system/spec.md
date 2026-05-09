@@ -73,15 +73,15 @@ CLI command system 必须提供至少一个 command，将 executable work 委托
 - **WHEN** the kernel emits completed, failed, cancelled, or timeout events
 - **THEN** CLI maps those events to process output and exit code without creating a separate execution lifecycle
 
-### Requirement: CLI Stream JSON Compatibility
+### Requirement: CLI JSONL Event Output
 
-The CLI command system SHALL support a stream-json output mode for kernel-backed runtime events.
+The CLI command system SHALL support a JSONL output mode for kernel-backed runtime events.
 
-CLI command system 必须支持 kernel-backed runtime events 的 stream-json output mode。
+CLI command system 必须支持 kernel-backed runtime events 的 JSONL output mode。
 
 #### Scenario: Stream canonical runtime events
 
-- **WHEN** the user runs the kernel-backed command with stream-json output
+- **WHEN** the user runs the kernel-backed command with JSONL output
 - **THEN** each emitted line is a serialized canonical runtime event with stable event type and trace metadata
 
 ### Requirement: CLI Commands Are Kernel Backed
@@ -136,38 +136,38 @@ command system 必须注册 local readiness commands，并包含 stable ids、in
 - **THEN** it dispatches through the command system and renders the structured result instead of embedding command-specific state machines in CLI parsing
 - **中文** 当 CLI 调用 readiness command 时，必须通过 command system dispatch 并渲染 structured result，而不是在 CLI parsing 中嵌入 command-specific state machines。
 
-### Requirement: Interactive Command Dispatch / 交互式命令分发
+### Requirement: Chat Command Dispatch / Chat 命令分发
 
-The command system SHALL define command metadata and routing behavior for minimal interactive CLI controls and delegated commands.
+The command system SHALL define command metadata and routing behavior for minimal chat CLI controls and delegated commands.
 
-command system 必须为 minimal interactive CLI controls 与 delegated commands 定义 command metadata 和 routing behavior。
+command system 必须为 minimal chat CLI controls 与 delegated commands 定义 command metadata 和 routing behavior。
 
-#### Scenario: Interactive control has stable identity / 交互控制有稳定身份
+#### Scenario: Chat control has stable identity / 交互控制有稳定身份
 
-- **WHEN** the interactive shell exposes `/help`, `/exit`, `/quit`, `/clear`, or `/cancel`
+- **WHEN** the chat shell exposes `/help`, `/exit`, `/quit`, `/clear`, or `/cancel`
 - **THEN** each control has stable command identity, host support metadata, side-effect metadata, and deterministic help projection
-- **中文** 当 interactive shell 暴露 `/help`、`/exit`、`/quit`、`/clear` 或 `/cancel` 时，每个 control 必须具备 stable command identity、host support metadata、side-effect metadata 和 deterministic help projection。
+- **中文** 当 chat shell 暴露 `/help`、`/exit`、`/quit`、`/clear` 或 `/cancel` 时，每个 control 必须具备 stable command identity、host support metadata、side-effect metadata 和 deterministic help projection。
 
 #### Scenario: Side-effect command is delegated / 副作用命令被委托
 
-- **WHEN** an interactive command can mutate workspace, config, credentials, runtime execution, session, memory, cache, policy, or process state
+- **WHEN** a chat command can mutate workspace, config, credentials, runtime execution, session, memory, cache, policy, or process state
 - **THEN** it routes through the owning command/runtime/platform contract rather than being executed as an anonymous CLI string
-- **中文** 当 interactive command 可能修改 workspace、config、credentials、runtime execution、session、memory、cache、policy 或 process state 时，必须通过所属 command/runtime/platform contract 路由，而不是作为匿名 CLI string 执行。
+- **中文** 当 chat command 可能修改 workspace、config、credentials、runtime execution、session、memory、cache、policy 或 process state 时，必须通过所属 command/runtime/platform contract 路由，而不是作为匿名 CLI string 执行。
 
-### Requirement: Interactive Command Results Are Host-Agnostic / 交互命令结果与 Host 无关
+### Requirement: Chat Command Results Are Host-Agnostic / Chat 命令结果与 Host 无关
 
-Interactive commands SHALL return structured results that can be rendered by CLI text, CLI stream-json, tests, and future VSCode/server host adapters.
+Chat commands SHALL return structured results that can be rendered by CLI text, CLI JSONL, tests, and future VSCode/server host adapters.
 
-interactive commands 必须返回 structured results，可被 CLI text、CLI stream-json、tests 和未来 VSCode/server host adapters 渲染。
+chat commands 必须返回 structured results，可被 CLI text、CLI JSONL、tests 和未来 VSCode/server host adapters 渲染。
 
 #### Scenario: Help projection is structured / help 投影是结构化的
 
-- **WHEN** `/help` is invoked in the interactive shell
+- **WHEN** `/help` is invoked in the chat shell
 - **THEN** the command result includes structured command names, aliases, descriptions, side-effect metadata, and host support without embedding terminal-only objects
-- **中文** 当 `/help` 在 interactive shell 中被调用时，command result 必须包含 structured command names、aliases、descriptions、side-effect metadata 和 host support，且不得嵌入 terminal-only objects。
+- **中文** 当 `/help` 在 chat shell 中被调用时，command result 必须包含 structured command names、aliases、descriptions、side-effect metadata 和 host support，且不得嵌入 terminal-only objects。
 
 #### Scenario: Unknown command returns typed error / 未知命令返回类型化错误
 
-- **WHEN** the user enters an unsupported interactive slash command
+- **WHEN** the user enters an unsupported chat slash command
 - **THEN** the command system returns a typed command error that the shell can render without throwing an unstructured exception
-- **中文** 当用户输入不支持的 interactive slash command 时，command system 必须返回 typed command error，使 shell 可以渲染而不是抛出非结构化异常。
+- **中文** 当用户输入不支持的 chat slash command 时，command system 必须返回 typed command error，使 shell 可以渲染而不是抛出非结构化异常。

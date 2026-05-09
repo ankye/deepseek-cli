@@ -34,7 +34,7 @@ runtime message bus 必须定义 owned topics，覆盖 runtime、workflow、conc
 #### Scenario: Subscriber receives authorized topic events
 
 - **WHEN** a service subscribes to a topic
-- **THEN** the bus enforces subscription permissions, redaction rules, and compatibility checks before delivering events
+- **THEN** the bus enforces subscription permissions, redaction rules, and versioning checks before delivering events
 
 ### Requirement: Delivery, Ordering, and Backpressure
 
@@ -122,7 +122,7 @@ The message bus SHALL support host projection without transferring execution own
 
 message bus 必须支持 host projection，但不得把 execution ownership 转移给 host。
 
-#### Scenario: CLI projects stream-json output
+#### Scenario: CLI projects jsonl output
 
 - **WHEN** CLI runs a kernel-backed command with stream output enabled
 - **THEN** it serializes canonical events without mutating kernel lifecycle state

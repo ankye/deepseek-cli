@@ -15,6 +15,8 @@ describe("secret and sandbox policy helpers", () => {
   it("classifies and redacts common secret fixtures deterministically", () => {
     const fixtures = [
       ["sk-live-1234567890", "api-key"],
+      ["ds-1234567890abcdef", "api-key"],
+      ["deepseek-1234567890abcdef12345678", "api-key"],
       ["Authorization: Bearer abcdefghijklmnop", "bearer-token"],
       ["-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----", "private-key"],
       ["DEEPSEEK_API_KEY=secret-value", "env-credential"],
@@ -27,6 +29,14 @@ describe("secret and sandbox policy helpers", () => {
       assert.equal(classification.kind, kind);
       assert.equal(redactSecretText(text).includes("secret-value"), false);
     }
+  });
+
+  it("does not redact provider model identifiers as api keys", () => {
+    const model = "deepseek-v4-flash";
+
+    assert.equal(classifySecretText(model).detected, false);
+    assert.equal(redactSecretText(model), model);
+    assert.deepEqual(redactJsonSecrets({ model }), { model });
   });
 
   it("redacts nested JSON values and credential-like fields", () => {
