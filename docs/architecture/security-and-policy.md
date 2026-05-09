@@ -91,3 +91,13 @@ The default failure mode is fail closed.
 If the runtime cannot prove that metadata is complete, redacted, scoped, and allowed, the work does not enter the scheduler.
 
 如果 runtime 无法证明 metadata 完整、已脱敏、有范围、且被允许，该工作不得进入 scheduler。
+
+## Checkpoint And Undo / Checkpoint 与 Undo
+
+Workspace writes and exact edits create checkpoint records through `workspace-state-management`. Public evidence contains ids, hashes, status, diagnostics, and redaction metadata; raw rollback content stays private to the workspace state manager.
+
+workspace 写入与精确编辑会通过 `workspace-state-management` 创建 checkpoint records。公开 evidence 只包含 ids、hashes、status、diagnostics 和 redaction metadata；raw rollback content 只保留在 workspace state manager 私有状态中。
+
+Restore and undo must write through the injected platform filesystem boundary and reject stale files when the current hash no longer matches the checkpoint after-hash.
+
+restore 与 undo 必须通过注入的平台 filesystem boundary 写入；当当前 hash 不再匹配 checkpoint after-hash 时必须拒绝恢复。

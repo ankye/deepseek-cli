@@ -56,7 +56,7 @@ describe("core coding tool contracts", () => {
 
   it("keeps workspace edit transaction evidence replay-safe and records only successful mutations", async () => {
     const platform = new FakePlatformRuntime("fake", workspaceRoot);
-    const workspaceState = new InMemoryWorkspaceStateManager();
+    const workspaceState = new InMemoryWorkspaceStateManager(platform);
     const registry = new InMemoryCapabilityRegistry();
     await platform.writeFile(`${workspaceRoot}/app.ts`, "before");
     await registerCoreCodingTools(registry, { platform, workspaceState, workspaceRoot });
@@ -69,12 +69,16 @@ describe("core coding tool contracts", () => {
     ) as SerializableResult<CoreToolResult>;
 
     assert.equal(result.ok, true);
-    const transaction = result.value?.evidence.metadata.transaction as { beforeHash?: string; afterHash?: string; rollback?: { content?: string }; redaction?: { fields?: readonly string[] } } | undefined;
+    const transaction = result.value?.evidence.metadata.transaction as { beforeHash?: string; afterHash?: string; rollback?: { content?: string; contentHash?: string }; redaction?: { fields?: readonly string[] } } | undefined;
+    const checkpoint = result.value?.evidence.metadata.checkpoint as { checkpointId?: string; beforeHash?: string; afterHash?: string } | undefined;
     assert.ok(transaction);
     assert.equal(transaction.beforeHash !== transaction.afterHash, true);
-    assert.equal(transaction.rollback?.content, "before");
+    assert.equal(transaction.rollback?.content, undefined);
+    assert.equal(typeof transaction.rollback?.contentHash, "string");
     assert.equal(transaction.redaction?.fields?.includes("rollback.content"), true);
+    assert.equal(typeof checkpoint?.checkpointId, "string");
     assert.equal(workspaceState.records().length, 1);
+    assert.equal(workspaceState.checkpoints().length, 1);
 
     const failed = await binding.execute(
       { path: "app.ts", expected: "missing", replacement: "bad", workspaceRoot },

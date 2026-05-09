@@ -5,9 +5,7 @@
 Defines the built-in governed coding tools that let DeepSeek CLI operate on a repository through platform, policy, scheduling, replay, and host-neutral runtime boundaries.
 
 定义内置受治理 coding tools，使 DeepSeek CLI 能通过 platform、policy、scheduling、replay 和 host-neutral runtime 边界操作仓库。
-
 ## Requirements
-
 ### Requirement: Built-In Core Coding Tool Set / 内置核心 Coding Tool 集合
 
 The system SHALL provide built-in governed coding tools for file read, file write, exact edit, glob/list files, semantic search, shell/process execution, git status, git diff, test command execution, and todo/plan state.
@@ -139,3 +137,21 @@ Every core coding tool result SHALL use a structured evidence object with redact
 - **WHEN** a file read, search, shell, git, or test command result exceeds configured limits
 - **THEN** the tool returns a preview, truncation metadata, digest or byte counts, and redaction metadata rather than unbounded raw output
 - **中文** 当 file read、search、shell、git 或 test command result 超过配置限制时，工具必须返回 preview、truncation metadata、digest 或 byte counts 和 redaction metadata，而不是无边界 raw output。
+
+### Requirement: Core Tool Checkpoint Evidence / 核心工具 Checkpoint 证据
+
+File write and edit tools SHALL include checkpoint references and redacted rollback evidence in successful mutation results.
+
+file write 与 edit tools 必须在成功 mutation result 中包含 checkpoint references 和脱敏 rollback evidence。
+
+#### Scenario: Write result exposes checkpoint id / 写入结果暴露 checkpoint id
+
+- **WHEN** a file write tool successfully mutates a workspace file
+- **THEN** the tool result metadata includes a checkpoint id, before/after hashes, and redaction metadata without raw rollback content
+- **中文** 当 file write tool 成功修改 workspace file 时，tool result metadata 必须包含 checkpoint id、before/after hashes 和 redaction metadata，且不包含 raw rollback content。
+
+#### Scenario: Edit result exposes checkpoint id / 编辑结果暴露 checkpoint id
+
+- **WHEN** an exact edit tool successfully mutates a workspace file
+- **THEN** the tool result metadata includes a checkpoint id and changed ranges while preserving redacted rollback evidence
+- **中文** 当 exact edit tool 成功修改 workspace file 时，tool result metadata 必须包含 checkpoint id 与 changed ranges，并保留脱敏 rollback evidence。

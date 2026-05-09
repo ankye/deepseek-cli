@@ -12,3 +12,7 @@
 | Matrix | `npm run test:matrix` | Platform/testing owners | Cross-platform and scenario matrix behavior. / 跨平台与场景矩阵行为。 |
 | E2E | `npm run test:e2e` | Host owners | CLI and VSCode host adapter behavior. / CLI 与 VSCode host adapter 行为。 |
 | Live | opt-in env flags | Provider owners | Real DeepSeek provider connectivity. / 真实 DeepSeek provider 连通性。 |
+
+Checkpoint/undo coverage lives in unit, contract, integration, golden, and matrix suites.
+
+checkpoint/undo 覆盖位于 unit、contract、integration、golden 和 matrix suites。

@@ -126,6 +126,7 @@ export interface WorkspaceEditTransactionEvidence extends JsonObject {
   readonly beforeHash: string;
   readonly afterHash: string;
   readonly rollback: JsonObject;
+  readonly metadata?: JsonObject;
   readonly applied: boolean;
   readonly diagnostics: readonly CoreToolDiagnostic[];
   readonly redaction: RedactionMetadata;

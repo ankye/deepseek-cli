@@ -103,7 +103,7 @@ describe("core coding tool executors", () => {
 
   it("writes and exact-edits with transactions, then rejects ambiguous edits without mutation", async () => {
     const platform = new FakePlatformRuntime("fake", workspaceRoot);
-    const workspaceState = new InMemoryWorkspaceStateManager();
+    const workspaceState = new InMemoryWorkspaceStateManager(platform);
 
     const write = await invoke(coreToolIds.fileWrite, { path: "app.ts", content: "one two one", workspaceRoot }, { platform, workspaceState });
     assert.equal(write.ok, true);
@@ -117,6 +117,12 @@ describe("core coding tool executors", () => {
     assert.equal(edited.ok, true);
     assert.equal(await platform.readFile(`${workspaceRoot}/app.ts`), "one three one");
     assert.equal(workspaceState.records().length, 2);
+    const checkpoint = edited.value?.evidence.metadata.checkpoint as { checkpointId?: string; beforeHash?: string; afterHash?: string } | undefined;
+    assert.equal(typeof checkpoint?.checkpointId, "string");
+    assert.notEqual(checkpoint?.beforeHash, checkpoint?.afterHash);
+    const undo = await workspaceState.undoLatest({ path: `${workspaceRoot}/app.ts` });
+    assert.equal(undo.ok, true);
+    assert.equal(await platform.readFile(`${workspaceRoot}/app.ts`), "one two one");
   });
 
   it("rejects path escapes before reading or mutating", async () => {

@@ -22,6 +22,7 @@ import type {
   TodoPlanInput,
   WorkspaceEditTransaction,
   WorkspaceEditTransactionEvidence,
+  WorkspaceTransactionResult,
   WorkspaceStateManager
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
@@ -205,10 +206,10 @@ async function writeFileTool(input: JsonObject, context: CapabilityExecutionCont
   const before = await deps.platform.readFile(path.value.path).catch(() => "");
   await deps.platform.writeFile(path.value.path, parsed.content);
   const transaction = editTransaction(context, path.value.path, "full-write", before, parsed.content, true, []);
-  await deps.workspaceState.transact(toWorkspaceTransaction(transaction));
+  const workspaceTransaction = await deps.workspaceState.transact(toWorkspaceTransaction(transaction, before));
   return success("file.write", [path.value.path], {
     preview: boundedText(parsed.content, parsed.limitBytes),
-    metadata: { transaction },
+    metadata: { transaction: publicTransactionEvidence(transaction, workspaceTransaction), checkpoint: workspaceTransaction.checkpoints[0] },
     replay: replay(context)
   });
 }
@@ -228,10 +229,10 @@ async function editFileTool(input: JsonObject, context: CapabilityExecutionConte
   const after = before.replace(parsed.expected, parsed.replacement);
   await deps.platform.writeFile(path.value.path, after);
   const transaction = editTransaction(context, path.value.path, "exact-match", before, after, true, []);
-  await deps.workspaceState.transact(toWorkspaceTransaction(transaction));
+  const workspaceTransaction = await deps.workspaceState.transact(toWorkspaceTransaction(transaction, before));
   return success("file.edit", [path.value.path], {
     preview: boundedText(after, parsed.limitBytes),
-    metadata: { transaction, changedRanges: [{ start: before.indexOf(parsed.expected), oldLength: parsed.expected.length, newLength: parsed.replacement.length }] },
+    metadata: { transaction: publicTransactionEvidence(transaction, workspaceTransaction), checkpoint: workspaceTransaction.checkpoints[0], changedRanges: [{ start: before.indexOf(parsed.expected), oldLength: parsed.expected.length, newLength: parsed.replacement.length }] },
     replay: replay(context)
   });
 }
@@ -407,12 +408,33 @@ function editTransaction(
   };
 }
 
-function toWorkspaceTransaction(evidence: WorkspaceEditTransactionEvidence): WorkspaceEditTransaction {
+function toWorkspaceTransaction(evidence: WorkspaceEditTransactionEvidence, rollbackContent: string): WorkspaceEditTransaction {
   return {
     id: evidence.id,
     sessionId: evidence.sessionId ?? asId<"session">("session-unbound"),
-    edits: [{ path: evidence.path, precondition: evidence.precondition, applied: evidence.applied }],
-    rollback: evidence.rollback
+    edits: [{
+      path: evidence.path,
+      precondition: evidence.precondition,
+      applied: evidence.applied,
+      beforeHash: evidence.beforeHash,
+      afterHash: evidence.afterHash
+    }],
+    rollback: {
+      content: rollbackContent,
+      contentHash: evidence.rollback.contentHash,
+      redaction: { class: "sensitive", fields: ["content"] }
+    }
+  };
+}
+
+function publicTransactionEvidence(evidence: WorkspaceEditTransactionEvidence, result: WorkspaceTransactionResult): WorkspaceEditTransactionEvidence {
+  return {
+    ...evidence,
+    rollback: { contentHash: evidence.rollback.contentHash },
+    metadata: {
+      checkpointIds: result.checkpoints.map((checkpoint) => checkpoint.checkpointId)
+    },
+    redaction: { class: "internal", fields: ["path", "rollback.content"] }
   };
 }
 

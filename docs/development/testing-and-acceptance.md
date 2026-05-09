@@ -51,6 +51,18 @@ npm run smoke:headless
 | Matrix tests / 矩阵测试 | `npm run test:matrix` | Platform and scenario matrix behavior. / 平台与场景矩阵行为。 |
 | E2E tests / E2E | `npm run test:e2e` | CLI and VSCode host adapters consume runtime events correctly. / CLI 与 VSCode host 正确消费 runtime events。 |
 
+## Recovery Regression / 恢复回归
+
+Checkpoint and undo changes must cover:
+
+checkpoint 与 undo 变更必须覆盖：
+
+- unit tests for checkpoint creation, restore success, stale rejection, empty undo, and secret-safe evidence. / unit tests 覆盖 checkpoint creation、restore success、stale rejection、empty undo 和 secret-safe evidence。
+- contract tests for DTO shape and redaction-safe public checkpoint records. / contract tests 覆盖 DTO shape 和脱敏安全的 public checkpoint records。
+- integration tests proving core tools emit checkpoint metadata through runtime events. / integration tests 证明 core tools 通过 runtime events 输出 checkpoint metadata。
+- golden tests proving replay traces do not contain raw rollback content. / golden tests 证明 replay traces 不包含 raw rollback content。
+- matrix tests proving stale restore rejection is consistent across fake platform modes. / matrix tests 证明 stale restore rejection 在 fake platform modes 中一致。
+
 ## Acceptance Evidence / 验收证据
 
 Latest acceptance evidence lives under:

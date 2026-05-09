@@ -42,7 +42,8 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     }
   });
 
-  return {
+  const platform = new FakePlatformRuntime();
+  const dependencies: RuntimeDependencies = {
     protocol: new PipelineProtocolRouter([], runtimePlaceholder),
     bus: new InMemoryRuntimeMessageBus(),
     workflow: new SingleTurnWorkflowOrchestrator(),
@@ -62,12 +63,12 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     cache: new InMemoryCacheManager(),
     credentials: new FakeCredentialManager(),
     usage: new InMemoryUsageBudgetManager(),
-    workspaceState: new InMemoryWorkspaceStateManager(),
+    workspaceState: new InMemoryWorkspaceStateManager(platform),
     policy: new DefaultPolicyEngine(),
     approvals: new HeadlessApprovalBroker(false),
     sandbox: new DevelopmentSandboxRuntime(),
     sessions: new InMemorySessionStore(),
-    platform: new FakePlatformRuntime(),
+    platform,
     evolution: new InMemoryEvolutionEngine(),
     codeIntelligence: new NullCodeIntelligenceService(),
     remote: new NoopRemoteRuntimeConnectivity(),
@@ -76,6 +77,7 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     observability: new InMemoryObservabilitySink(),
     regression: new DeterministicRegressionHarness()
   };
+  return dependencies;
 }
 
 export async function registerDeterministicCoreTools(deps: RuntimeDependencies, workspaceRoot = "/workspace"): Promise<void> {
