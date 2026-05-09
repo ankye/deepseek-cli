@@ -1,6 +1,7 @@
 import type { JsonObject, SerializableResult, TraceContext } from "./common.js";
 import type { CapabilityId } from "./ids.js";
 import type { ExecutionEnvelope } from "./runtime.js";
+import type { ResourceScope, SandboxAuditEvidence, SandboxRequirement, SecretRedactionDecision } from "./security.js";
 
 export type SideEffectLevel = "none" | "read" | "write" | "network" | "process";
 export type TrustStatus = "trusted" | "workspace" | "untrusted" | "quarantined";
@@ -8,6 +9,7 @@ export type TrustStatus = "trusted" | "workspace" | "untrusted" | "quarantined";
 export interface CapabilityManifest {
   readonly id: CapabilityId;
   readonly name: string;
+  readonly description?: string;
   readonly source: string;
   readonly version: string;
   readonly trust: TrustStatus;
@@ -16,6 +18,15 @@ export interface CapabilityManifest {
   readonly inputSchema: JsonObject;
   readonly outputSchema: JsonObject;
   readonly enabled: boolean;
+  readonly timeoutMs?: number;
+  readonly replayPolicy?: JsonObject;
+  readonly projection?: JsonObject;
+  readonly compatibility?: JsonObject;
+  readonly secretExposure?: SecretRedactionDecision;
+  readonly resourceScope?: ResourceScope;
+  readonly sandboxRequirements?: SandboxRequirement;
+  readonly audit?: SandboxAuditEvidence;
+  readonly security?: JsonObject;
 }
 
 export interface CapabilityExecutionContext {

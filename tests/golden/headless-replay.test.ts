@@ -25,6 +25,8 @@ describe("golden replay", () => {
     assert.deepEqual(
       events.map((event) => event.kind),
       [
+        "context.projection.started",
+        "context.projection.completed",
         "kernel.request.accepted",
         "workflow.opened",
         "execution.envelope.created",

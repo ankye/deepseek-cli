@@ -8,6 +8,7 @@ export const packages = [
   "agent-management",
   "model-gateway",
   "tool-intent-preflight",
+  "core-coding-tools",
   "context-engine",
   "memory-cache-management",
   "capability-registry",
@@ -42,8 +43,9 @@ export const packageDependencies = {
   "communication-protocol": ["platform-contracts"],
   "concurrency-orchestration": ["platform-contracts"],
   "config": ["platform-contracts"],
-  "context-engine": ["platform-contracts"],
+  "context-engine": ["platform-contracts", "policy-sandbox"],
   "credential-auth-management": ["platform-contracts"],
+  "core-coding-tools": ["platform-contracts", "capability-registry", "workspace-state-management", "policy-sandbox"],
   "distribution-update-management": ["platform-contracts"],
   "evolution-engine": ["platform-contracts"],
   "extension-system": ["platform-contracts"],
@@ -72,6 +74,7 @@ export const packageDependencies = {
     "agent-management",
     "model-gateway",
     "tool-intent-preflight",
+    "core-coding-tools",
     "context-engine",
     "memory-cache-management",
     "capability-registry",
@@ -103,6 +106,7 @@ export const packageDependencies = {
     "agent-management",
     "model-gateway",
     "tool-intent-preflight",
+    "core-coding-tools",
     "context-engine",
     "memory-cache-management",
     "capability-registry",
@@ -128,6 +132,17 @@ export const packageDependencies = {
 };
 
 export const appDependencies = {
-  cli: ["platform-contracts", "communication-protocol", "runtime", "testing-regression", "config", "credential-auth-management", "platform-abstraction", "model-gateway"],
+  cli: [
+    "platform-contracts",
+    "communication-protocol",
+    "runtime",
+    "testing-regression",
+    "core-coding-tools",
+    "command-system",
+    "config",
+    "credential-auth-management",
+    "platform-abstraction",
+    "model-gateway"
+  ],
   "vscode-extension": ["platform-contracts", "communication-protocol", "runtime"]
 };

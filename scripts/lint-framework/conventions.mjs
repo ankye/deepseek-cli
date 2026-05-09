@@ -126,5 +126,47 @@ export const lintConventions = {
         ownerPackage: "runtime-message-bus"
       }
     ]
+  },
+  contextProjection: {
+    approvedPackages: new Set(["context-engine", "runtime", "testing-regression"]),
+    serviceNames: new Set(["context", "contextEngine"]),
+    methods: new Set(["addNode", "project", "projectGraph"])
+  },
+  platformAccess: {
+    approvedPackages: new Set(["platform-abstraction", "workspace-state-management", "session-store", "testing-regression"]),
+    forbiddenImports: new Set([
+      "fs",
+      "node:fs",
+      "fs/promises",
+      "node:fs/promises",
+      "child_process",
+      "node:child_process",
+      "keytar",
+      "keychain",
+      "node-keytar",
+      "clipboardy",
+      "open",
+      "sharp"
+    ]),
+    forbiddenProcessProperties: new Set(["platform", "arch"]),
+    forbiddenSearchCommands: new Set(["rg", "grep", "findstr", "Select-String", "select-string"]),
+    forbiddenNativeNames: [/keytar/i, /keychain/i, /clipboard/i, /native/i, /sharp/i]
+  },
+  secretSandbox: {
+    approvedPackages: new Set([
+      "platform-contracts",
+      "policy-sandbox",
+      "runtime",
+      "core-coding-tools",
+      "platform-abstraction",
+      "credential-auth-management",
+      "command-system",
+      "model-gateway",
+      "workspace-state-management",
+      "session-store",
+      "testing-regression"
+    ]),
+    forbiddenSandboxProperties: new Set(["sandboxProfile", "sandboxRequirements", "sandboxCapabilities"]),
+    forbiddenSecretProperties: new Set(["apiKey", "token", "secret", "password", "credential"])
   }
 };

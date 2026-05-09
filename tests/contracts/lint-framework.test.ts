@@ -116,6 +116,23 @@ const conventions = {
         ownerPackage: "runtime-message-bus"
       }
     ]
+  },
+  contextProjection: {
+    approvedPackages: new Set(["context-engine", "runtime", "testing-regression"]),
+    serviceNames: new Set(["context", "contextEngine"]),
+    methods: new Set(["addNode", "project", "projectGraph"])
+  },
+  platformAccess: {
+    approvedPackages: new Set(["platform-abstraction", "testing-regression"]),
+    forbiddenImports: new Set(["child_process", "node:child_process", "keytar", "clipboardy", "sharp"]),
+    forbiddenProcessProperties: new Set(["platform", "arch"]),
+    forbiddenSearchCommands: new Set(["rg", "grep", "findstr", "Select-String", "select-string"]),
+    forbiddenNativeNames: [/keytar/i, /keychain/i, /clipboard/i, /native/i, /sharp/i]
+  },
+  secretSandbox: {
+    approvedPackages: new Set(["platform-contracts", "policy-sandbox", "runtime", "credential-auth-management", "model-gateway", "platform-abstraction", "testing-regression"]),
+    forbiddenSandboxProperties: new Set(["sandboxProfile", "sandboxRequirements", "sandboxCapabilities"]),
+    forbiddenSecretProperties: new Set(["apiKey", "token", "secret", "password", "credential"])
   }
 };
 
@@ -287,6 +304,57 @@ describe("architecture lint framework", () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/packages/credential-auth-management/src/index.ts", "export const env = process.env.DEEPSEEK_API_KEY;\n");
       await writeFixtureFile(root, "src/packages/model-gateway/test/provider.test.ts", "export const env = process.env.DEEPSEEK_API_KEY;\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.deepEqual(JSON.parse(result.stdout), []);
+    });
+  });
+
+  it("rejects direct platform primitive access outside platform owners", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/apps/cli/src/index.ts", "import { spawn } from \"node:child_process\";\nexport const os = process.platform;\nexport function search() { spawn(\"rg\", [\"needle\"]); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "import keytar from \"keytar\";\nexport async function bad() { return keytar.getPassword(\"deepseek\", \"api\"); }\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("platform/no-direct-platform-primitive-access"), true);
+    });
+  });
+
+  it("rejects direct secret, filesystem, process, native, and sandbox bypasses outside owners", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/apps/cli/src/index.ts", "import { writeFileSync } from \"node:fs\";\nexport const token = process.env.DEEPSEEK_API_KEY;\nexport function bad() { writeFileSync(\"secret.txt\", token ?? \"\"); }\n");
+      await writeFixtureFile(root, "src/packages/model-gateway/src/index.ts", "export const request = { apiKey: \"raw\", sandboxProfile: \"none\" };\n");
+      await writeFixtureFile(root, "src/packages/plugin-system/src/index.ts", "import { spawnSync } from \"node:child_process\";\nexport function bad() { return spawnSync(\"rg\", [\"secret\"]); }\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("secret-sandbox/no-direct-secret-or-sandbox-bypass"), true);
+      assert.equal(ruleIds.has("platform/no-direct-platform-primitive-access"), true);
+      assert.equal(ruleIds.has("provider/no-direct-credential-access"), true);
+    });
+  });
+
+  it("rejects direct context projection assembly outside approved owners", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { return deps.context.projectGraph({}); }\n");
+      await writeFixtureFile(root, "src/packages/model-gateway/src/index.ts", "export async function badProvider(context) { return context.project(\"session\", \"prompt\"); }\n");
+      await writeFixtureFile(root, "src/packages/runtime/src/index.ts", "export async function ok(deps) { return deps.context.projectGraph({}); }\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("context-projection/no-direct-context-assembly"), true);
+    });
+  });
+
+  it("allows platform owners and tests to access platform primitives", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/packages/platform-abstraction/src/index.ts", "import { spawn } from \"node:child_process\";\nexport const os = process.platform;\nexport function search() { spawn(\"rg\", [\"needle\"]); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/test/platform.test.ts", "import { spawn } from \"node:child_process\";\nexport const os = process.platform;\nexport function search() { spawn(\"rg\", [\"needle\"]); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr || result.stdout);

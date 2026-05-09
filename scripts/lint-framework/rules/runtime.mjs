@@ -49,6 +49,10 @@ export const noLegacyRuntimeDirectExecution = createRule({
     const classEnd = classStart >= 0 ? source.indexOf("\nexport function createRuntimeKernel", classStart) : -1;
     const insideKernel = classStart >= 0 && classEnd >= 0 && node.getStart(node.getSourceFile()) > classStart && node.getStart(node.getSourceFile()) < classEnd;
     if (insideKernel && serviceName === "bus" && methodName === "publish") return;
+    const recorderStart = prefix.lastIndexOf("async function recordRuntimeAdapterEvent");
+    const recorderEnd = recorderStart >= 0 ? source.indexOf("\nfunction runtimeTrace", recorderStart) : -1;
+    const insideRuntimeAdapterRecorder = recorderStart >= 0 && recorderEnd >= 0 && node.getStart(node.getSourceFile()) > recorderStart && node.getStart(node.getSourceFile()) < recorderEnd;
+    if (insideRuntimeAdapterRecorder && serviceName === "bus" && methodName === "publish") return;
 
     context.report(this.id, node.expression.name, `${serviceName}.${methodName} reintroduces a legacy direct runtime execution path; delegate through RuntimeKernel`);
   }

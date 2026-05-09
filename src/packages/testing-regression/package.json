@@ -17,6 +17,7 @@
     "@deepseek/concurrency-orchestration": "0.1.0",
     "@deepseek/agent-management": "0.1.0",
     "@deepseek/model-gateway": "0.1.0",
+    "@deepseek/core-coding-tools": "0.1.0",
     "@deepseek/context-engine": "0.1.0",
     "@deepseek/memory-cache-management": "0.1.0",
     "@deepseek/capability-registry": "0.1.0",

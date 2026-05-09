@@ -26,4 +26,8 @@ export class InMemoryWorkspaceStateManager implements WorkspaceStateManager {
   async transact(transaction: WorkspaceEditTransaction): Promise<void> {
     this.transactions.push(transaction);
   }
+
+  records(): readonly WorkspaceEditTransaction[] {
+    return [...this.transactions];
+  }
 }

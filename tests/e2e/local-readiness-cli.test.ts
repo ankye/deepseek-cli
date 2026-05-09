@@ -82,4 +82,19 @@ describe("local readiness CLI", () => {
     assert.equal(parsed.live?.eventKinds?.includes("delta"), true);
     assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
   });
+
+  it("reports platform provider diagnostics while doctor stays offline", async () => {
+    const lines = await capture(["doctor", "--output", "json"]);
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      command?: string;
+      checks?: readonly { id?: string; metadata?: Record<string, unknown> }[];
+      metadata?: { liveRequested?: boolean };
+    };
+
+    assert.equal(parsed.command, "doctor");
+    assert.equal(parsed.metadata?.liveRequested, false);
+    assert.equal(parsed.checks?.some((check) => check.id === "platform.descriptor"), true);
+    assert.equal(parsed.checks?.some((check) => check.id === "platform.search" && typeof check.metadata?.provider === "string"), true);
+    assert.equal(parsed.checks?.some((check) => check.id === "doctor.live"), true);
+  });
 });

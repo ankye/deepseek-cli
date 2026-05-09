@@ -1,5 +1,7 @@
 import type { JsonObject } from "./common.js";
 import type { AuditId } from "./ids.js";
+import type { PlatformExecutionContext } from "./platform.js";
+import type { ResourceScope, SandboxAuditEvidence, SandboxDecision, SandboxRequirement, SecretRedactionDecision } from "./security.js";
 
 export type PolicyAction = "allow" | "ask" | "deny" | "rewrite" | "require-sandbox" | "quarantine";
 
@@ -8,6 +10,11 @@ export interface PolicyRequest {
   readonly action: string;
   readonly resource: string;
   readonly metadata: JsonObject;
+  readonly platform?: PlatformExecutionContext;
+  readonly secret?: SecretRedactionDecision;
+  readonly resourceScope?: ResourceScope;
+  readonly sandbox?: SandboxRequirement;
+  readonly auditEvidence?: SandboxAuditEvidence;
 }
 
 export interface PolicyDecision {
@@ -16,6 +23,9 @@ export interface PolicyDecision {
   readonly rewritten?: JsonObject;
   readonly audit?: JsonObject;
   readonly sandboxProfile?: string;
+  readonly secret?: SecretRedactionDecision;
+  readonly sandbox?: SandboxDecision;
+  readonly auditEvidence?: SandboxAuditEvidence;
 }
 
 export interface ApprovalRequest extends PolicyRequest {

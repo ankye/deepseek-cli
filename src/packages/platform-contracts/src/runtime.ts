@@ -20,6 +20,7 @@ import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
 import type { PluginManager } from "./plugin.js";
 import type { ApprovalBroker, PolicyEngine, SandboxRuntime } from "./policy.js";
+import type { ResourceScope, SandboxAuditEvidence, SandboxRequirement, SecretRedactionDecision } from "./security.js";
 import type { ProtocolRouter } from "./protocol.js";
 import type { RemoteRuntimeConnectivity } from "./remote.js";
 import type { RuntimeMessageBus } from "./bus.js";
@@ -53,6 +54,11 @@ export type RuntimeEventKind =
   | "capability.cancelled"
   | "session.started"
   | "turn.started"
+  | "context.projection.started"
+  | "context.projection.cache-hit"
+  | "context.projection.degraded"
+  | "context.projection.rejected"
+  | "context.projection.completed"
   | "workflow.step"
   | "bus.recorded"
   | "model.delta"
@@ -127,6 +133,10 @@ export interface ExecutionEnvelope extends JsonObject {
   readonly trace: TraceContext;
   readonly telemetry: JsonObject;
   readonly replayPolicy: JsonObject;
+  readonly secretExposure: SecretRedactionDecision;
+  readonly resourceScope: ResourceScope;
+  readonly sandboxRequirements: SandboxRequirement;
+  readonly audit: SandboxAuditEvidence;
   readonly createdAt: string;
 }
 
@@ -162,6 +172,7 @@ export interface RuntimeKernelDependencies {
   readonly sandbox: SandboxRuntime;
   readonly sessions: SessionStore;
   readonly observability: ObservabilitySink;
+  readonly platform: PlatformRuntime;
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly logger: RuntimeKernelLogger;

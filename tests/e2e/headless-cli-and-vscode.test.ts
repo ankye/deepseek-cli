@@ -37,6 +37,47 @@ describe("host adapter smoke", () => {
     assert.equal(events.some((event) => event.trace?.traceId), true);
   });
 
+  it("runs CLI core tools smoke through runtime events without live provider access", async () => {
+    const lines: string[] = [];
+    await runCli(["tools-smoke", "--output", "stream-json"], (line) => lines.push(line));
+    const events = lines.map((line) => JSON.parse(line));
+
+    assert.equal(events.filter((event) => event.kind === "execution.envelope.created").length, 3);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.code === "KERNEL_POLICY_DENIED"), true);
+    assert.equal(events.some((event) => event.kind === "scheduler.completed"), true);
+    assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
+  });
+
+  it("runs scripted minimal interactive CLI prompt, help, and exit", async () => {
+    const lines: string[] = [];
+    await runCli(["interactive", "--output", "stream-json"], (line) => lines.push(line), ["/help\nhello e2e\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false });
+    const events = lines.map((line) => JSON.parse(line));
+
+    assert.equal(events.some((event) => event.kind === "interactive.started"), true);
+    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "help"), true);
+    assert.equal(events.some((event) => event.kind === "execution.envelope.created"), true);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "exit"), true);
+    assert.equal(events.at(-1)?.kind, "interactive.completed");
+    assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
+  });
+
+  it("runs scriptable session resume and fork failures without live provider access", async () => {
+    const resumeLines: string[] = [];
+    await runCli(["session", "resume", "session-missing", "--output", "stream-json"], (line) => resumeLines.push(line));
+    const resume = JSON.parse(resumeLines[0] ?? "{}");
+    assert.equal(resume.ok, false);
+    assert.equal(resume.error.code, "SESSION_NOT_FOUND");
+
+    const forkLines: string[] = [];
+    await runCli(["session", "fork", "session-missing", "--output", "stream-json"], (line) => forkLines.push(line));
+    const fork = JSON.parse(forkLines[0] ?? "{}");
+    assert.equal(fork.ok, false);
+    assert.equal(fork.error.code, "SESSION_NOT_FOUND");
+    assert.equal([...resumeLines, ...forkLines].join("\n").includes("sk-live-secret-value"), false);
+  });
+
   it("runs the built CLI binary with traceable runtime metadata", () => {
     assert.equal(existsSync("src/apps/cli/dist/index.js"), true, "run npm run build:cli before npm run test:e2e");
     const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "-p", "built e2e", "--output", "stream-json"], {
@@ -52,6 +93,8 @@ describe("host adapter smoke", () => {
     assert.deepEqual(
       events.map((event) => event.kind),
       [
+        "context.projection.started",
+        "context.projection.completed",
         "kernel.request.accepted",
         "workflow.opened",
         "execution.envelope.created",
@@ -74,6 +117,43 @@ describe("host adapter smoke", () => {
     }
     assert.equal(events.some((event) => event.taskId), true);
     assert.equal(events.some((event) => event.kind === "model.delta"), false);
+  });
+
+  it("keeps raw secret fixtures out of CLI text and stream-json output", () => {
+    const secret = "sk-live-1234567890";
+    const text = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "-p", secret], {
+      cwd: process.cwd(),
+      encoding: "utf8"
+    });
+    const stream = spawnSync(process.execPath, ["--import", "tsx", "src/apps/cli/src/index.ts", "-p", secret, "--output", "stream-json"], {
+      cwd: process.cwd(),
+      encoding: "utf8"
+    });
+
+    assert.equal(text.stdout.includes(secret), false);
+    assert.equal(text.stderr.includes(secret), false);
+    assert.equal(stream.stdout.includes(secret), false);
+    assert.equal(stream.stderr.includes(secret), false);
+    assert.equal(stream.stdout.includes("[REDACTED"), true);
+  });
+
+  it("runs the built CLI binary in scripted interactive mode", () => {
+    assert.equal(existsSync("src/apps/cli/dist/index.js"), true, "run npm run build:cli before npm run test:e2e");
+    const result = spawnSync(process.execPath, ["src/apps/cli/dist/index.js", "interactive", "--output", "stream-json"], {
+      encoding: "utf8",
+      input: "/help\nbuilt interactive\n/cancel\n/exit\n"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const events = result.stdout
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+
+    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "help"), true);
+    assert.equal(events.some((event) => event.kind === "interactive.command.completed" && event.data.action === "cancel"), true);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
+    assert.equal(events.at(-1)?.kind, "interactive.completed");
   });
 
   it("keeps the VSCode bridge transport-backed and isolated from CLI rendering", async () => {

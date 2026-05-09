@@ -5,6 +5,7 @@ import type {
   JsonObject,
   JsonValue,
   ModelLiveVerificationResult,
+  PlatformDescriptor,
   ReadinessCheck,
   ReadinessCommandName,
   ReadinessCommandResult,
@@ -14,6 +15,19 @@ import type {
 } from "@deepseek/platform-contracts";
 import type { StoredCredentialReference } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
+
+export type InteractiveControlCommandName = "help" | "exit" | "quit" | "clear" | "cancel" | "resume" | "fork";
+export type InteractiveControlAction = "help" | "exit" | "clear" | "cancel" | "resume" | "fork";
+
+export interface InteractiveControlResult extends JsonObject {
+  readonly action: InteractiveControlAction;
+  readonly command: InteractiveControlCommandName;
+  readonly message: string;
+  readonly terminal: boolean;
+  readonly controls?: readonly JsonObject[];
+  readonly sessionId?: string;
+  readonly parentSessionId?: string;
+}
 
 export class InMemoryCommandSystem implements CommandSystem {
   private readonly manifests = new Map<string, CommandManifest>();
@@ -51,6 +65,7 @@ export interface LocalReadinessEnvironment {
   readonly envFile?: Readonly<Record<string, string | undefined>>;
   readonly ignoredPaths: readonly string[];
   readonly availableCommands: readonly string[];
+  readonly platformDescriptor?: PlatformDescriptor;
   readonly config?: JsonObject;
   readonly resolvedConfig?: ResolvedConfig;
   readonly credentialReferences?: readonly StoredCredentialReference[];
@@ -117,6 +132,49 @@ export async function invokeLocalReadinessCommand(command: ReadinessCommandName,
 }
 
 export const readinessCommandNames = ["init", "config", "auth", "doctor", "privacy", "verify-install"] as const satisfies readonly ReadinessCommandName[];
+export const interactiveControlCommandNames = ["help", "exit", "quit", "clear", "cancel", "resume", "fork"] as const satisfies readonly InteractiveControlCommandName[];
+const registeredInteractiveControlCommandNames = ["help", "exit", "clear", "cancel", "resume", "fork"] as const satisfies readonly InteractiveControlCommandName[];
+
+export async function registerInteractiveControlCommands(commandSystem: CommandSystem): Promise<void> {
+  for (const command of registeredInteractiveControlCommandNames) {
+    await commandSystem.register(interactiveControlManifest(command), async (input) => runInteractiveControlCommand(command, input));
+  }
+}
+
+export async function invokeInteractiveControlCommand(command: InteractiveControlCommandName, input: JsonObject = {}): Promise<SerializableResult<InteractiveControlResult>> {
+  return invokeInteractiveCommand(command, input);
+}
+
+export async function invokeInteractiveCommand(nameOrAlias: string, input: JsonObject = {}): Promise<SerializableResult<InteractiveControlResult>> {
+  const commandSystem = new InMemoryCommandSystem();
+  await registerInteractiveControlCommands(commandSystem);
+  const result = await commandSystem.invoke(nameOrAlias, input);
+  if (!result.ok || !isInteractiveControlResult(result.value)) {
+    return { ok: false, error: result.error ?? { code: "INTERACTIVE_COMMAND_FAILED", message: nameOrAlias, retryable: false, redaction: { class: "public" } } };
+  }
+  return { ok: true, value: result.value };
+}
+
+export function interactiveControlManifest(command: InteractiveControlCommandName): CommandManifest {
+  const registeredCommand = command === "quit" ? "exit" : command;
+  return {
+    id: interactiveCommandId(registeredCommand),
+    name: registeredCommand,
+    aliases: registeredCommand === "exit" ? ["quit"] : [],
+    modes: ["user", "host"],
+    hostSupport: ["cli"],
+    sideEffect: interactiveControlSideEffect(registeredCommand),
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        reason: { type: "string" },
+        sessionId: { type: "string" },
+        parentSessionId: { type: "string" }
+      }
+    }
+  };
+}
 
 export function readinessManifest(command: ReadinessCommandName): CommandManifest {
   return {
@@ -132,6 +190,57 @@ export function readinessManifest(command: ReadinessCommandName): CommandManifes
       properties: command === "init" ? { force: { type: "boolean" } } : {}
     }
   };
+}
+
+function runInteractiveControlCommand(command: InteractiveControlCommandName, input: JsonObject): SerializableResult<InteractiveControlResult> {
+  const action = interactiveControlAction(command);
+  return {
+    ok: true,
+    value: {
+      action,
+      command,
+      terminal: action === "exit",
+      message: interactiveControlMessage(command, input),
+      ...(typeof input.sessionId === "string" ? { sessionId: input.sessionId } : {}),
+      ...(typeof input.parentSessionId === "string" ? { parentSessionId: input.parentSessionId } : {}),
+      ...(action === "help" ? { controls: interactiveHelpProjection() } : {})
+    }
+  };
+}
+
+function interactiveControlAction(command: InteractiveControlCommandName): InteractiveControlAction {
+  if (command === "quit") return "exit";
+  return command;
+}
+
+function interactiveControlSideEffect(command: InteractiveControlCommandName): string {
+  const action = interactiveControlAction(command);
+  if (action === "cancel") return "runtime-control";
+  if (action === "exit") return "host-lifecycle";
+  if (action === "clear") return "host-render";
+  if (action === "resume" || action === "fork") return "session-control";
+  return "none";
+}
+
+function interactiveControlMessage(command: InteractiveControlCommandName, input: JsonObject): string {
+  const action = interactiveControlAction(command);
+  if (action === "help") return "Interactive controls are available.";
+  if (action === "exit") return "Interactive session closing.";
+  if (action === "clear") return "Interactive display cleared.";
+  if (action === "resume") return typeof input.sessionId === "string" ? `Resume requested: ${input.sessionId}` : "Resume requires a session id.";
+  if (action === "fork") return typeof input.parentSessionId === "string" ? `Fork requested: ${input.parentSessionId}` : "Fork requires a parent session id.";
+  const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : "user requested cancellation";
+  return `Cancellation requested: ${reason}`;
+}
+
+export function interactiveHelpProjection(): readonly JsonObject[] {
+  return registeredInteractiveControlCommandNames.map((command) => ({
+    name: `/${command}`,
+    aliases: interactiveControlManifest(command).aliases.map((alias) => `/${alias}`),
+    action: interactiveControlAction(command),
+    sideEffect: interactiveControlSideEffect(command),
+    hostSupport: ["cli"]
+  }));
 }
 
 function readinessResult(
@@ -214,6 +323,39 @@ function authChecks(credential: ReadinessCredentialReference): readonly Readines
 }
 
 function platformChecks(environment: LocalReadinessEnvironment): readonly ReadinessCheck[] {
+  const descriptor = environment.platformDescriptor;
+  if (descriptor) {
+    return [
+      check("platform.descriptor", "Platform descriptor", descriptor.degraded ? "warn" : "pass", `Platform ${descriptor.os}/${descriptor.environmentKind} (${descriptor.architecture}) detected.`, [], {
+        os: descriptor.os,
+        environmentKind: descriptor.environmentKind,
+        architecture: descriptor.architecture,
+        degraded: descriptor.degraded,
+        degradedReasons: descriptor.degradedReasons
+      }),
+      check("platform.shell", "Shell provider", descriptor.shell.available ? "pass" : "warn", descriptor.shell.available ? `Shell provider ${descriptor.shell.provider} is available.` : "Shell provider is unavailable.", descriptor.shell.diagnostics.flatMap((diagnostic) => diagnostic.suggestedActions), {
+        profile: descriptor.shell.profile,
+        provider: descriptor.shell.provider,
+        status: descriptor.shell.status,
+        diagnostics: descriptor.shell.diagnostics.map((diagnostic) => diagnostic.code)
+      }),
+      check("platform.search", "Search provider", descriptor.search.status === "available" ? "pass" : "warn", `Search provider ${descriptor.search.provider} selected.`, descriptor.search.diagnostics.flatMap((diagnostic) => diagnostic.suggestedActions), {
+        provider: descriptor.search.provider,
+        status: descriptor.search.status,
+        fallbackChain: descriptor.search.fallbackChain,
+        timeoutMs: descriptor.search.timeoutMs,
+        diagnostics: descriptor.search.diagnostics.map((diagnostic) => diagnostic.code)
+      }),
+      check("platform.secure-storage", "Secure storage", descriptor.secureStorage.status === "available" ? "pass" : "warn", `Secure storage provider: ${descriptor.secureStorage.provider}.`, descriptor.secureStorage.diagnostics.flatMap((diagnostic) => diagnostic.suggestedActions), {
+        provider: descriptor.secureStorage.provider,
+        status: descriptor.secureStorage.status,
+        diagnostics: descriptor.secureStorage.diagnostics.map((diagnostic) => diagnostic.code)
+      }),
+      check("platform.native", "Native capabilities", descriptor.nativeCapabilities.every((capability) => capability.status !== "unavailable") ? "pass" : "warn", `${descriptor.nativeCapabilities.filter((capability) => capability.status === "unavailable").length} native capability probe(s) unavailable.`, descriptor.nativeCapabilities.flatMap((capability) => capability.diagnostics.flatMap((diagnostic) => diagnostic.suggestedActions)), {
+        capabilities: descriptor.nativeCapabilities.map((capability) => ({ name: capability.capability, status: capability.status, provider: capability.provider }))
+      })
+    ];
+  }
   return [
     check("platform.os", "Platform", "pass", `Platform detected: ${environment.platform}.`, [], { platform: environment.platform }),
     check("platform.node", "Node.js", environment.nodeVersion.startsWith("v") ? "pass" : "warn", `Node version: ${environment.nodeVersion}.`, [], { nodeVersion: environment.nodeVersion }),
@@ -314,6 +456,10 @@ function commandId(command: ReadinessCommandName): CommandId {
   return asId<"command">(`readiness.${command}`);
 }
 
+function interactiveCommandId(command: InteractiveControlCommandName): CommandId {
+  return asId<"command">(`interactive.${command}`);
+}
+
 function hasValue(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -322,4 +468,12 @@ const knownConfigKeys = new Set(["model", "profile", "telemetry", "privacy", "sa
 
 export function isReadinessResult(value: JsonValue | undefined): value is ReadinessCommandResult {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "command" in value && "checks" in value;
+}
+
+export function isInteractiveControlCommandName(value: string | undefined): value is InteractiveControlCommandName {
+  return typeof value === "string" && interactiveControlCommandNames.includes(value as InteractiveControlCommandName);
+}
+
+export function isInteractiveControlResult(value: JsonValue | undefined): value is InteractiveControlResult {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "action" in value && "command" in value && "terminal" in value;
 }

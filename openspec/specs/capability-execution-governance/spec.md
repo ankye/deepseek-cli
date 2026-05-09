@@ -195,3 +195,39 @@ governed execution pipeline 必须支持 provider-specific preflight profiles，
 - **WHEN** provider-specific repair is applied
 - **THEN** preflight result records provider id, profile id when available, repair actions, and diagnostics for replay and audit
 
+### Requirement: Core Tools Use Governed Execution / 核心工具使用受治理执行
+
+Every executable core coding tool SHALL be invoked through execution envelope creation, policy evaluation, scheduler submission, platform provider context, runtime message bus events, and replayable session records.
+
+每个 executable core coding tool 必须通过 execution envelope creation、policy evaluation、scheduler submission、platform provider context、runtime message bus events 和 replayable session records 调用。
+
+#### Scenario: Tool invocation enters runtime kernel / 工具调用进入 runtime kernel
+
+- **WHEN** a host, model loop, or test invokes a core coding tool
+- **THEN** the invocation enters `RuntimeKernel.execute` or an equivalent governed kernel entry point before the tool executor runs
+- **中文** 当 host、model loop 或 test 调用 core coding tool 时，invocation 必须在 tool executor 运行前进入 `RuntimeKernel.execute` 或等价受治理 kernel entry point。
+
+#### Scenario: Tool denial prevents scheduling / 工具拒绝阻止调度
+
+- **WHEN** policy denies a write, shell, test, or platform-unavailable core tool invocation
+- **THEN** no scheduler task is created and the canonical event stream includes a typed rejection
+- **中文** 当 policy 拒绝 write、shell、test 或 platform-unavailable core tool invocation 时，不得创建 scheduler task，canonical event stream 必须包含 typed rejection。
+
+### Requirement: Envelope Declares Secret And Sandbox Requirements / Envelope 声明 Secret 与 Sandbox 要求
+
+Governed execution envelopes SHALL declare secret exposure, redaction class, resource scope, side-effect scope, sandbox requirements, and audit metadata before execution.
+
+governed execution envelopes 必须在 execution 前声明 secret exposure、redaction class、resource scope、side-effect scope、sandbox requirements 和 audit metadata。
+
+#### Scenario: Capability manifest contributes sandbox metadata / Capability Manifest 贡献 Sandbox 元数据
+
+- **WHEN** a capability is registered as model-visible or executable
+- **THEN** its manifest declares side effect level, permissions, sandbox requirements, model visibility, executor visibility, and redaction expectations
+- **中文** 当 capability 注册为 model-visible 或 executable 时，其 manifest 必须声明 side effect level、permissions、sandbox requirements、model visibility、executor visibility 和 redaction expectations。
+
+#### Scenario: Unsafe envelope is rejected / 不安全 Envelope 被拒绝
+
+- **WHEN** an envelope lacks required secret or sandbox metadata for a side-effecting invocation
+- **THEN** runtime rejects it before policy or scheduler execution
+- **中文** 当 side-effecting invocation 的 envelope 缺少 required secret 或 sandbox metadata 时，runtime 必须在 policy 或 scheduler execution 前拒绝它。
+

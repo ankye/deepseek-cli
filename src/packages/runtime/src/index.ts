@@ -4,6 +4,7 @@ import type {
   AgentId,
   CapabilityExecutionContext,
   CapabilityManifest,
+  ContextProjectionResult,
   Id,
   JsonObject,
   KernelError,
@@ -23,7 +24,16 @@ import type {
   TraceContext,
   TaskId
 } from "@deepseek/platform-contracts";
-import { asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { PlatformExecutionContext } from "@deepseek/platform-contracts";
+import { registerCoreCodingToolsForRuntime } from "@deepseek/core-coding-tools";
+import {
+  analyzeResourceScope,
+  createSandboxAuditEvidence,
+  createSandboxRequirement,
+  createSecretRedactionDecision,
+  redactJsonSecrets
+} from "@deepseek/policy-sandbox";
 
 class DeterministicClock {
   now(): Date {
@@ -47,10 +57,10 @@ class NoopRuntimeKernelLogger implements RuntimeKernelLogger {
 export function kernelError(code: KernelError["code"], message: string, details: JsonObject = {}): KernelError {
   return {
     code,
-    message,
+    message: redactSecretTextForRuntime(message),
     retryable: false,
     redaction: { class: "public" },
-    details
+    details: redactJsonSecrets(details) as JsonObject
   };
 }
 
@@ -75,7 +85,27 @@ export const runtimeEchoCapability: CapabilityManifest = {
       text: { type: "string" }
     }
   },
-  enabled: true
+  enabled: true,
+  secretExposure: createSecretRedactionDecision("", { class: "public" }),
+  resourceScope: analyzeResourceScope({}, "none"),
+  sandboxRequirements: createSandboxRequirement({
+    sideEffect: "none",
+    resourceScope: analyzeResourceScope({}, "none"),
+    timeoutMs: 30_000,
+    permissions: []
+  }),
+  audit: createSandboxAuditEvidence({
+    decision: "manifest",
+    reasonCode: "manifest.runtime-echo",
+    subject: "runtime",
+    resource: "runtime.echo",
+    sandboxProfile: "none"
+  }),
+  security: {
+    modelVisible: true,
+    executorVisible: false,
+    outputRedaction: "secret-aware"
+  }
 };
 
 export async function registerRuntimeBuiltins(deps: Pick<RuntimeDependencies, "capabilities">): Promise<void> {
@@ -104,6 +134,10 @@ export async function registerRuntimeBuiltins(deps: Pick<RuntimeDependencies, "c
   });
 }
 
+export async function registerRuntimeCoreTools(deps: Pick<RuntimeDependencies, "capabilities" | "platform" | "workspaceState">, workspaceRoot: string): Promise<void> {
+  await registerCoreCodingToolsForRuntime(deps, workspaceRoot);
+}
+
 export interface ExecutionEnvelopeBuildInput {
   readonly request: RuntimeKernelRequest;
   readonly manifest: CapabilityManifest;
@@ -113,10 +147,34 @@ export interface ExecutionEnvelopeBuildInput {
   readonly invocationId: string;
   readonly trace: TraceContext;
   readonly createdAt: string;
+  readonly platformContext?: PlatformExecutionContext;
 }
 
 export function buildExecutionEnvelope(input: ExecutionEnvelopeBuildInput): import("@deepseek/platform-contracts").ExecutionEnvelope {
   const timeoutMs = input.request.timeoutMs ?? 30_000;
+  const resourceLocks = resourceLocksFor(input.manifest.sideEffect, input.request.input);
+  const resourceScope = analyzeResourceScope(input.request.input, input.manifest.sideEffect);
+  const secretExposure = createSecretRedactionDecision(input.request.input, { class: "internal" });
+  const requestedSandboxProfile = input.platformContext?.sandboxProfile ?? input.manifest.sandboxRequirements?.profile;
+  const sandboxRequirements = createSandboxRequirement({
+    sideEffect: input.manifest.sideEffect,
+    resourceScope,
+    timeoutMs,
+    permissions: input.manifest.permissions,
+    ...(requestedSandboxProfile ? { profile: requestedSandboxProfile } : {})
+  });
+  const audit = createSandboxAuditEvidence({
+    decision: "pending",
+    reasonCode: "execution.envelope.created",
+    subject: input.request.caller,
+    resource: String(input.manifest.id),
+    sandboxProfile: sandboxRequirements.profile,
+    trace: input.trace,
+    metadata: {
+      capabilityId: input.manifest.id,
+      sideEffect: input.manifest.sideEffect
+    }
+  });
   return {
     invocationId: input.invocationId,
     capabilityId: input.manifest.id,
@@ -138,10 +196,15 @@ export function buildExecutionEnvelope(input: ExecutionEnvelopeBuildInput): impo
     policyContext: {
       caller: input.request.caller,
       capabilityId: input.manifest.id,
-      sideEffect: input.manifest.sideEffect
+      sideEffect: input.manifest.sideEffect,
+      secretExposure,
+      resourceScope,
+      sandboxRequirements,
+      audit,
+      ...(input.platformContext ? { platform: input.platformContext } : {})
     },
     approvalRequired: input.manifest.sideEffect !== "none" && input.manifest.sideEffect !== "read",
-    resourceLocks: [],
+    resourceLocks,
     timeoutMs,
     deadlineAt: new Date(new Date(input.createdAt).getTime() + timeoutMs).toISOString(),
     cancellation: {
@@ -154,6 +217,10 @@ export function buildExecutionEnvelope(input: ExecutionEnvelopeBuildInput): impo
     trace: input.trace,
     telemetry: { eventSchemaVersion: "1.0.0", traceRequired: true },
     replayPolicy: { replayable: true, snapshot: "normalized", deterministic: true },
+    secretExposure,
+    resourceScope,
+    sandboxRequirements,
+    audit,
     createdAt: input.createdAt
   };
 }
@@ -191,6 +258,10 @@ export function validateExecutionEnvelope(envelope: unknown): readonly KernelErr
     "trace",
     "telemetry",
     "replayPolicy",
+    "secretExposure",
+    "resourceScope",
+    "sandboxRequirements",
+    "audit",
     "createdAt"
   ]) {
     if (candidate[key] === undefined || candidate[key] === null || candidate[key] === "") {
@@ -230,6 +301,28 @@ export function validateExecutionEnvelope(envelope: unknown): readonly KernelErr
   if (!candidate.policyContext || typeof candidate.policyContext !== "object" || typeof (candidate.policyContext as Record<string, unknown>).caller !== "string") {
     errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope policyContext must include caller"));
   }
+  if (!candidate.secretExposure || typeof candidate.secretExposure !== "object" || typeof (candidate.secretExposure as Record<string, unknown>).action !== "string") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope secretExposure decision is required"));
+  }
+  const resourceScope = candidate.resourceScope as Record<string, unknown> | undefined;
+  if (!resourceScope || typeof resourceScope !== "object" || typeof resourceScope.schemaVersion !== "string" || !Array.isArray(resourceScope.paths)) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope resourceScope metadata is required"));
+  }
+  const sandboxRequirements = candidate.sandboxRequirements as Record<string, unknown> | undefined;
+  if (!sandboxRequirements || typeof sandboxRequirements !== "object" || typeof sandboxRequirements.schemaVersion !== "string" || !Array.isArray(sandboxRequirements.capabilities)) {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope sandboxRequirements metadata is required"));
+  }
+  if (!candidate.audit || typeof candidate.audit !== "object" || typeof (candidate.audit as Record<string, unknown>).reasonCode !== "string") {
+    errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope audit metadata is required"));
+  }
+  if (["write", "network", "process"].includes(String(candidate.sideEffect))) {
+    if (!sandboxRequirements || !Array.isArray(sandboxRequirements.capabilities) || sandboxRequirements.capabilities.length === 0) {
+      errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Side-effecting envelope must declare sandbox capabilities"));
+    }
+    if (!resourceScope || !Array.isArray(resourceScope.paths)) {
+      errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Side-effecting envelope must declare resource paths"));
+    }
+  }
   const cancellation = candidate.cancellation as Record<string, unknown> | undefined;
   if (!cancellation || typeof cancellation !== "object" || cancellation.cancellable !== true || cancellation.propagation !== "abort-signal") {
     errors.push(kernelError("KERNEL_ENVELOPE_INVALID", "Execution envelope cancellation metadata must require abort-signal propagation"));
@@ -256,6 +349,36 @@ export function validateExecutionEnvelope(envelope: unknown): readonly KernelErr
   return errors;
 }
 
+function resourceLocksFor(sideEffect: CapabilityManifest["sideEffect"], input: JsonObject): readonly string[] {
+  const locks: string[] = [];
+  const path = typeof input.path === "string" ? input.path : undefined;
+  const cwd = typeof input.cwd === "string" ? input.cwd : typeof input.workspaceRoot === "string" ? input.workspaceRoot : undefined;
+  if (sideEffect === "write" && path) locks.push(`workspace:${path}`);
+  if (sideEffect === "process" && cwd) locks.push(`process:${cwd}`);
+  return locks;
+}
+
+function policyMetadataFor(envelope: import("@deepseek/platform-contracts").ExecutionEnvelope, input: JsonObject): JsonObject {
+  const cwd = typeof input.cwd === "string" ? input.cwd : typeof input.workspaceRoot === "string" ? input.workspaceRoot : undefined;
+  return {
+    envelopeId: envelope.invocationId,
+    sideEffect: envelope.sideEffect,
+    permissions: envelope.permissions,
+    capabilityId: envelope.capabilityId,
+    timeoutMs: envelope.timeoutMs,
+    resourceLocks: envelope.resourceLocks,
+    secretExposure: envelope.secretExposure,
+    resourceScope: envelope.resourceScope,
+    sandboxRequirements: envelope.sandboxRequirements,
+    audit: envelope.audit,
+    ...(typeof input.command === "string" ? { command: input.command, args: Array.isArray(input.args) ? input.args.map(String) : [] } : {}),
+    ...(cwd ? { cwd } : {}),
+    ...(typeof input.workspaceRoot === "string" ? { workspaceRoot: input.workspaceRoot } : {}),
+    ...(typeof input.shellProfile === "string" ? { shellProfile: input.shellProfile } : {}),
+    ...(input.requireSandbox === true ? { requireSandbox: true } : {})
+  };
+}
+
 export class InProcessRuntimeKernel implements RuntimeKernel {
   private lifecycle: RuntimeKernelState = "created";
   private readonly activeTasks = new Map<string, string>();
@@ -271,6 +394,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       "sandbox",
       "sessions",
       "observability",
+      "platform",
       "clock",
       "ids",
       "logger"
@@ -346,7 +470,8 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       taskId: String(workflow.taskId),
       invocationId,
       trace,
-      createdAt: this.deps.clock.now().toISOString()
+      createdAt: this.deps.clock.now().toISOString(),
+      platformContext: await this.platformExecutionContext(binding.manifest.sideEffect, request.timeoutMs ?? 30_000, request.input)
     });
     const validationErrors = validateExecutionEnvelope(envelope);
     const envelopeEvent = this.event("execution.envelope.created", sessionId, trace, { envelope }, request.agentId, workflow.taskId);
@@ -360,15 +485,19 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       return;
     }
 
+    const platform = envelope.policyContext.platform as PlatformExecutionContext | undefined;
     const policyDecision = await this.deps.policy.decide({
       subject: request.caller,
       action: `execute:${String(binding.manifest.id)}`,
       resource: String(binding.manifest.id),
       metadata: {
-        envelopeId: envelope.invocationId,
-        sideEffect: envelope.sideEffect,
-        permissions: envelope.permissions
-      }
+        ...policyMetadataFor(envelope, request.input)
+      },
+      ...(platform ? { platform } : {}),
+      secret: envelope.secretExposure,
+      resourceScope: envelope.resourceScope,
+      sandbox: envelope.sandboxRequirements,
+      auditEvidence: envelope.audit
     });
     for (const event of await this.policyEvents(policyDecision, sessionId, trace, envelope, request.agentId, workflow.taskId)) {
       await this.recordEvent(event);
@@ -545,6 +674,36 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     return [policy, sandbox];
   }
 
+  private async platformExecutionContext(sideEffect: string, timeoutMs: number, input: JsonObject = {}): Promise<PlatformExecutionContext> {
+    const descriptor = await this.deps.platform.descriptor();
+    const requestedShell = typeof input.shellProfile === "string" ? input.shellProfile as Parameters<RuntimeKernelDependencies["platform"]["resolveShell"]>[0] : undefined;
+    const shell = sideEffect === "process" ? (await this.deps.platform.resolveShell(requestedShell)).value : undefined;
+    const processProvider = sideEffect === "process" ? await this.deps.platform.resolveProcessProvider() : undefined;
+    const secureStorage = await this.deps.platform.secureStorageCapability();
+    const normalizedSideEffect = sideEffect === "read" || sideEffect === "write" || sideEffect === "network" || sideEffect === "process" ? sideEffect : "none";
+    const resourceScope = analyzeResourceScope(input, normalizedSideEffect);
+    const sandboxRequirements = createSandboxRequirement({
+      sideEffect: normalizedSideEffect,
+      resourceScope,
+      timeoutMs,
+      permissions: []
+    });
+    return {
+      descriptor,
+      ...(shell ? { shell } : {}),
+      ...(processProvider ? { processProvider } : {}),
+      secureStorage,
+      environmentScope: "scoped",
+      timeoutMs,
+      resourceLocks: [],
+      sandboxProfile: "development",
+      sandboxCapabilities: descriptor.sandbox,
+      resourceScope,
+      sandboxRequirements,
+      redaction: { class: "internal", fields: ["descriptor.diagnostics", "secureStorage"] }
+    };
+  }
+
   private rejectedEvent(request: RuntimeKernelRequest, error: KernelError): RuntimeEvent {
     const sessionId = request.sessionId ?? asId<"session">("session-unbound");
     return this.event("execution.rejected", sessionId, request.trace ?? this.trace(sessionId, "rejected"), { capabilityId: request.capabilityId }, request.agentId, undefined, error);
@@ -637,7 +796,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       ...(taskId ? { taskId } : {}),
       ...(agentId ? { agentId } : {}),
       trace,
-      data,
+      data: redactJsonSecrets(data) as JsonObject,
       ...(error ? { error } : {})
     };
   }
@@ -688,6 +847,7 @@ export function createRuntimeKernel(
     sandbox: deps.sandbox,
     sessions: deps.sessions,
     observability: deps.observability,
+    platform: deps.platform,
     clock: options.clock ?? new DeterministicClock(),
     ids: options.ids ?? new DeterministicIdFactory(),
     logger: options.logger ?? new NoopRuntimeKernelLogger()
@@ -723,10 +883,11 @@ export class HeadlessAgentRuntime implements AgentRuntime {
     if (!this.kernel) {
       this.kernel = await createDefaultRuntimeKernel(this.deps);
     }
-    yield* this.kernel.execute({
+    yield* executeProjectedRuntimeTurn(this.deps, this.kernel, {
       capabilityId: runtimeEchoCapability.id,
       caller: "headless-runtime",
       input: { prompt: request.prompt },
+      prompt: request.prompt,
       sessionId,
       ...(request.agentId ? { agentId: request.agentId } : {}),
       timeoutMs: 30_000
@@ -763,10 +924,225 @@ export function createHeadlessRuntime(deps: RuntimeDependencies): AgentRuntime {
   return new HeadlessAgentRuntime(deps);
 }
 
+export interface ProjectedRuntimeTurnRequest extends RuntimeKernelRequest {
+  readonly prompt: string;
+}
+
+export async function* executeProjectedRuntimeTurn(
+  deps: RuntimeDependencies,
+  kernel: RuntimeKernel,
+  request: ProjectedRuntimeTurnRequest
+): AsyncIterable<RuntimeEvent> {
+  const sessionId = request.sessionId ?? await deps.sessions.create({ caller: request.caller });
+  const trace = request.trace ?? runtimeTrace(sessionId, "projection");
+  const budget = await deps.usage.contextBudget({
+    sessionId,
+    purpose: "model-request",
+    requestedInputTokens: countTokens(request.prompt),
+    reservedOutputTokens: 1024
+  });
+
+  const started = projectionRuntimeEvent("context.projection.started", sessionId, trace, {
+    schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
+    purpose: "model-request",
+    promptHash: stableHash(request.prompt),
+    budget
+  }, request.agentId);
+  await recordRuntimeAdapterEvent(deps, started);
+  yield started;
+
+  const projection = await deps.context.projectGraph({
+    schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
+    sessionId,
+    purpose: "model-request",
+    prompt: request.prompt,
+    budget: {
+      hardLimitTokens: budget.hardLimitTokens,
+      ...(budget.softLimitTokens !== undefined ? { softLimitTokens: budget.softLimitTokens } : {}),
+      reservedOutputTokens: budget.reservedOutputTokens
+    },
+    scope: {
+      sessionId,
+      ...(request.agentId ? { agentId: request.agentId } : {}),
+      availableRedactionClasses: ["public", "internal", "sensitive"]
+    },
+    trace,
+    policy: { redaction: "fail-closed" },
+    compatibility: { schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION }
+  });
+
+  if (projection.cache.hit) {
+    const cacheHit = projectionRuntimeEvent("context.projection.cache-hit", sessionId, trace, projectionEventData(projection), request.agentId);
+    await recordRuntimeAdapterEvent(deps, cacheHit);
+    yield cacheHit;
+  }
+  if (projection.status === "degraded") {
+    const degraded = projectionRuntimeEvent("context.projection.degraded", sessionId, trace, projectionEventData(projection), request.agentId);
+    await recordRuntimeAdapterEvent(deps, degraded);
+    yield degraded;
+  }
+  if (projection.status === "rejected") {
+    const rejected = projectionRuntimeEvent("context.projection.rejected", sessionId, trace, projectionEventData(projection), request.agentId, projection.error ?? kernelError("KERNEL_ENVELOPE_INVALID", "Context projection rejected model dispatch"));
+    await recordRuntimeAdapterEvent(deps, rejected);
+    yield rejected;
+    return;
+  }
+
+  const completed = projectionRuntimeEvent("context.projection.completed", sessionId, trace, projectionEventData(projection), request.agentId);
+  await recordRuntimeAdapterEvent(deps, completed);
+  yield completed;
+
+  yield* kernel.execute({
+    ...request,
+    sessionId,
+    trace,
+    input: {
+      ...request.input,
+      prompt: projection.prompt,
+      text: projection.prompt,
+      contextProjection: {
+        schemaVersion: projection.schemaVersion,
+        status: projection.status,
+        selectedNodeCount: projection.selectedNodes.length,
+        excludedNodeCount: projection.excludedNodes.length,
+        estimatedTokens: projection.estimatedTokens,
+        replayFingerprint: projection.replayFingerprint
+      }
+    }
+  });
+}
+
 export async function collectRuntimeEvents(iterable: AsyncIterable<RuntimeEvent>): Promise<readonly RuntimeEvent[]> {
   const events: RuntimeEvent[] = [];
   for await (const event of iterable) {
     events.push(event);
   }
   return events;
+}
+
+function projectionEventData(projection: ContextProjectionResult): JsonObject {
+  return {
+    schemaVersion: projection.schemaVersion,
+    status: projection.status,
+    selectedNodeCount: projection.selectedNodes.length,
+    excludedNodeCount: projection.excludedNodes.length,
+    estimatedTokens: projection.estimatedTokens,
+    budget: projection.budget,
+    redaction: projection.redaction,
+    redactionEvidence: projectionRedactionEvidence(projection),
+    cache: projection.cache,
+    replayFingerprint: projection.replayFingerprint
+  };
+}
+
+function projectionRedactionEvidence(projection: ContextProjectionResult): readonly JsonObject[] {
+  return projection.excludedNodes
+    .filter((node) => node.secretDecision || node.reason === "unsafe-secret" || node.reason === "policy-denied")
+    .map((node) => ({
+      nodeId: node.id,
+      reason: node.reason,
+      action: node.secretDecision?.action ?? "exclude",
+      reasonCode: node.secretDecision?.reasonCode ?? "context.secret.excluded",
+      redactedText: node.secretDecision?.redactedText ?? "[REDACTED]",
+      classification: node.secretDecision
+        ? {
+            detected: node.secretDecision.classification.detected,
+            kind: node.secretDecision.classification.kind,
+            exposure: node.secretDecision.classification.exposure,
+            reasonCode: node.secretDecision.classification.reasonCode,
+            occurrences: node.secretDecision.classification.occurrences,
+            redactionClass: node.secretDecision.classification.redactionClass
+          }
+        : {
+            detected: true,
+            kind: "generic-secret",
+            exposure: "unsafe",
+            reasonCode: "secret.detected",
+            occurrences: 1,
+            redactionClass: "secret"
+          },
+      redaction: { class: "secret", fields: ["redactedText"] }
+    }));
+}
+
+function projectionRuntimeEvent(
+  kind: Extract<RuntimeEvent["kind"], `context.projection.${string}`>,
+  sessionId: SessionId,
+  trace: TraceContext,
+  data: JsonObject,
+  agentId?: AgentId,
+  error?: import("@deepseek/platform-contracts").RedactedError
+): RuntimeEvent {
+  return {
+    kind,
+    sessionId,
+    ...(agentId ? { agentId } : {}),
+    trace,
+    data: redactJsonSecrets(data) as JsonObject,
+    ...(error ? { error } : {})
+  };
+}
+
+async function recordRuntimeAdapterEvent(deps: RuntimeDependencies, event: RuntimeEvent): Promise<void> {
+  const events = await deps.sessions.events(event.sessionId);
+  await deps.sessions.append({
+    sessionId: event.sessionId,
+    sequence: events.length + 1,
+    kind: event.kind,
+    at: new Date(0).toISOString(),
+    payload: event.data,
+    redaction: { class: "internal" }
+  });
+  await deps.bus.publish({
+    protocolVersion: "1",
+    schemaVersion: "1.0.0",
+    id: `bus-${stableHash(`${event.kind}:${event.sessionId}:${events.length + 1}`)}`,
+    type: "event",
+    createdAt: new Date(0).toISOString(),
+    trace: event.trace,
+    redaction: { class: "internal" },
+    compatibility: { schemaVersion: "1.0.0" },
+    payload: {
+      kind: event.kind,
+      data: event.data,
+      ...(event.error ? { error: event.error } : {})
+    },
+    topic: { name: "runtime.event", owner: "runtime", trustBoundary: "core" },
+    producer: "runtime-context-projection",
+    correlationId: event.trace.correlationId,
+    sessionId: event.sessionId,
+    replayable: true
+  });
+  await deps.observability.emit({
+    kind: event.kind === "context.projection.rejected" ? "audit" : "trace",
+    at: new Date(0).toISOString(),
+    name: event.kind,
+    fields: event.data
+  });
+}
+
+function runtimeTrace(sessionId: SessionId, scope: string): TraceContext {
+  return {
+    traceId: asId<"trace">(`trace-${scope}-${sessionId}`),
+    spanId: asId<"span">(`span-${scope}-${sessionId}`),
+    correlationId: asId<"correlation">(`corr-${scope}-${sessionId}`),
+    sessionId
+  };
+}
+
+function countTokens(text: string): number {
+  return text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length;
+}
+
+function stableHash(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `h${(hash >>> 0).toString(16)}`;
+}
+
+function redactSecretTextForRuntime(value: string): string {
+  return redactJsonSecrets(value) as string;
 }

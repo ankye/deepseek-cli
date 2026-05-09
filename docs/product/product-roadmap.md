@@ -1,8 +1,8 @@
 # DeepSeek CLI Product Roadmap / DeepSeek CLI 产品路线图
 
-This roadmap turns the reference-source capability map in `参考/claude-code-2.1.88/src` into DeepSeek-owned product milestones. The reference code is evidence for product breadth and sequencing only; do not copy reference implementation code, UI text, or internal boundaries.
+This roadmap defines DeepSeek-owned product milestones for a future-ready AI engineering runtime. Competitive products and local research material may inform capability discovery, but the roadmap, architecture ownership, and acceptance gates are DeepSeek-specific.
 
-本路线图把 `参考/claude-code-2.1.88/src` 中体现的能力版图提炼为 DeepSeek 自己的产品里程碑。参考代码只作为产品广度和推进顺序的证据；不得复制参考实现代码、UI 文案或内部边界。
+本路线图定义 DeepSeek 自有的产品里程碑，目标是打造面向未来的 AI 工程运行时。竞品和本地研究材料可以帮助发现能力面，但路线图、架构归属和验收门禁都按 DeepSeek 自身设计。
 
 ## Roadmap Metadata Required For Future OpenSpecs / 后续 OpenSpec 必需路线图元数据
 
@@ -25,38 +25,38 @@ Feature flag / 功能开关: required | optional | none
 Migration/rollback / 迁移与回滚: not-needed | required | incompatible-reject
 ```
 
-## Reference Source Capability Map / 参考源码能力映射
+## Product Capability Map / 产品能力映射
 
-The local reference source shows the competitive surface through real directories and modules. DeepSeek uses it to identify product gaps, then maps each capability into our own architecture.
+This map shows how product capability domains land in DeepSeek architecture packages.
 
-本地参考源码通过真实目录和模块展示竞品能力面。DeepSeek 用它识别产品缺口，再把每类能力映射到我们自己的架构中。
+本表说明各产品能力域在 DeepSeek 架构包中的落点。
 
-| Reference evidence / 参考证据 | Product domain / 产品领域 | DeepSeek architecture owner / DeepSeek 架构归属 |
+| Capability area / 能力域 | Product domain / 产品领域 | DeepSeek architecture owner / DeepSeek 架构归属 |
 | --- | --- | --- |
-| `QueryEngine.ts`, `query.ts` | Agent turn lifecycle and model/tool loop / Agent 回合生命周期与模型/工具循环 | `runtime-execution-kernel`, `runtime-event-loop`, `workflow-orchestration` |
-| `tools/*`, `services/tools/*`, `Tool.ts` | File/search/edit/shell/web/agent/task tools / 文件、搜索、编辑、Shell、Web、Agent、任务工具 | `capability-registry`, `capability-execution-governance`, `platform-abstraction`, `policy-sandbox` |
-| `commands/*`, `commands.ts` | Slash commands and product actions / 斜杠命令与产品动作 | `command-system`, `workflow-orchestration`, host adapters |
-| `skills/*`, `tools/SkillTool` | Skills and dynamic knowledge packs / Skills 与动态知识包 | `skill-system`, `context-engine`, `extension-system` |
-| `plugins/*`, `services/plugins/*` | Plugin packaging and installed contributions / 插件打包与安装贡献 | `plugin-system`, `extension-system`, `distribution-update-management` |
-| `services/mcp/*`, MCP tools/resources | External tool/resource bridge / 外部工具与资源桥接 | `mcp-gateway`, `capability-registry`, `policy-sandbox` |
-| `hooks/*`, hook types | Runtime behavior hooks / 运行时行为 hook | `hook-system`, `runtime-message-bus`, `testing-regression` |
-| `utils/permissions/*`, sandbox commands | Policy, approvals, sandbox, path safety / 策略、审批、沙箱、路径安全 | `policy-sandbox`, `platform-abstraction`, `capability-execution-governance` |
-| `context`, `memdir`, `services/compact`, `services/SessionMemory` | Context, memory, compact, session memory / 上下文、记忆、压缩、会话记忆 | `context-engine`, `memory-cache-management`, `session-store` |
-| `tasks`, `tools/Task*`, `tools/Team*`, `tools/AgentTool` | Subagents, teams, task tracking / 子 Agent、团队、任务跟踪 | `agent-management`, `workflow-orchestration`, `concurrency-orchestration`, workspace state |
-| `bridge`, `remote`, `server`, `upstreamproxy` | Daemon, server, remote control / 守护进程、服务端、远程控制 | `remote-runtime-connectivity`, `communication-protocol`, `session-store` |
-| `cli`, `components`, `ink`, `screens` | Terminal UI and product shell / 终端 UI 与产品外壳 | `apps/cli`, protocol renderers |
-| `vim`, `keybindings`, `voice` | Advanced input UX / 高级输入体验 | future host input adapters over protocol |
-| `services/teamMemorySync`, `services/settingsSync`, `services/remoteManagedSettings` | Collaboration and enterprise sync / 协作与企业同步 | `memory-cache-management`, `config`, `credential-auth-management`, enterprise service layer |
-| `components/AutoUpdater`, release/update commands | Update UX and release channels / 更新体验与发布通道 | `distribution-update-management`, `evolution-engine` |
-| `commands/login`, `commands/logout`, `services/oauth`, `utils/auth*` | Personal auth, provider credentials, OAuth / 个人认证、provider 凭证、OAuth | `credential-auth-management`, `model-gateway`, `mcp-gateway` |
-| `commands/config`, `utils/settings/*`, `components/InvalidSettingsDialog` | Config, settings, validation, managed overrides / 配置、设置、校验、受管覆盖 | `config`, `credential-auth-management`, `policy-sandbox`, `distribution-update-management` |
-| `commands/doctor`, `utils/doctor*`, diagnostic logs | Doctor diagnostics and support bundles / doctor 诊断与支持包 | `platform-abstraction`, `runtime-message-bus`, `testing-regression`, observability boundary |
-| `commands/init`, `commands/onboarding`, project onboarding state | Project initialization and first-run readiness / 项目初始化与首次使用就绪 | `command-system`, `workspace-state-management`, `session-store` |
-| `commands/privacy-settings`, `services/api/metricsOptOut`, `utils/telemetry/*`, `services/analytics/*` | Privacy controls, telemetry, analytics, tracing / 隐私控制、遥测、分析、追踪 | `runtime-message-bus`, `communication-protocol`, `testing-regression`, `policy-sandbox` |
-| `services/lsp/*`, `tools/LSPTool`, code diagnostics | Code intelligence and language-aware evidence / 代码智能与语言感知证据 | `code-intelligence`, `context-engine`, `workspace-state-management` |
-| `entrypoints/sdk/*`, `schemas/*`, remote SDK adapter | Public SDK, schemas, control API / 公共 SDK、schemas、control API | `communication-protocol`, `remote-runtime-connectivity`, `platform-contracts` |
-| `utils/model/*`, `migrations/*`, analytics experiments | Model capability governance and migrations / 模型能力治理与迁移 | `model-gateway`, `evolution-engine`, `testing-regression` |
-| `constants/outputStyles`, `commands/statusline`, `commands/theme`, `services/tips/*` | Output styles, status line, theme, tips / 输出风格、状态栏、主题、提示 | host adapters, `command-system`, `future-capability-landings` |
+| Runtime loop / 运行时循环 | Agent turn lifecycle and model/tool loop / Agent 回合生命周期与模型/工具循环 | `runtime-execution-kernel`, `runtime-event-loop`, `workflow-orchestration` |
+| Core tools / 核心工具 | File/search/edit/shell/web/agent/task tools / 文件、搜索、编辑、Shell、Web、Agent、任务工具 | `capability-registry`, `capability-execution-governance`, `platform-abstraction`, `policy-sandbox` |
+| Commands / 命令 | Slash commands and product actions / 斜杠命令与产品动作 | `command-system`, `workflow-orchestration`, host adapters |
+| Skills / Skills | Skills and dynamic knowledge packs / Skills 与动态知识包 | `skill-system`, `context-engine`, `extension-system` |
+| Plugins / 插件 | Plugin packaging and installed contributions / 插件打包与安装贡献 | `plugin-system`, `extension-system`, `distribution-update-management` |
+| MCP / MCP | External tool/resource bridge / 外部工具与资源桥接 | `mcp-gateway`, `capability-registry`, `policy-sandbox` |
+| Hooks / Hooks | Runtime behavior hooks / 运行时行为 hook | `hook-system`, `runtime-message-bus`, `testing-regression` |
+| Policy and sandbox / 策略与沙箱 | Policy, approvals, sandbox, path safety / 策略、审批、沙箱、路径安全 | `policy-sandbox`, `platform-abstraction`, `capability-execution-governance` |
+| Context and memory / 上下文与记忆 | Context, memory, compact, session memory / 上下文、记忆、压缩、会话记忆 | `context-engine`, `memory-cache-management`, `session-store` |
+| Subagents and tasks / 子 Agent 与任务 | Subagents, teams, task tracking / 子 Agent、团队、任务跟踪 | `agent-management`, `workflow-orchestration`, `concurrency-orchestration`, workspace state |
+| Remote/server / 远程与服务端 | Daemon, server, remote control / 守护进程、服务端、远程控制 | `remote-runtime-connectivity`, `communication-protocol`, `session-store` |
+| Terminal UX / 终端体验 | Terminal UI and product shell / 终端 UI 与产品外壳 | `apps/cli`, protocol renderers |
+| Advanced input / 高级输入 | Vim/keybindings/history search/voice / Vim、快捷键、历史搜索、语音 | future host input adapters over protocol |
+| Collaboration / 协作 | Team memory sync and managed settings / team memory sync 与 managed settings | `memory-cache-management`, `config`, `credential-auth-management`, enterprise service layer |
+| Distribution / 分发 | Update UX and release channels / 更新体验与发布通道 | `distribution-update-management`, `evolution-engine` |
+| Auth / 认证 | Personal auth, provider credentials, OAuth / 个人认证、provider 凭证、OAuth | `credential-auth-management`, `model-gateway`, `mcp-gateway` |
+| Config / 配置 | Config, settings, validation, managed overrides / 配置、设置、校验、受管覆盖 | `config`, `credential-auth-management`, `policy-sandbox`, `distribution-update-management` |
+| Diagnostics / 诊断 | Doctor diagnostics and support bundles / doctor 诊断与支持包 | `platform-abstraction`, `runtime-message-bus`, `testing-regression`, observability boundary |
+| Onboarding / 初始化 | Project initialization and first-run readiness / 项目初始化与首次使用就绪 | `command-system`, `workspace-state-management`, `session-store` |
+| Privacy / 隐私 | Privacy controls, telemetry, analytics, tracing / 隐私控制、遥测、分析、追踪 | `runtime-message-bus`, `communication-protocol`, `testing-regression`, `policy-sandbox` |
+| Code intelligence / 代码智能 | Diagnostics, symbols, language-aware evidence / 诊断、符号、语言感知证据 | `code-intelligence`, `context-engine`, `workspace-state-management` |
+| SDK/API / SDK 与 API | Public SDK, schemas, control API / 公共 SDK、schemas、control API | `communication-protocol`, `remote-runtime-connectivity`, `platform-contracts` |
+| Model governance / 模型治理 | Model capability governance and migrations / 模型能力治理与迁移 | `model-gateway`, `evolution-engine`, `testing-regression` |
+| Output UX / 输出体验 | Output styles, status line, theme, tips / 输出风格、状态栏、主题、提示 | host adapters, `command-system`, `future-capability-landings` |
 
 ## Roadmap Nodes / 路线图节点
 

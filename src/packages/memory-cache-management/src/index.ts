@@ -1,4 +1,26 @@
-import type { CacheEntry, CacheKey, CacheManager, MemoryEntry, MemoryManager, MemoryScope, SessionId } from "@deepseek/platform-contracts";
+import type { CacheEntry, CacheKey, CacheManager, ContextProjectionResult, MemoryEntry, MemoryManager, MemoryScope, SessionId } from "@deepseek/platform-contracts";
+import { asId } from "@deepseek/platform-contracts";
+
+export const PROJECTION_CACHE_NAMESPACE = "context.projection";
+
+export interface ProjectionCacheInput {
+  readonly requestFingerprint: string;
+  readonly dependencyFingerprints: readonly string[];
+}
+
+export function projectionCacheKey(input: ProjectionCacheInput): CacheKey {
+  return asId<"cacheKey">(`${PROJECTION_CACHE_NAMESPACE}:${stableHash(`${input.requestFingerprint}:${[...input.dependencyFingerprints].sort().join("|")}`)}`);
+}
+
+export function createProjectionCacheEntry(input: ProjectionCacheInput, value: ContextProjectionResult, createdAt = new Date(0).toISOString()): CacheEntry<ContextProjectionResult> {
+  return {
+    key: projectionCacheKey(input),
+    namespace: PROJECTION_CACHE_NAMESPACE,
+    value,
+    createdAt,
+    invalidation: [...input.dependencyFingerprints].sort()
+  };
+}
 
 export class InMemoryMemoryManager implements MemoryManager {
   private readonly entries: MemoryEntry[] = [];
@@ -37,4 +59,13 @@ export class InMemoryCacheManager implements CacheManager {
 
 export function scopedMemoryKey(sessionId: SessionId, name: string): string {
   return `${sessionId}:${name}`;
+}
+
+function stableHash(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `h${(hash >>> 0).toString(16)}`;
 }

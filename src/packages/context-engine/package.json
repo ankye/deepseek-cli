@@ -10,6 +10,7 @@
     }
   },
   "dependencies": {
-    "@deepseek/platform-contracts": "0.1.0"
+    "@deepseek/platform-contracts": "0.1.0",
+    "@deepseek/policy-sandbox": "0.1.0"
   }
 }

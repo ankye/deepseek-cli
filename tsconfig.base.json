@@ -37,6 +37,9 @@
       "@deepseek/config": [
         "src/packages/config/src/index.ts"
       ],
+      "@deepseek/core-coding-tools": [
+        "src/packages/core-coding-tools/src/index.ts"
+      ],
       "@deepseek/context-engine": [
         "src/packages/context-engine/src/index.ts"
       ],

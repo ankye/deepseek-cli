@@ -13,10 +13,15 @@
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js"
   },
   "dependencies": {
+    "@deepseek/command-system": "0.1.0",
+    "@deepseek/core-coding-tools": "0.1.0",
     "@deepseek/config": "0.1.0",
     "@deepseek/credential-auth-management": "0.1.0",
     "@deepseek/model-gateway": "0.1.0",
-    "@deepseek/platform-abstraction": "0.1.0"
+    "@deepseek/platform-abstraction": "0.1.0",
+    "@deepseek/platform-contracts": "0.1.0",
+    "@deepseek/runtime": "0.1.0",
+    "@deepseek/testing-regression": "0.1.0"
   },
   "publishConfig": {
     "access": "public"

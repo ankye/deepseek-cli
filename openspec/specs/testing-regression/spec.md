@@ -364,3 +364,261 @@ testing framework 必须把真实 `doctor --live` 或等价 DeepSeek verificatio
 - **THEN** it asserts provider-neutral structure, redacted credential handling, non-empty terminal response metadata, and typed failure semantics without snapshotting exact generated model text
 - **中文** 当 optional live auth verification 使用显式 credentials 运行时，必须断言 provider-neutral structure、redacted credential handling、non-empty terminal response metadata 和 typed failure semantics，且不 snapshot 精确生成模型文本。
 
+### Requirement: Expanded Platform Matrix Regression / 扩展平台矩阵回归
+
+The testing framework SHALL include deterministic fake platform matrix coverage for macOS, Windows, Linux, WSL, CI/no-native, and remote/no-local-shell modes.
+
+testing framework 必须为 macOS、Windows、Linux、WSL、CI/no-native 和 remote/no-local-shell modes 提供 deterministic fake platform matrix coverage。
+
+#### Scenario: Matrix covers degraded hosts / 矩阵覆盖降级 host
+
+- **WHEN** matrix tests run
+- **THEN** they cover hosts with unavailable native features, unavailable secure storage, unavailable shell, and provider fallback behavior
+- **中文** 当 matrix tests 运行时，必须覆盖 native features unavailable、secure storage unavailable、shell unavailable 和 provider fallback behavior 的 host。
+
+### Requirement: Platform Bypass Lint Regression / 平台绕过 Lint 回归
+
+The testing framework SHALL include architecture lint regression tests that reject direct OS branching, direct process execution, direct search binary invocation, direct secure-storage access, and direct native capability loading outside approved platform-owner packages.
+
+testing framework 必须包含 architecture lint regression tests，拒绝 approved platform-owner packages 之外的 direct OS branching、direct process execution、direct search binary invocation、direct secure-storage access 和 direct native capability loading。
+
+#### Scenario: Direct platform primitive fails lint / 直接平台 primitive 触发 lint
+
+- **WHEN** a non-owner package imports process execution, OS detection, search binaries, secure storage APIs, or native modules directly
+- **THEN** lint fails with stable rule ids and actionable messages
+- **中文** 当非 owner package 直接 import process execution、OS detection、search binaries、secure storage APIs 或 native modules 时，lint 必须以 stable rule ids 和 actionable messages 失败。
+
+### Requirement: Fail-Closed Platform Fixtures / 平台 Fail-Closed Fixtures
+
+The testing framework SHALL provide fixtures for unsupported paths, unsafe path traversal, missing shell, missing search provider, missing native capability, missing secure storage, and WSL path translation.
+
+testing framework 必须提供 unsupported paths、unsafe path traversal、missing shell、missing search provider、missing native capability、missing secure storage 和 WSL path translation 的 fixtures。
+
+#### Scenario: Review finding becomes regression / Review finding 变为回归测试
+
+- **WHEN** a platform boundary bug is found during review
+- **THEN** a matrix or lint regression test is added before the change can be archived
+- **中文** 当 review 中发现 platform boundary bug 时，必须在 archive 前增加 matrix 或 lint regression test。
+
+### Requirement: Core Coding Tool Regression Suite / 核心 Coding Tool 回归套件
+
+The testing framework SHALL include deterministic unit, contract, integration, golden, matrix, and e2e tests for core coding tools.
+
+testing framework 必须为 core coding tools 提供 deterministic unit、contract、integration、golden、matrix 和 e2e tests。
+
+#### Scenario: Minimal coding turn is covered / 最小 coding turn 被覆盖
+
+- **WHEN** core tool regression tests run
+- **THEN** they cover reading a fixture file, applying an exact edit, running a deterministic test command, and returning structured evidence through runtime events
+- **中文** 当 core tool regression tests 运行时，必须覆盖读取 fixture file、应用 exact edit、运行 deterministic test command，并通过 runtime events 返回 structured evidence。
+
+#### Scenario: Platform matrix covers core tools / 平台矩阵覆盖核心工具
+
+- **WHEN** matrix tests run
+- **THEN** read, edit, search, shell/test unavailable behavior, path rejection, provider fallback, and output bounding are covered across fake macOS, Windows, Linux, WSL, CI, and remote hosts
+- **中文** 当 matrix tests 运行时，必须跨 fake macOS、Windows、Linux、WSL、CI 和 remote hosts 覆盖 read、edit、search、shell/test unavailable behavior、path rejection、provider fallback 和 output bounding。
+
+#### Scenario: Architecture lint blocks bypass / 架构 lint 阻止绕过
+
+- **WHEN** core tool implementation or a future package attempts direct filesystem, process, search binary, or platform primitive access outside approved owner packages
+- **THEN** architecture lint fails with stable rule ids
+- **中文** 当 core tool implementation 或未来 package 尝试在 approved owner packages 外直接访问 filesystem、process、search binary 或 platform primitive 时，architecture lint 必须以 stable rule ids 失败。
+
+### Requirement: Minimal Interactive CLI Regression / 最小交互式 CLI 回归
+
+The testing framework SHALL include deterministic unit, integration, golden, e2e, and lint coverage for the minimal interactive CLI.
+
+testing framework 必须为 minimal interactive CLI 提供 deterministic unit、integration、golden、e2e 和 lint 覆盖。
+
+#### Scenario: Interactive unit tests cover parser and controls / 交互单测覆盖解析与控制
+
+- **WHEN** package-local CLI tests run
+- **THEN** they cover interactive command parsing, plain prompt detection, help output, unknown command errors, exit behavior, and non-TTY no-arg behavior
+- **中文** 当 package-local CLI tests 运行时，必须覆盖 interactive command parsing、plain prompt detection、help output、unknown command errors、exit behavior 和 non-TTY no-arg behavior。
+
+#### Scenario: Interactive integration test uses runtime events / 交互集成测试使用 runtime events
+
+- **WHEN** integration tests run a scripted interactive prompt
+- **THEN** assertions prove the output is derived from kernel-backed runtime events and not from a separate CLI execution state machine
+- **中文** 当 integration tests 运行脚本化 interactive prompt 时，assertions 必须证明输出来自 kernel-backed runtime events，而不是单独的 CLI execution state machine。
+
+#### Scenario: Interactive e2e covers prompt, help, cancel, and exit / 交互 e2e 覆盖 prompt、help、cancel 与 exit
+
+- **WHEN** e2e tests execute the CLI interactive shell with deterministic scripted input
+- **THEN** prompt submission, `/help`, `/cancel`, `/exit` or EOF complete without live provider access and without raw secret output
+- **中文** 当 e2e tests 使用确定性脚本输入执行 CLI interactive shell 时，prompt submission、`/help`、`/cancel`、`/exit` 或 EOF 必须在不访问 live provider 且不输出 raw secret 的情况下完成。
+
+### Requirement: Interactive Golden Replay / 交互式 Golden Replay
+
+The regression harness SHALL capture and replay normalized minimal interactive CLI traces.
+
+regression harness 必须捕获并回放 normalized minimal interactive CLI traces。
+
+#### Scenario: Golden trace proves headless parity / golden trace 证明 headless parity
+
+- **WHEN** a minimal prompt is executed through interactive mode and headless mode with deterministic fakes
+- **THEN** normalized runtime event semantics match except for declared host input/output wrapper events
+- **中文** 当使用 deterministic fakes 分别通过 interactive mode 与 headless mode 执行最小 prompt 时，normalized runtime event semantics 必须匹配，除了声明过的 host input/output wrapper events。
+
+#### Scenario: Golden trace covers cancellation / golden trace 覆盖取消
+
+- **WHEN** an active interactive turn is cancelled in a deterministic fixture
+- **THEN** the replayed trace includes request correlation, cancellation control, terminal cancellation or structured failure event, and runtime shutdown evidence
+- **中文** 当 active interactive turn 在 deterministic fixture 中被取消时，replayed trace 必须包含 request correlation、cancellation control、terminal cancellation 或 structured failure event，以及 runtime shutdown evidence。
+
+### Requirement: Interactive Architecture Lint / 交互式架构 Lint
+
+Architecture lint SHALL prevent the interactive CLI from bypassing governed runtime, command, policy, platform, or capability boundaries.
+
+architecture lint 必须防止 interactive CLI 绕过 governed runtime、command、policy、platform 或 capability boundaries。
+
+#### Scenario: Interactive bypass fails lint / 交互绕过触发 lint
+
+- **WHEN** CLI interactive code directly invokes model providers, core tool executors, policy internals, scheduler internals, sandbox internals, platform primitives outside approved host adapter APIs, or app-to-app imports
+- **THEN** lint fails with stable rule ids before default tests pass
+- **中文** 当 CLI interactive code 直接调用 model providers、core tool executors、policy internals、scheduler internals、sandbox internals、approved host adapter APIs 之外的 platform primitives，或 app-to-app imports 时，lint 必须在默认测试通过前以 stable rule ids 失败。
+
+### Requirement: Session Resume/Fork Regression / Session Resume/Fork 回归
+
+The testing framework SHALL include deterministic contract, integration, golden, compatibility, matrix where applicable, and e2e coverage for session resume and fork-lite.
+
+testing framework 必须为 session resume 与 fork-lite 提供 deterministic contract、integration、golden、compatibility、适用时的 matrix 和 e2e 覆盖。
+
+#### Scenario: Contract tests cover store semantics / 合同测试覆盖 store 语义
+
+- **WHEN** session-store contract tests run
+- **THEN** they cover create, append, resume, fork-lite, lineage metadata, unknown session failure, redaction, and serialization for all supported deterministic stores
+- **中文** 当 session-store contract tests 运行时，必须覆盖所有 supported deterministic stores 的 create、append、resume、fork-lite、lineage metadata、unknown session failure、redaction 和 serialization。
+
+#### Scenario: Integration tests cover resumed runtime turn / 集成测试覆盖恢复后的 runtime turn
+
+- **WHEN** integration tests submit a prompt after resume or fork-lite
+- **THEN** runtime events use the selected session id and still include governed kernel, policy, scheduler, bus, and workflow evidence
+- **中文** 当 integration tests 在 resume 或 fork-lite 后提交 prompt 时，runtime events 必须使用选定 session id，并仍包含 governed kernel、policy、scheduler、bus 和 workflow evidence。
+
+#### Scenario: E2E tests cover CLI session commands / E2E 覆盖 CLI session 命令
+
+- **WHEN** e2e tests run CLI session resume/fork commands
+- **THEN** they complete with deterministic fakes, structured output, no live provider access, and no raw secret output
+- **中文** 当 e2e tests 运行 CLI session resume/fork commands 时，必须使用 deterministic fakes 完成，输出 structured output，不访问 live provider，且不输出 raw secret。
+
+### Requirement: Session Resume/Fork Golden Replay / Session Resume/Fork Golden Replay
+
+The regression harness SHALL capture and replay normalized session resume and fork-lite traces.
+
+regression harness 必须捕获并回放 normalized session resume 与 fork-lite traces。
+
+#### Scenario: Golden replay covers resume / Golden replay 覆盖 resume
+
+- **WHEN** a resumed session trace is replayed
+- **THEN** normalized events include original session events, resume metadata, subsequent runtime events, and stable event ordering
+- **中文** 当 resumed session trace 被 replay 时，normalized events 必须包含 original session events、resume metadata、subsequent runtime events 和 stable event ordering。
+
+#### Scenario: Golden replay covers fork-lite / Golden replay 覆盖 fork-lite
+
+- **WHEN** a forked session trace is replayed
+- **THEN** normalized events include parent lineage, fork event, child session id, child runtime events, and replayable redacted metadata
+- **中文** 当 forked session trace 被 replay 时，normalized events 必须包含 parent lineage、fork event、child session id、child runtime events 和 replayable redacted metadata。
+
+### Requirement: Session Compatibility Fixtures / Session 兼容性 Fixtures
+
+The testing framework SHALL include compatibility fixtures for persisted session metadata, resume results, fork results, and unknown schema rejection.
+
+testing framework 必须包含 persisted session metadata、resume results、fork results 和 unknown schema rejection 的 compatibility fixtures。
+
+#### Scenario: Persisted schema is required / Persisted schema 必须存在
+
+- **WHEN** persisted session metadata, resume result, or fork result lacks a schema version
+- **THEN** compatibility tests fail with a deterministic diagnostic
+- **中文** 当 persisted session metadata、resume result 或 fork result 缺少 schema version 时，compatibility tests 必须以 deterministic diagnostic 失败。
+
+#### Scenario: Unsupported schema fails closed / 不支持的 schema 安全失败
+
+- **WHEN** session persistence contains an unsupported schema version
+- **THEN** resume/fork tests prove the system returns a typed compatibility failure instead of silently accepting incompatible state
+- **中文** 当 session persistence 包含 unsupported schema version 时，resume/fork tests 必须证明系统返回 typed compatibility failure，而不是静默接受 incompatible state。
+
+### Requirement: Context Projection Regression Suite / Context Projection 回归套件
+
+The testing framework SHALL include deterministic unit, contract, integration, golden, compatibility, matrix, and e2e coverage for ContextGraph projection.
+
+testing framework 必须为 ContextGraph projection 提供 deterministic unit、contract、integration、golden、compatibility、matrix 和 e2e 覆盖。
+
+#### Scenario: Contract tests cover projection DTOs / 合同测试覆盖 Projection DTO
+
+- **WHEN** projection contract tests run
+- **THEN** they verify schema versions, serializability, fake substitutability, redaction metadata, budget metadata, and no implementation imports in `platform-contracts`
+- **中文** 当 projection contract tests 运行时，必须验证 schema versions、serializability、fake substitutability、redaction metadata、budget metadata，以及 `platform-contracts` 不导入实现包。
+
+#### Scenario: Integration tests cover runtime projection / 集成测试覆盖 Runtime Projection
+
+- **WHEN** runtime integration tests dispatch a model turn
+- **THEN** they prove projection runs before provider request construction and model gateway receives only projected context
+- **中文** 当 runtime integration tests 派发 model turn 时，必须证明 projection 在 provider request construction 前运行，且 model gateway 只收到 projected context。
+
+### Requirement: Projection Golden Replay / Projection Golden Replay
+
+Golden replay SHALL capture selected nodes, excluded nodes, budget decisions, cache metadata, redaction summaries, and projection terminal state.
+
+golden replay 必须捕获 selected nodes、excluded nodes、budget decisions、cache metadata、redaction summaries 和 projection terminal state。
+
+#### Scenario: Replay detects projection drift / Replay 检测 Projection 漂移
+
+- **WHEN** projection ranking, filtering, redaction, cache, or budget behavior changes
+- **THEN** golden replay detects the semantic drift unless the fixture is explicitly updated
+- **中文** 当 projection ranking、filtering、redaction、cache 或 budget 行为变化时，golden replay 必须检测 semantic drift，除非 fixture 被显式更新。
+
+### Requirement: Projection Compatibility Fixtures / Projection 兼容性 Fixtures
+
+The testing framework SHALL include compatibility fixtures for projection request, result, event, and cache metadata schemas.
+
+testing framework 必须包含 projection request、result、event 和 cache metadata schemas 的 compatibility fixtures。
+
+#### Scenario: Unsupported projection schema fails closed / 不支持的 Projection Schema 安全失败
+
+- **WHEN** persisted or replayed projection evidence uses an unsupported schema version
+- **THEN** compatibility tests prove the system returns a typed compatibility failure instead of silently accepting incompatible state
+- **中文** 当 persisted 或 replayed projection evidence 使用 unsupported schema version 时，compatibility tests 必须证明系统返回 typed compatibility failure，而不是静默接受 incompatible state。
+
+### Requirement: Projection Matrix Fixtures / Projection 矩阵 Fixtures
+
+Projection regression SHALL cover empty context, large session, stale cache, secret fixture, hard budget exceeded, memory unavailable, and degraded host scope.
+
+projection regression 必须覆盖 empty context、large session、stale cache、secret fixture、hard budget exceeded、memory unavailable 和 degraded host scope。
+
+#### Scenario: Secret fixture does not leak / Secret Fixture 不泄漏
+
+- **WHEN** projection tests include secret-like context nodes
+- **THEN** stdout, JSON, traces, snapshots, cache artifacts, golden fixtures, and assertion messages contain only redacted evidence
+- **中文** 当 projection tests 包含 secret-like context nodes 时，stdout、JSON、traces、snapshots、cache artifacts、golden fixtures 和 assertion messages 只能包含 redacted evidence。
+
+### Requirement: Secret And Sandbox Regression Suite / Secret 与 Sandbox 回归套件
+
+The testing framework SHALL include deterministic unit, contract, integration, golden, compatibility, matrix, lint, and e2e coverage for secret and sandbox hardening.
+
+testing framework 必须为 secret 与 sandbox hardening 提供 deterministic unit、contract、integration、golden、compatibility、matrix、lint 和 e2e 覆盖。
+
+#### Scenario: Secret fixtures never leak / Secret Fixtures 绝不泄漏
+
+- **WHEN** tests run with API keys, bearer tokens, private key blocks, env-style credentials, or secret redaction classes
+- **THEN** stdout, stream-json, traces, sessions, caches, snapshots, golden files, and assertion messages contain only redacted evidence
+- **中文** 当 tests 使用 API keys、bearer tokens、private key blocks、env-style credentials 或 secret redaction classes 时，stdout、stream-json、traces、sessions、caches、snapshots、golden files 和 assertion messages 只能包含 redacted evidence。
+
+#### Scenario: Sandbox matrix covers platform modes / Sandbox 矩阵覆盖平台模式
+
+- **WHEN** sandbox matrix tests run
+- **THEN** they cover fake Windows, macOS, Linux, WSL, remote/no-shell, read-only filesystem, missing secure storage, missing network, and missing native capability modes
+- **中文** 当 sandbox matrix tests 运行时，必须覆盖 fake Windows、macOS、Linux、WSL、remote/no-shell、read-only filesystem、missing secure storage、missing network 和 missing native capability modes。
+
+### Requirement: Secret And Sandbox Bypass Lint / Secret 与 Sandbox 绕过 Lint
+
+Architecture lint SHALL reject direct secret, environment, filesystem, process, native, or sandbox primitive access outside approved owner packages and tests.
+
+architecture lint 必须拒绝 approved owner packages 与 tests 之外的 direct secret、environment、filesystem、process、native 或 sandbox primitive access。
+
+#### Scenario: Host bypass fails lint / Host 绕过触发 Lint
+
+- **WHEN** CLI, VSCode, provider, plugin, or feature packages read raw environment secrets, execute processes, mutate files, or select sandbox profiles directly
+- **THEN** lint fails with stable rule ids before default tests pass
+- **中文** 当 CLI、VSCode、provider、plugin 或 feature packages 直接读取 raw environment secrets、执行 processes、修改 files 或选择 sandbox profiles 时，lint 必须在默认测试通过前以 stable rule ids 失败。
+

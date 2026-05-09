@@ -6,6 +6,7 @@ import { InMemoryCommandSystem } from "@deepseek/command-system";
 import { PipelineProtocolRouter } from "@deepseek/communication-protocol";
 import { DeterministicScheduler } from "@deepseek/concurrency-orchestration";
 import { InMemoryConfigStore } from "@deepseek/config";
+import { registerCoreCodingToolsForRuntime } from "@deepseek/core-coding-tools";
 import { InMemoryContextEngine } from "@deepseek/context-engine";
 import { FakeCredentialManager } from "@deepseek/credential-auth-management";
 import { StaticDistributionUpdateManager } from "@deepseek/distribution-update-management";
@@ -75,4 +76,8 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     observability: new InMemoryObservabilitySink(),
     regression: new DeterministicRegressionHarness()
   };
+}
+
+export async function registerDeterministicCoreTools(deps: RuntimeDependencies, workspaceRoot = "/workspace"): Promise<void> {
+  await registerCoreCodingToolsForRuntime(deps, workspaceRoot);
 }
