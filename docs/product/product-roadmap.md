@@ -92,11 +92,14 @@ Acceptance gate / 验收门禁:
 
 Next OpenSpecs / 后续 OpenSpec:
 
-- Archive `add-deepseek-ai-provider`. / archive `add-deepseek-ai-provider`。
-- Live provider opt-in transport and credential integration. / live provider 可选传输与凭证集成。
 - Tool schema projection from capability registry to model gateway. / 从 capability registry 到 model gateway 的工具 schema 投影。
 - Model capability governance and migration fixtures. / 模型能力治理与迁移 fixtures。
-- Observability, diagnostics, and privacy controls v1. / observability、diagnostics 与 privacy controls v1。
+
+Implemented OpenSpecs / 已实现 OpenSpec:
+
+- `add-deepseek-ai-provider`
+- `add-live-deepseek-provider-smoke`
+- `harden-runtime-kernel-semantics`
 
 ### R1 MVP Coding Agent / R1 最小可用 Coding Agent
 
@@ -125,12 +128,18 @@ Acceptance gate / 验收门禁:
 - Golden trace covers a minimal coding turn with one read and one edit intent. / golden trace 覆盖包含一次 read 和一次 edit intent 的最小 coding turn。
 - CLI and stream-json outputs consume the same runtime events. / CLI 与 stream-json 输出消费同一套 runtime events。
 
-Next OpenSpecs / 后续 OpenSpec:
+Implemented OpenSpecs / 已实现 OpenSpec:
 
 - `implement-core-coding-tools`
 - `implement-local-readiness-commands`
 - `implement-minimal-interactive-cli`
 - `implement-session-resume-and-fork`
+
+Next OpenSpecs / 后续 OpenSpec:
+
+No immediate R1 OpenSpec remains in the current roadmap. Future R1 work should be bug-driven or readiness-gap driven.
+
+当前路线图中没有剩余的即时 R1 OpenSpec。后续 R1 工作应由 bug 或 readiness gap 驱动。
 
 ### R2 Context And Safety / R2 上下文与安全
 
@@ -170,11 +179,14 @@ Acceptance gate / 验收门禁:
 
 Next OpenSpecs / 后续 OpenSpec:
 
-- `implement-context-graph-projection`
-- `harden-secret-and-sandbox-policy`
+No immediate R2 OpenSpec remains in the current roadmap. Future R2 work should be driven by regression gaps discovered while building R3/R4.
+
+当前路线图中没有剩余的即时 R2 OpenSpec。后续 R2 工作应由推进 R3/R4 时发现的 regression gaps 驱动。
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
+- `implement-context-graph-projection`
+- `harden-secret-and-sandbox-policy`
 - `implement-checkpoint-undo`
 - `implement-code-intelligence-v1`
 - `implement-observability-privacy-v1`
@@ -350,12 +362,12 @@ Next OpenSpecs / 后续 OpenSpec:
 
 ## Immediate Recommended Sequence / 近期推荐顺序
 
-1. Finish and archive `add-deepseek-ai-provider`. / 完成并 archive `add-deepseek-ai-provider`。
-2. Archive `define-product-roadmap` after validation. / 校验通过后 archive `define-product-roadmap`。
-3. Start R1 with `implement-core-coding-tools`. / 用 `implement-core-coding-tools` 启动 R1。
-4. Follow with `implement-minimal-interactive-cli`. / 随后推进 `implement-minimal-interactive-cli`。
-5. Then add `implement-session-resume-and-fork`. / 然后增加 `implement-session-resume-and-fork`。
+1. Start R3 with `implement-skills-v1`. / 用 `implement-skills-v1` 启动 R3。
+2. Follow with `implement-hooks-v1`. / 随后推进 `implement-hooks-v1`。
+3. Add `implement-mcp-gateway-v1`. / 增加 `implement-mcp-gateway-v1`。
+4. Add `implement-plugin-lockfile-v1`. / 增加 `implement-plugin-lockfile-v1`。
+5. Then revisit R4 with `implement-vscode-event-projection`. / 然后回到 R4 推进 `implement-vscode-event-projection`。
 
-Rationale: R1 creates the first usable product surface while still exercising the R0 platform guarantees. R2 safety/context work should start before broad extensibility or UX launch.
+Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy. R3 should start with skills because skills create the smallest governed extension unit before hooks, MCP, and plugins.
 
-理由：R1 产出第一个可用产品面，同时继续验证 R0 平台保证。R2 safety/context 工作应在大范围 extensibility 或 UX 发布前启动。
+理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy。R3 应先从 skills 启动，因为 skills 是 hooks、MCP 和 plugins 之前最小的受治理扩展单元。
