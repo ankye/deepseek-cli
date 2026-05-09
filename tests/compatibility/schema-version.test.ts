@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
+import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { requireSchemaVersion } from "@deepseek/testing-regression";
 
 describe("compatibility checks", () => {
@@ -50,5 +51,20 @@ describe("compatibility checks", () => {
     const unsupported = await engine.projectGraph({ ...request, schemaVersion: "999.0.0" });
     assert.equal(unsupported.status, "rejected");
     assert.equal(unsupported.budget.reason, "unsupported-schema");
+  });
+
+  it("requires schemaVersion on observability records and diagnostic bundles", async () => {
+    const sink = new InMemoryObservabilitySink();
+    await sink.emit({ kind: "trace", at: new Date(0).toISOString(), name: "compat", fields: { message: "compat" } });
+    const [record] = await sink.drain();
+    const bundle = await sink.createDiagnosticBundle({ target: "local-bundle", reason: "compat" });
+
+    assert.equal(record?.schemaVersion, OBSERVABILITY_SCHEMA_VERSION);
+    assert.equal(bundle.schemaVersion, OBSERVABILITY_SCHEMA_VERSION);
+    assert.deepEqual(requireSchemaVersion(record), []);
+    assert.deepEqual(requireSchemaVersion(bundle), []);
+    const missingSchema: { schemaVersion?: string } = { schemaVersion: bundle.schemaVersion };
+    delete missingSchema.schemaVersion;
+    assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
   });
 });

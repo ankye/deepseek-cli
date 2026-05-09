@@ -20,3 +20,7 @@ checkpoint/undo 覆盖位于 unit、contract、integration、golden 和 matrix s
 Code intelligence v1 coverage lives in unit, contract, integration, golden, and matrix suites with deterministic local analyzer fixtures and no live IDE/LSP dependency.
 
 code intelligence v1 覆盖位于 unit、contract、integration、golden 和 matrix suites，使用 deterministic local analyzer fixtures，且不依赖 live IDE/LSP。
+
+Observability/privacy v1 coverage lives in unit, contract, integration, golden, compatibility, and matrix suites with local-only diagnostic bundle fixtures, privacy opt-out/export-denial checks, and no raw secret persistence.
+
+observability/privacy v1 覆盖位于 unit、contract、integration、golden、compatibility 和 matrix suites，使用 local-only diagnostic bundle fixtures、privacy opt-out/export-denial checks，并验证无 raw secret persistence。

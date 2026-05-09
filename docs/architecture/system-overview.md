@@ -15,6 +15,7 @@ flowchart TB
   Capability[capability platform]
   Governance[policy + sandbox + platform abstraction]
   Context[model gateway + context + memory]
+  Obs[observability + privacy]
   Quality[lint + tests + golden + matrix]
 
   Host --> Protocol
@@ -23,8 +24,10 @@ flowchart TB
   Kernel --> Capability
   Kernel --> Governance
   Kernel --> Context
+  Kernel --> Obs
   Capability --> Governance
   Context --> Governance
+  Obs --> Quality
   Kernel --> Quality
 ```
 
@@ -39,6 +42,7 @@ flowchart TB
 | Capabilities / 能力 | `capability-registry`, `core-coding-tools`, `command-system`, future skills/hooks/MCP/plugins | Discover and execute governed capabilities. / 发现并执行受治理能力。 |
 | Governance / 治理 | `policy-sandbox`, `platform-abstraction`, `config`, `credential-auth-management`, `usage-budget-management` | Decide permissions, sandbox profile, platform availability, credentials, budgets. / 决定权限、沙箱、平台能力、凭证和预算。 |
 | AI and context / AI 与上下文 | `model-gateway`, `context-engine`, `memory-cache-management`, `code-intelligence` | Isolate providers, project context, manage memory/cache, attach code evidence. / 隔离供应商、投影上下文、管理记忆缓存、附加代码证据。 |
+| Observability and privacy / 观测与隐私 | `observability`, `runtime-message-bus`, `testing-regression` | Normalize redacted events, keep local diagnostics, govern diagnostic bundles and export decisions. / 归一化脱敏事件、保留本地诊断、治理诊断包与导出决策。 |
 | Quality / 质量 | `testing-regression`, `tests/*`, `scripts/lint-framework` | Enforce contracts through deterministic tests and architecture lint. / 通过确定性测试和架构 lint 强制契约。 |
 
 ## Non-Negotiable Boundaries / 不可突破的边界
@@ -65,3 +69,4 @@ DeepSeek CLI 通过显式平台协议避免这一点：
 - Policy and sandbox decide before scheduling. / policy 和 sandbox 在调度前决策。
 - Scheduler runs only governed work. / scheduler 只运行受治理工作。
 - Events are redacted, persisted, replayable, and host-renderable. / events 脱敏、持久化、可 replay、可由 host 渲染。
+- Diagnostic evidence is local-first, privacy-governed, and export-denied by default. / diagnostic evidence 默认 local-first、受 privacy 治理，并拒绝外部导出。
