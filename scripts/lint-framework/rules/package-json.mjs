@@ -1,6 +1,7 @@
 import { createRule } from "../rule.mjs";
 
 const dependencyBlocks = ["dependencies", "peerDependencies", "optionalDependencies", "devDependencies"];
+const npmBinEntrypoints = new Set(["./dist/index.js", "dist/index.js"]);
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -85,7 +86,7 @@ function validateAppManifest(context, json, workspaceName, publishConfig) {
   requireField(context, packageJsonBoundaryRule.id, json.private !== true, `${json.name} is publishable and must not be private`);
   requireField(context, packageJsonBoundaryRule.id, json.publishConfig?.access === "public", `${json.name} must publish with public access`);
   requireField(context, packageJsonBoundaryRule.id, json.exports?.["."] === "./dist/index.js", `${json.name} must export the built CLI entrypoint`);
-  requireField(context, packageJsonBoundaryRule.id, json.bin?.[publishConfig.binName] === "./dist/index.js", `${json.name} must expose the ${publishConfig.binName} binary`);
+  requireField(context, packageJsonBoundaryRule.id, npmBinEntrypoints.has(json.bin?.[publishConfig.binName]), `${json.name} must expose the ${publishConfig.binName} binary`);
 
   const files = new Set(Array.isArray(json.files) ? json.files : []);
   for (const requiredFile of publishConfig.files) {
