@@ -32,3 +32,7 @@ skills v1 覆盖位于 unit、contract、integration、golden、compatibility、
 Hooks v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, deterministic ordering, observe-only output typing, timeout containment, failure policies, redaction, and no live plugin/host dependency.
 
 hooks v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、deterministic ordering、observe-only output typing、timeout containment、failure policies、redaction，且不依赖 live plugin/host。
+
+MCP gateway v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, manifest validation, namespace collision rejection, deterministic fake/in-process adapters, fail-closed real transports, governed calls/reads, timeout containment, redaction, and no real MCP server/network/process dependency.
+
+MCP gateway v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、manifest validation、namespace collision rejection、deterministic fake/in-process adapters、真实 transport 安全失败、受治理 calls/reads、timeout containment、redaction，且不依赖 real MCP server/network/process。

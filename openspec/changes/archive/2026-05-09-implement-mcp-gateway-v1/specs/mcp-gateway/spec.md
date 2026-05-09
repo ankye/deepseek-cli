@@ -1,12 +1,4 @@
-# mcp-gateway Specification
-
-## Purpose
-
-MCP gateway defines the governed boundary for adapting external MCP servers into DeepSeek capabilities, resources, prompts, and context inputs without allowing external servers to bypass platform policy, redaction, timeout, replay, or audit controls.
-
-MCP gateway 定义将外部 MCP servers 适配为 DeepSeek capabilities、resources、prompts 与 context inputs 的受治理边界，防止外部 servers 绕过 platform policy、redaction、timeout、replay 或 audit controls。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: MCP Gateway Boundary
 
@@ -103,6 +95,8 @@ MCP gateway 必须在 MCP tools、resource reads、prompts、commands 和 contex
 - **WHEN** a model, skill, command, hook, agent, or user requests an MCP resource
 - **THEN** the request is authorized and traced through the governed gateway record rather than treated as untracked context
 - **中文** 当 model、skill、command、hook、agent 或 user 请求 MCP resource 时，该请求必须通过受治理 gateway record 授权和追踪，而不能作为 untracked context 处理。
+
+## ADDED Requirements
 
 ### Requirement: Canonical MCP Gateway V1 API / Canonical MCP Gateway V1 API
 

@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
+import { InMemoryMcpGateway } from "@deepseek/mcp-gateway";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
 import { requireSchemaVersion } from "@deepseek/testing-regression";
@@ -150,5 +151,50 @@ describe("compatibility checks", () => {
       outputSchema: {},
       schemaVersion: "999.0.0"
     })).ok, false);
+  });
+
+  it("requires schemaVersion on MCP manifests, summaries, calls, and resource reads", async () => {
+    const mcp = new InMemoryMcpGateway();
+    await mcp.connectServer(
+      {
+        id: asId<"mcpServer">("mcp-compat"),
+        name: "compat",
+        version: "1.0.0",
+        namespace: "compat",
+        source: "built-in",
+        trust: "trusted",
+        transport: { kind: "fake" },
+        permissions: [],
+        timeoutMs: 100,
+        tools: [{ name: "lookup", inputSchema: {}, permissions: [] }],
+        resources: [{ uri: "mcp://compat/resource", name: "resource", permissions: [], cachePolicy: "no-store" }],
+        prompts: [{ name: "prompt" }]
+      },
+      {
+        toolHandlers: {
+          lookup: async () => ({ ok: true, value: { ok: true } })
+        },
+        resourceHandlers: {
+          "mcp://compat/resource": async () => ({ ok: true, value: { content: "ok" } })
+        }
+      }
+    );
+    const [server] = await mcp.listServers({ schemaVersion: MCP_SCHEMA_VERSION });
+    const [tool] = await mcp.listTools({ schemaVersion: MCP_SCHEMA_VERSION });
+    const [resource] = await mcp.listResources({ schemaVersion: MCP_SCHEMA_VERSION });
+    const [prompt] = await mcp.listPrompts({ schemaVersion: MCP_SCHEMA_VERSION });
+    const call = await mcp.callTool({ schemaVersion: MCP_SCHEMA_VERSION, serverId: asId<"mcpServer">("mcp-compat"), name: "lookup", caller: "test", input: {} });
+    const read = await mcp.readResource({ schemaVersion: MCP_SCHEMA_VERSION, serverId: asId<"mcpServer">("mcp-compat"), uri: "mcp://compat/resource", caller: "test" });
+
+    assert.ok(server);
+    assert.ok(tool);
+    assert.ok(resource);
+    assert.ok(prompt);
+    for (const subject of [server, tool, resource, prompt, call, read]) {
+      assert.deepEqual(requireSchemaVersion(subject), []);
+    }
+    const unsupported = await mcp.callTool({ schemaVersion: "999.0.0", serverId: asId<"mcpServer">("mcp-compat"), name: "lookup", caller: "test", input: {} });
+    assert.equal(unsupported.status, "rejected");
+    assert.equal(unsupported.diagnostics.some((item) => item.code === "MCP_SCHEMA_VERSION_UNSUPPORTED"), true);
   });
 });

@@ -87,7 +87,7 @@ export const lintConventions = {
       },
       {
         serviceNames: new Set(["mcp", "mcpGateway"]),
-        methods: new Set(["connect", "callTool", "listTools"]),
+        methods: new Set(["connectServer", "callTool", "readResource", "listTools", "listResources", "listPrompts"]),
         ownerPackage: "mcp-gateway"
       },
       {

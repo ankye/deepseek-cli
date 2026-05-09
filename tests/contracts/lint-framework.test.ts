@@ -82,7 +82,7 @@ const conventions = {
       },
       {
         serviceNames: new Set(["mcp", "mcpGateway"]),
-        methods: new Set(["listTools", "callTool", "connect"]),
+        methods: new Set(["connectServer", "listTools", "listResources", "listPrompts", "callTool", "readResource"]),
         ownerPackage: "mcp-gateway"
       },
       {
@@ -250,7 +250,7 @@ describe("architecture lint framework", () => {
       await writeFixtureFile(root, "src/packages/runtime/src/index.ts", "export async function run(deps) { await deps.skills.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/packages/skill-system/src/index.ts", "export async function own(skillSystem) { await skillSystem.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/packages/concurrency-orchestration/src/index.ts", "export async function ownScheduler(scheduler) { await scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
-      await writeFixtureFile(root, "src/apps/cli/test/cli.test.ts", "export async function test(deps) { await deps.mcp.listTools(\"fake\"); }\n");
+      await writeFixtureFile(root, "src/apps/cli/test/cli.test.ts", "export async function test(deps) { await deps.mcp.listTools({ schemaVersion: \"1.0.0\", namespace: \"fake\" }); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -262,7 +262,7 @@ describe("architecture lint framework", () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function badHost(deps) { await deps.scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
-      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); await deps.hooks.invokeHooks({ schemaVersion: \"1.0.0\", point: \"turn.before\", input: {} }); }\n");
+      await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.callTool({ schemaVersion: \"1.0.0\", serverId: \"mcp\", name: \"fake\", caller: \"runtime\", input: {} }); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); await deps.hooks.invokeHooks({ schemaVersion: \"1.0.0\", point: \"turn.before\", input: {} }); }\n");
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 2, result.stderr || result.stdout);
@@ -309,6 +309,26 @@ describe("architecture lint framework", () => {
       assert.equal(result.status, 2, result.stderr || result.stdout);
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
       assert.equal(ruleIds.has("hook-system/no-legacy-generic-api"), true);
+    });
+  });
+
+  it("rejects legacy generic MCP gateway APIs", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/platform-contracts/src/mcp.ts",
+        "export interface McpGateway { connect(manifest: unknown): Promise<void>; listTools(namespace: string): Promise<unknown[]>; callTool(namespace: string, name: string, input: unknown): Promise<unknown>; }\n"
+      );
+      await writeFixtureFile(
+        root,
+        "src/packages/mcp-gateway/src/index.ts",
+        "export class InMemoryMcpGateway { connect() {} listTools(namespace: string) { return []; } callTool(namespace: string, name: string, input: unknown) { return input; } }\n"
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("mcp-gateway/no-legacy-generic-api"), true);
     });
   });
 

@@ -3,6 +3,7 @@ import { noDirectContextProjectionBypass } from "./context-projection.mjs";
 import { noDirectGovernedExecutionBypass } from "./governed-execution.mjs";
 import { noLegacyHookSystemApi } from "./hook-system.mjs";
 import { noAppToAppImports, noCrossPackageRelativeImports, noInternalPackageSrcImports } from "./imports.mjs";
+import { noLegacyMcpGatewayApi } from "./mcp-gateway.mjs";
 import { packageJsonBoundaryRule } from "./package-json.mjs";
 import { noDirectPlatformPrimitiveAccess } from "./platform.mjs";
 import { noDirectProviderCredentialAccess } from "./provider.mjs";
@@ -20,6 +21,7 @@ export const architectureRules = [
   noDirectContextProjectionBypass,
   noDirectGovernedExecutionBypass,
   noLegacyHookSystemApi,
+  noLegacyMcpGatewayApi,
   noDirectPlatformPrimitiveAccess,
   noDirectProviderCredentialAccess,
   noDirectSecretSandboxBypass,

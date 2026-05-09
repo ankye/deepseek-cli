@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { HOOK_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createHookOutput } from "@deepseek/hook-system";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { createPlatformRuntime, FakePlatformRuntime } from "@deepseek/platform-abstraction";
@@ -71,15 +71,20 @@ describe("ecosystem and governance integration", () => {
     );
     assert.equal((await deps.hooks.invokeHooks({ schemaVersion: HOOK_SCHEMA_VERSION, point: "user-input.before", input: {} })).executions.length, 1);
 
-    await deps.mcp.connect({
+    await deps.mcp.connectServer({
+      schemaVersion: MCP_SCHEMA_VERSION,
       id: asId<"mcpServer">("mcp-fake"),
       name: "fake",
-      transport: "fake",
+      version: "1.0.0",
+      source: "built-in",
+      transport: { kind: "fake" },
       namespace: "fake",
       trust: "trusted",
-      timeoutMs: 100
+      permissions: ["mcp:tool"],
+      timeoutMs: 100,
+      tools: [{ name: "fake.tool", inputSchema: {}, permissions: ["mcp:tool"] }]
     });
-    assert.equal((await deps.mcp.listTools("fake")).length, 1);
+    assert.equal((await deps.mcp.listTools({ schemaVersion: MCP_SCHEMA_VERSION, namespace: "fake" })).length, 1);
 
     const diff = await deps.plugins.install({
       id: asId<"plugin">("plugin-one"),
