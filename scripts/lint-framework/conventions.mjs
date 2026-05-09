@@ -77,7 +77,7 @@ export const lintConventions = {
       },
       {
         serviceNames: new Set(["skills", "skillSystem"]),
-        methods: new Set(["activate"]),
+        methods: new Set(["activateSkill", "projectContext", "loadSkill", "registerSkill"]),
         ownerPackage: "skill-system"
       },
       {

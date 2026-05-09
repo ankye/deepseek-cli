@@ -28,7 +28,7 @@ This page maps packages to architectural ownership. It is a developer reference 
 | `capability-registry` | Manifest registry and executor binding. / manifest registry 与 executor binding。 |
 | `core-coding-tools` | File/search/edit/shell/git/todo tool foundation. / 文件、搜索、编辑、shell、git、todo 工具基础。 |
 | `command-system` | Host-agnostic commands and interactive controls. / host-agnostic 命令和交互控制。 |
-| `skill-system` | Skill metadata and future progressive loading. / skill metadata 与未来渐进加载。 |
+| `skill-system` | Canonical skills v1 manifest validation, summary-first progressive loading, trust inertness, activation, and context-only projection. / canonical skills v1 manifest 校验、summary-first 渐进加载、trust inertness、activation 与 context-only projection。 |
 | `hook-system` | Hook metadata and runtime contribution surface. / hook metadata 与 runtime contribution surface。 |
 | `mcp-gateway` | MCP server/tool/resource normalization. / MCP server、tool、resource 归一化。 |
 | `plugin-system` | Plugin manifest and installed contribution model. / plugin manifest 与安装贡献模型。 |

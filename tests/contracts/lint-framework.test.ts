@@ -247,8 +247,8 @@ describe("architecture lint framework", () => {
 
   it("allows governed execution primitives in runtime, owner packages, and tests", async () => {
     await withFixture(async (root) => {
-      await writeFixtureFile(root, "src/packages/runtime/src/index.ts", "export async function run(deps) { await deps.skills.activate(\"review\", {}); }\n");
-      await writeFixtureFile(root, "src/packages/skill-system/src/index.ts", "export async function own(skillSystem) { await skillSystem.activate(\"review\", {}); }\n");
+      await writeFixtureFile(root, "src/packages/runtime/src/index.ts", "export async function run(deps) { await deps.skills.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
+      await writeFixtureFile(root, "src/packages/skill-system/src/index.ts", "export async function own(skillSystem) { await skillSystem.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/packages/concurrency-orchestration/src/index.ts", "export async function ownScheduler(scheduler) { await scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
       await writeFixtureFile(root, "src/apps/cli/test/cli.test.ts", "export async function test(deps) { await deps.mcp.listTools(\"fake\"); }\n");
 
@@ -260,7 +260,7 @@ describe("architecture lint framework", () => {
 
   it("rejects direct governed execution primitive bypasses outside approved owners", async () => {
     await withFixture(async (root) => {
-      await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activate(\"review\", {}); }\n");
+      await writeFixtureFile(root, "src/apps/cli/src/index.ts", "export async function bad(deps) { await deps.skills.activateSkill({ schemaVersion: \"1.0.0\", name: \"review\", trigger: \"explicit\", context: {} }); }\n");
       await writeFixtureFile(root, "src/apps/vscode-extension/src/index.ts", "export async function badHost(deps) { await deps.scheduler.run({ id: \"task\", name: \"work\" }, async () => undefined); }\n");
       await writeFixtureFile(root, "src/packages/context-engine/src/index.ts", "export async function alsoBad(deps) { await deps.mcp.listTools(\"fake\"); await deps.policy.decide({}); await deps.capabilities.resolveExecutable(\"runtime.echo\"); }\n");
 
@@ -269,6 +269,26 @@ describe("architecture lint framework", () => {
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
 
       assert.deepEqual([...ruleIds], ["governed-execution/no-direct-primitive-bypass"]);
+    });
+  });
+
+  it("rejects legacy generic skill system APIs", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/platform-contracts/src/skill.ts",
+        "export interface SkillSystem { register(manifest: unknown): Promise<unknown>; activate(name: string): Promise<unknown>; list(): Promise<unknown[]>; }\n"
+      );
+      await writeFixtureFile(
+        root,
+        "src/packages/skill-system/src/index.ts",
+        "export class InMemorySkillSystem { register() {} activate() {} list() { return []; } }\n"
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("skill-system/no-legacy-generic-api"), true);
     });
   });
 

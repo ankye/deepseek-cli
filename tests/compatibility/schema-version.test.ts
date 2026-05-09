@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
+import { InMemorySkillSystem } from "@deepseek/skill-system";
 import { requireSchemaVersion } from "@deepseek/testing-regression";
 
 describe("compatibility checks", () => {
@@ -66,5 +67,37 @@ describe("compatibility checks", () => {
     const missingSchema: { schemaVersion?: string } = { schemaVersion: bundle.schemaVersion };
     delete missingSchema.schemaVersion;
     assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
+  });
+
+  it("requires schemaVersion on skill manifests, activation results, summaries, and context segments", async () => {
+    const skills = new InMemorySkillSystem();
+    await skills.registerSkill({
+      id: asId<"skill">("skill-compat"),
+      name: "compat-skill",
+      version: "1.0.0",
+      source: "built-in",
+      trust: "trusted",
+      activation: ["compat"],
+      executionModes: ["context"],
+      permissions: [],
+      metadata: { instructions: ["compat instruction"] }
+    });
+    const [summary] = await skills.listSummaries();
+    const activation = await skills.activateSkill({ schemaVersion: SKILL_SCHEMA_VERSION, name: "compat-skill", trigger: "explicit", context: {} });
+    const projection = await skills.projectContext({
+      schemaVersion: SKILL_SCHEMA_VERSION,
+      name: "compat-skill",
+      trigger: "explicit",
+      sessionId: asId<"session">("session-skill-compat")
+    });
+
+    assert.equal(summary?.schemaVersion, SKILL_SCHEMA_VERSION);
+    assert.equal(activation.schemaVersion, SKILL_SCHEMA_VERSION);
+    assert.equal(activation.contextSegments[0]?.schemaVersion, SKILL_SCHEMA_VERSION);
+    assert.equal(projection.schemaVersion, SKILL_SCHEMA_VERSION);
+    assert.deepEqual(requireSchemaVersion(summary), []);
+    assert.deepEqual(requireSchemaVersion(activation), []);
+    assert.deepEqual(requireSchemaVersion(activation.contextSegments[0]), []);
+    assert.equal((await skills.validateManifest({ ...activation.manifest, schemaVersion: "999.0.0" } as never)).ok, false);
   });
 });

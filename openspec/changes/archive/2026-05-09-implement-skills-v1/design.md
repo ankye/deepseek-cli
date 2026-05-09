@@ -50,9 +50,9 @@ The repository already has `platform-contracts/src/skill.ts`, `src/packages/skil
 
 2. **Progressive loading is observable and testable.**
 
-   `list()` and summary APIs expose only compact metadata. `activate()` records whether full content was loaded. Tests assert that full instructions are not loaded until activation or explicit projection.
+   `listSummaries()` exposes only compact metadata. `activateSkill()` records whether full content was loaded. Tests assert that full instructions are not loaded until activation or explicit projection.
 
-   **中文：** progressive loading 必须可观察、可测试。`list()` 与 summary APIs 只暴露紧凑 metadata。`activate()` 记录 full content 是否被加载。测试断言 full instructions 不会在 activation 或 explicit projection 前加载。
+   **中文：** progressive loading 必须可观察、可测试。`listSummaries()` 只暴露紧凑 metadata。`activateSkill()` 记录 full content 是否被加载。测试断言 full instructions 不会在 activation 或 explicit projection 前加载。
 
 3. **Untrusted skills are registered but inert.**
 
@@ -79,9 +79,9 @@ The repository already has `platform-contracts/src/skill.ts`, `src/packages/skil
 
 ## Migration Plan
 
-This is additive. Existing callers can continue using `register`, `activate`, and `list`. New v1 methods add validation, summaries, context projection, and activation diagnostics.
+This is intentionally breaking before launch. The skill system uses only canonical v1 APIs, so callers must use explicit validation, registration, summary listing, activation, and context projection methods.
 
-这是 additive 变更。现有调用方可继续使用 `register`、`activate` 和 `list`。新的 v1 methods 增加 validation、summaries、context projection 和 activation diagnostics。
+这是上线前的有意破坏性调整。skill system 只使用 canonical v1 APIs，因此调用方必须使用显式 validation、registration、summary listing、activation 和 context projection methods。
 
 Rollback strategy: keep the in-memory registry but disable context projection by returning no segments for all skills.
 

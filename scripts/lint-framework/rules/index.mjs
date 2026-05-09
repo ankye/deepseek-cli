@@ -7,6 +7,7 @@ import { noDirectPlatformPrimitiveAccess } from "./platform.mjs";
 import { noDirectProviderCredentialAccess } from "./provider.mjs";
 import { noLegacyRuntimeDirectExecution, runtimeDoesNotDependOnTesting } from "./runtime.mjs";
 import { noDirectSecretSandboxBypass } from "./secret-sandbox.mjs";
+import { noLegacySkillSystemApi } from "./skill-system.mjs";
 
 export const architectureRules = [
   noCrossPackageRelativeImports,
@@ -20,5 +21,6 @@ export const architectureRules = [
   noDirectPlatformPrimitiveAccess,
   noDirectProviderCredentialAccess,
   noDirectSecretSandboxBypass,
+  noLegacySkillSystemApi,
   packageJsonBoundaryRule
 ];

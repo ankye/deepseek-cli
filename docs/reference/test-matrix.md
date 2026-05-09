@@ -24,3 +24,7 @@ code intelligence v1 覆盖位于 unit、contract、integration、golden 和 mat
 Observability/privacy v1 coverage lives in unit, contract, integration, golden, compatibility, and matrix suites with local-only diagnostic bundle fixtures, privacy opt-out/export-denial checks, and no raw secret persistence.
 
 observability/privacy v1 覆盖位于 unit、contract、integration、golden、compatibility 和 matrix suites，使用 local-only diagnostic bundle fixtures、privacy opt-out/export-denial checks，并验证无 raw secret persistence。
+
+Skills v1 coverage lives in unit, contract, integration, golden, compatibility, matrix, and lint suites with canonical API enforcement, summary-first loading, trust inertness, context projection, redaction, and no live plugin/catalog dependency.
+
+skills v1 覆盖位于 unit、contract、integration、golden、compatibility、matrix 和 lint suites，包含 canonical API enforcement、summary-first loading、trust inertness、context projection、redaction，且不依赖 live plugin/catalog。

@@ -28,14 +28,14 @@ Migration/rollback / 迁移与回滚: not-needed for v1 in-memory skill records
 - Add progressive loading: manifests and summaries are available eagerly, while large instructions/resources are loaded only after explicit activation or relevance selection.
 - Add context-only skill projection that returns bounded, redacted context segments without scheduling work or granting filesystem/process/network access.
 - Add regression coverage for contracts, context integration, golden replay, compatibility, matrix trust modes, and secret-safe skill content.
-- No breaking changes. Existing `register`, `activate`, and `list` remain available, with richer additive methods and stricter validation.
+- Breaking by design before launch: replace generic `register`, `activate`, and `list` with canonical v1 APIs so the platform does not carry legacy ambiguity.
 
 - 定义版本化 skill DTO，覆盖 manifests、activation rules、content summaries、context segments、activation results、validation diagnostics 和 loading metadata。
 - 实现确定性的 in-memory skill system，校验 manifests、拒绝不完整 packages，并让 untrusted skills 保持 inert。
 - 增加 progressive loading：manifests 与 summaries eager 可用，大型 instructions/resources 只在 explicit activation 或 relevance selection 后加载。
 - 增加 context-only skill projection，返回有界、脱敏 context segments，不进入 scheduler，也不给 filesystem/process/network 权限。
 - 增加 regression 覆盖 contracts、context integration、golden replay、compatibility、matrix trust modes 和 secret-safe skill content。
-- 不引入破坏性变更。现有 `register`、`activate` 和 `list` 保留，并通过 additive methods 和更严格 validation 扩展。
+- 上线前按设计破坏性调整：用 canonical v1 APIs 替换泛化的 `register`、`activate` 和 `list`，避免平台背负 legacy ambiguity。
 
 ## Capabilities
 

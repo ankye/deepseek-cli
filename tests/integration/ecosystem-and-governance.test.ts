@@ -38,7 +38,7 @@ describe("ecosystem and governance integration", () => {
     );
     assert.equal((await deps.commands.invoke("?", {})).ok, true);
 
-    await deps.skills.register({
+    await deps.skills.registerSkill({
       id: asId<"skill">("skill-review"),
       name: "review",
       version: "1.0.0",
@@ -48,7 +48,7 @@ describe("ecosystem and governance integration", () => {
       executionModes: ["context"],
       permissions: []
     });
-    assert.equal((await deps.skills.activate("review", {}))?.name, "review");
+    assert.equal((await deps.skills.activateSkill({ schemaVersion: "1.0.0", name: "review", trigger: "explicit", context: {} })).summary?.name, "review");
 
     await deps.hooks.register(
       {

@@ -6,7 +6,7 @@ export const CONTEXT_PROJECTION_SCHEMA_VERSION = "1.0.0";
 
 export type ContextNodeKind = "user" | "assistant" | "tool-result" | "rule" | "summary" | "file" | "diagnostic" | "memory-ref";
 export type ContextNodeLifecycle = "turn" | "session" | "project" | "global";
-export type ContextNodeSource = "user" | "assistant" | "tool" | "workspace" | "memory" | "system" | "host" | "code-intelligence";
+export type ContextNodeSource = "user" | "assistant" | "tool" | "workspace" | "memory" | "system" | "host" | "code-intelligence" | "skill-system";
 export type ContextProjectionPurpose = "model-request" | "tool-preflight" | "summary" | "replay" | "test";
 export type ContextProjectionStatus = "completed" | "degraded" | "rejected";
 export type ContextProjectionEventKind =
