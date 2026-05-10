@@ -22,6 +22,25 @@ function rootServiceName(expression, ts) {
   return undefined;
 }
 
+function enclosingFunctionName(node, ts) {
+  let current = node.parent;
+  while (current) {
+    if (ts.isFunctionDeclaration(current) && current.name) return current.name.text;
+    if ((ts.isMethodDeclaration(current) || ts.isGetAccessor(current) || ts.isSetAccessor(current)) && current.name && ts.isIdentifier(current.name)) {
+      const classNode = current.parent;
+      if (classNode && ts.isClassDeclaration(classNode) && classNode.name) {
+        return `${classNode.name.text}.${current.name.text}`;
+      }
+      return current.name.text;
+    }
+    if (ts.isVariableDeclaration(current) && current.name && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
 export const noLegacyRuntimeDirectExecution = createRule({
   id: "runtime/no-legacy-direct-execution",
   description: "Runtime package ergonomic APIs must delegate to RuntimeKernel instead of owning direct model or workflow execution state machines.",
@@ -43,21 +62,13 @@ export const noLegacyRuntimeDirectExecution = createRule({
     ];
     if (!forbidden.some(([service, method]) => serviceName === service && methodName === method)) return;
 
-    const source = node.getSourceFile().text;
-    const prefix = source.slice(0, node.getStart(node.getSourceFile()));
-    const classStart = prefix.lastIndexOf("class InProcessRuntimeKernel");
-    const classEnd = classStart >= 0 ? source.indexOf("\nexport function createRuntimeKernel", classStart) : -1;
-    const insideKernel = classStart >= 0 && classEnd >= 0 && node.getStart(node.getSourceFile()) > classStart && node.getStart(node.getSourceFile()) < classEnd;
-    if (insideKernel && serviceName === "bus" && methodName === "publish") return;
-    const agentLoopStart = prefix.lastIndexOf("export async function* runAgentLoop");
-    const agentLoopEnd = agentLoopStart >= 0 ? source.indexOf("\nexport async function* executeProjectedRuntimeTurn", agentLoopStart) : -1;
-    const insideRuntimeAgentLoop = agentLoopStart >= 0 && agentLoopEnd >= 0 && node.getStart(node.getSourceFile()) > agentLoopStart && node.getStart(node.getSourceFile()) < agentLoopEnd;
-    if (insideRuntimeAgentLoop && serviceName === "models" && methodName === "stream") return;
-
-    const recorderStart = prefix.lastIndexOf("async function recordRuntimeAdapterEvent");
-    const recorderEnd = recorderStart >= 0 ? source.indexOf("\nfunction runtimeTrace", recorderStart) : -1;
-    const insideRuntimeAdapterRecorder = recorderStart >= 0 && recorderEnd >= 0 && node.getStart(node.getSourceFile()) > recorderStart && node.getStart(node.getSourceFile()) < recorderEnd;
-    if (insideRuntimeAdapterRecorder && serviceName === "bus" && methodName === "publish") return;
+    const enclosing = enclosingFunctionName(node, ts);
+    if (enclosing) {
+      if (serviceName === "bus" && methodName === "publish") {
+        if (enclosing.startsWith("InProcessRuntimeKernel.") || enclosing === "recordRuntimeAdapterEvent") return;
+      }
+      if (serviceName === "models" && methodName === "stream" && enclosing === "runAgentLoop") return;
+    }
 
     context.report(this.id, node.expression.name, `${serviceName}.${methodName} reintroduces a legacy direct runtime execution path; delegate through RuntimeKernel`);
   }
