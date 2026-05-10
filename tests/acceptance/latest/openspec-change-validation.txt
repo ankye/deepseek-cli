@@ -1,1 +1,1 @@
-Change 'graceful-chat-ctrl-c-and-basic-slash-commands' is valid
+Change 'consolidate-placeholder-packages' is valid

@@ -1,1 +1,1 @@
-dependency boundaries passed for 32 packages from src (16 rules)
+dependency boundaries passed for 27 packages from src (16 rules)

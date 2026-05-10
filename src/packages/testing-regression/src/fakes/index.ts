@@ -10,20 +10,22 @@ import { registerCoreCodingToolsForRuntime } from "@deepseek/core-coding-tools";
 import { InMemoryContextEngine } from "@deepseek/context-engine";
 import { FakeCredentialManager } from "@deepseek/credential-auth-management";
 import { DeepSeekOpenAIProvider } from "@deepseek/model-gateway";
-import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
-import { StaticDistributionUpdateManager } from "@deepseek/distribution-update-management";
-import { InMemoryEvolutionEngine } from "@deepseek/evolution-engine";
-import { InMemoryExtensionManager } from "@deepseek/extension-system";
+import {
+  FakePlatformRuntime,
+  InMemoryEvolutionEngine,
+  InMemoryExtensionManager,
+  InMemoryPluginManager,
+  NodePlatformRuntime,
+  NoopRemoteRuntimeConnectivity,
+  StaticDistributionUpdateManager
+} from "@deepseek/platform-abstraction";
 import { InMemoryHookSystem } from "@deepseek/hook-system";
 import { FakeMcpGateway } from "@deepseek/mcp-gateway";
 import { InMemoryCacheManager, InMemoryMemoryManager } from "@deepseek/memory-cache-management";
 import { DeterministicMockModelGateway } from "@deepseek/model-gateway";
 import { DeterministicToolIntentPreflight } from "@deepseek/tool-intent-preflight";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
-import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
-import { InMemoryPluginManager } from "@deepseek/plugin-system";
 import { DefaultPolicyEngine, DevelopmentSandboxRuntime, HeadlessApprovalBroker } from "@deepseek/policy-sandbox";
-import { NoopRemoteRuntimeConnectivity } from "@deepseek/remote-runtime-connectivity";
 import { InMemoryRuntimeMessageBus } from "@deepseek/runtime-message-bus";
 import { InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { InMemorySkillSystem } from "@deepseek/skill-system";

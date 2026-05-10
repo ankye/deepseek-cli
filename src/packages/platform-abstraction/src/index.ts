@@ -889,3 +889,9 @@ function wslToWindowsPath(path: string): string {
   if (!match) return normalize(path);
   return normalize(`${match[1]?.toUpperCase()}:/${match[2] ?? ""}`);
 }
+
+export * from "./placeholders/agent-plugin.js";
+export * from "./placeholders/agent-extension.js";
+export * from "./placeholders/agent-evolution.js";
+export * from "./placeholders/agent-remote.js";
+export * from "./placeholders/agent-distribution.js";
