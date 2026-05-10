@@ -39,6 +39,8 @@ export interface ModelChatMessage extends JsonObject {
   readonly toolCallId?: string;
   readonly toolName?: string;
   readonly toolCalls?: readonly ModelChatToolCall[];
+  readonly reasoningContent?: string;
+  readonly reasoningRedaction?: RedactionMetadata;
 }
 
 export type ModelToolChoice =

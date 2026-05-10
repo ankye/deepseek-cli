@@ -163,6 +163,24 @@ Live dependency contract / Live 依赖契约:
   `@deepseek/testing-regression` 中的 `createLiveCliDependencies` 是
   CLI 与未来进程内 host 共用的唯一 factory。
 
+Thinking-mode continuation / Thinking 模式继续:
+
+- DeepSeek thinking-mode responses stream `reasoning_content`
+  chunks before tool calls. The runtime accumulates them per
+  iteration and attaches them to the `assistant` chat message
+  that records the tool call via `reasoningContent`, so the
+  continuation request includes `reasoning_content` as DeepSeek
+  requires. / DeepSeek thinking 模式响应会在 tool call 之前流式
+  发送 `reasoning_content` chunk。runtime 按 iteration 累积并附加
+  到记录 tool call 的 `assistant` chat message 的 `reasoningContent`
+  字段，让 continuation 请求按 DeepSeek 要求携带 `reasoning_content`。
+- A typed `model.reasoning.persisted` runtime event fires exactly
+  once per iteration that persists reasoning. The event carries
+  iteration number, byte length, and redaction tag, but never the
+  reasoning text. / runtime 每次持久化 reasoning 时发出唯一的
+  `model.reasoning.persisted` typed event，字段为 iteration、byte
+  length 和 redaction tag，不含 reasoning 原文。
+
 Troubleshooting / 排障:
 
 - `skipped`: gate env var missing, or no credentials in `.env` / 环境

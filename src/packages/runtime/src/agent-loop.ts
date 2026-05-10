@@ -85,6 +85,7 @@ export async function* runAgentLoop(
 
   while (iterations < limits.maxModelIterations) {
     iterations += 1;
+    let iterationReasoning = "";
     const visibleCapabilities = projectToolSet(await deps.capabilities.listModelVisible(), request);
     const modelRequested = agentLoopEvent("model.requested", sessionId, turnId, trace, {
       iteration: iterations,
@@ -124,6 +125,7 @@ export async function* runAgentLoop(
         continue;
       }
       if (modelEvent.kind === "reasoning") {
+        iterationReasoning += modelEvent.text;
         const event = agentLoopEvent("model.reasoning", sessionId, turnId, trace, {
           text: modelEvent.text,
           redaction: modelEvent.redaction,
@@ -186,6 +188,17 @@ export async function* runAgentLoop(
         }, request.agentId);
         await recordRuntimeAdapterEvent(deps, intentEvent);
         yield intentEvent;
+        const persistedReasoning = iterationReasoning;
+        iterationReasoning = "";
+        if (persistedReasoning.length > 0) {
+          const persistedEvent = agentLoopEvent("model.reasoning.persisted", sessionId, turnId, trace, {
+            iteration: iterations,
+            byteLength: Buffer.byteLength(persistedReasoning, "utf8"),
+            redaction: { class: "internal" }
+          }, request.agentId);
+          await recordRuntimeAdapterEvent(deps, persistedEvent);
+          yield persistedEvent;
+        }
         messages.push({
           role: "assistant",
           content: "",
@@ -193,7 +206,8 @@ export async function* runAgentLoop(
             id: modelEvent.id ?? `tool-${iterations}-${toolCalls}`,
             name: toolName,
             input: modelEvent.input
-          }]
+          }],
+          ...(persistedReasoning.length > 0 ? { reasoningContent: persistedReasoning, reasoningRedaction: { class: "internal" } } : {})
         });
 
         const descriptor = await deps.platform.descriptor();

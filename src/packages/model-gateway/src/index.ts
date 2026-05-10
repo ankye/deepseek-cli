@@ -193,9 +193,13 @@ function providerMessagesFrom(request: ModelRequest): readonly JsonObject[] {
         arguments: JSON.stringify(toolCall.input)
       }
     }));
+    const reasoningContent = typeof (message as { reasoningContent?: unknown }).reasoningContent === "string"
+      ? (message as { reasoningContent: string }).reasoningContent
+      : undefined;
     return {
       role: message.role,
       content: message.content,
+      ...(reasoningContent && reasoningContent.length > 0 ? { reasoning_content: reasoningContent } : {}),
       ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
     };
   });

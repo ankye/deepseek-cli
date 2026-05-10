@@ -67,6 +67,7 @@ export type RuntimeEventKind =
   | "bus.recorded"
   | "model.delta"
   | "model.reasoning"
+  | "model.reasoning.persisted"
   | "model.tool.intent"
   | "model.tool.repaired"
   | "model.tool.rejected"
