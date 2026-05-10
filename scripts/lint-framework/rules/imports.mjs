@@ -1,18 +1,39 @@
 import { createRule } from "../rule.mjs";
+import { dirname, resolve } from "node:path";
+import { normalizedPath, pathParts } from "../filesystem.mjs";
 
 function isDeepRelativeImport(specifier) {
   return specifier.startsWith("../../") || specifier.startsWith("../..\\");
 }
 
+function containingWorkspaceName(filePath) {
+  const parts = pathParts(filePath);
+  const packagesIndex = parts.indexOf("packages");
+  if (packagesIndex >= 0) return { kind: "packages", name: parts[packagesIndex + 1] };
+  const appsIndex = parts.indexOf("apps");
+  if (appsIndex >= 0) return { kind: "apps", name: parts[appsIndex + 1] };
+  return undefined;
+}
+
+function resolvesToSameWorkspace(importerFile, specifier) {
+  const importer = containingWorkspaceName(importerFile);
+  if (!importer) return false;
+  const absoluteImportPath = normalizedPath(resolve(dirname(importerFile), specifier));
+  const target = containingWorkspaceName(absoluteImportPath);
+  if (!target) return false;
+  return importer.kind === target.kind && importer.name === target.name;
+}
+
 export const noCrossPackageRelativeImports = createRule({
   id: "imports/no-cross-package-relative-imports",
-  description: "Code under src must use package exports instead of deep relative imports across package boundaries.",
+  description: "Code under src must use package exports instead of relative imports that cross package boundaries.",
   onNode(node, context) {
     const specifier = context.moduleSpecifier(node);
     if (!specifier) return;
-    if (isDeepRelativeImport(specifier) && context.isUnder("src")) {
-      context.report(this.id, node, `cross-package relative import is not allowed; use a package export instead (${specifier})`);
-    }
+    if (!isDeepRelativeImport(specifier)) return;
+    if (!context.isUnder("src")) return;
+    if (resolvesToSameWorkspace(context.file, specifier)) return;
+    context.report(this.id, node, `cross-package relative import is not allowed; use a package export instead (${specifier})`);
   }
 });
 

@@ -12,7 +12,9 @@ export type CoreCodingToolName =
   | "git.status"
   | "git.diff"
   | "test.run"
-  | "todo.plan";
+  | "todo.plan"
+  | "web.fetch"
+  | "web.search";
 
 export type CoreCodingToolStatus = "completed" | "failed" | "rejected";
 export type PlanItemStatus = "pending" | "in_progress" | "completed" | "blocked";
@@ -130,4 +132,50 @@ export interface WorkspaceEditTransactionEvidence extends JsonObject {
   readonly applied: boolean;
   readonly diagnostics: readonly CoreToolDiagnostic[];
   readonly redaction: RedactionMetadata;
+}
+
+export interface WebFetchInput extends JsonObject {
+  readonly url: string;
+  readonly prompt?: string;
+  readonly summarize?: boolean;
+  readonly limitBytes?: number;
+  readonly followRedirects?: number;
+}
+
+export interface WebSearchInput extends JsonObject {
+  readonly query: string;
+  readonly limit?: number;
+  readonly allowedDomains?: readonly string[];
+  readonly blockedDomains?: readonly string[];
+}
+
+export interface WebSearchResultItem extends JsonObject {
+  readonly title: string;
+  readonly url: string;
+  readonly snippet: string;
+}
+
+export interface WebFetchResponseMetadata extends JsonObject {
+  readonly finalUrl: string;
+  readonly status: number;
+  readonly contentType: string;
+  readonly truncated: boolean;
+  readonly byteLength: number;
+  readonly summarized: boolean;
+  readonly redirects: number;
+  readonly cached: boolean;
+}
+
+export interface WebFetchProvider {
+  readonly name: string;
+  fetch(input: WebFetchInput): Promise<{
+    readonly metadata: WebFetchResponseMetadata;
+    readonly markdown: string;
+    readonly summary?: string;
+  }>;
+}
+
+export interface WebSearchProvider {
+  readonly name: string;
+  search(input: WebSearchInput): Promise<readonly WebSearchResultItem[]>;
 }
