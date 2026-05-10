@@ -146,6 +146,52 @@ describe("headless runtime", () => {
     assert.equal(events.at(-1)?.data.status, "completed");
     await kernel.shutdown();
   });
+
+  it("emits agent.loop.cancelled when the signal is already aborted", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await registerRuntimeCoreTools(deps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const controller = new AbortController();
+    controller.abort();
+    const events = await collectRuntimeEvents(runAgentLoop(deps, kernel, {
+      prompt: "cancel me",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }, { signal: controller.signal }));
+
+    assert.deepEqual(events.map((event) => event.kind), ["agent.loop.started", "agent.loop.cancelled"]);
+    const cancelled = events.at(-1);
+    assert.equal(cancelled?.data.status, "cancelled");
+    assert.equal(cancelled?.data.reason, "user-cancelled");
+    assert.equal(cancelled?.data.iterations, 0);
+    await kernel.shutdown();
+  });
+
+  it("cancels mid-stream between model events when the signal aborts", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const controller = new AbortController();
+    const loopDeps = { ...deps, models: new AbortAfterDeltaModelGateway(controller) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "mid cancel",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }, { signal: controller.signal }));
+
+    const kinds = events.map((event) => event.kind);
+    assert.equal(kinds.includes("model.delta"), true, `expected at least one delta, got ${JSON.stringify(kinds)}`);
+    assert.equal(kinds.at(-1), "agent.loop.cancelled");
+    assert.equal(kinds.includes("agent.loop.completed"), false);
+    const cancelled = events.at(-1);
+    assert.equal(cancelled?.data.reason, "user-cancelled");
+    assert.equal(typeof cancelled?.data.assistantText, "string");
+    await kernel.shutdown();
+  });
 });
 
 class SingleToolCallModelGateway implements ModelGateway {
@@ -193,5 +239,21 @@ class DenyAllPolicyEngine implements PolicyEngine {
       reason: "Denied by runtime test policy",
       audit: { policy: "deny-all-test" }
     };
+  }
+}
+
+class AbortAfterDeltaModelGateway implements ModelGateway {
+  constructor(private readonly controller: AbortController) {}
+
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield { kind: "delta", text: "partial " };
+    this.controller.abort();
+    yield { kind: "delta", text: "after-abort" };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
   }
 }

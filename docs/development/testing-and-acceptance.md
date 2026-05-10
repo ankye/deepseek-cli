@@ -237,3 +237,35 @@ Session persistence / 会话持久化:
   参数。如需清空历史，删除该目录即可
   （`rm -rf ~/.deepseek/sessions`，Windows 可在资源管理器里删掉对应
   文件夹）。
+
+Chat slash commands / 聊天斜杠命令:
+
+- The chat REPL resolves `/help`, `/exit`, `/quit`, `/clear`,
+  `/cancel`, plus CLI-local `/cost` and `/model` before any input is
+  sent to the model. Unknown slash inputs print
+  `[chat] unknown command /x` and stay in the REPL; they never reach
+  the provider. / chat REPL 先在本地解析 `/help`、`/exit`、`/quit`、
+  `/clear`、`/cancel` 以及 CLI 本地 `/cost`、`/model`，再决定是否送
+  model。未知斜杠输入会打印 `[chat] unknown command /x`，不触达 provider。
+- `/cost` sums `usage.updated` events emitted during the current chat
+  session. `/model` prints the active profile. Neither command mutates
+  runtime, session, or kernel state. / `/cost` 汇总当前 chat session
+  的 `usage.updated` 事件；`/model` 打印活跃 profile。两者都不改
+  runtime、session 或 kernel 状态。
+- Ctrl+C once during a streaming turn aborts the in-flight model /
+  tool call through an `AbortSignal` plumbed into `runAgentLoop`;
+  the runtime emits `agent.loop.cancelled` as the terminal event and
+  the REPL keeps running. A second Ctrl+C within 2 seconds (or a
+  Ctrl+C while idle) exits with the usual resume hint. `/cancel`
+  follows the same path as Ctrl+C. / chat 流式输出中按一次 Ctrl+C，
+  通过 `AbortSignal` 取消当前 model/tool 调用，runtime 发
+  `agent.loop.cancelled` 作为终态事件，REPL 继续；2 秒内再按 Ctrl+C
+  （或空闲时按 Ctrl+C）带 resume 提示退出。`/cancel` 与 Ctrl+C 同路径。
+- Regression cover: `tests/contracts/chat-slash-commands.test.ts`
+  exercises each command with a deterministic runtime;
+  `tests/integration/chat-sigint-cancel.test.ts` drives
+  `process.emit("SIGINT")` and asserts the cancelled event lands.
+  / 回归用例：`tests/contracts/chat-slash-commands.test.ts` 用
+  deterministic runtime 跑每个命令；
+  `tests/integration/chat-sigint-cancel.test.ts` 触发
+  `process.emit("SIGINT")` 并校验取消事件。

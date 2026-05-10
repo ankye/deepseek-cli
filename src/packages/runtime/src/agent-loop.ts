@@ -1,4 +1,5 @@
 import type {
+  AgentLoopControl,
   AgentLoopLimits,
   AgentLoopRequest,
   AgentLoopSummary,
@@ -39,7 +40,8 @@ export const defaultAgentLoopLimits: AgentLoopLimits = {
 export async function* runAgentLoop(
   deps: RuntimeDependencies,
   kernel: RuntimeKernel,
-  request: AgentLoopRequest
+  request: AgentLoopRequest,
+  control: AgentLoopControl = {}
 ): AsyncIterable<RuntimeEvent> {
   const sessionId = request.sessionId ?? await deps.sessions.create({ caller: request.caller, workspaceRoot: request.workspaceRoot });
   const trace: TraceContext = request.trace ?? runtimeTrace(sessionId, "agent-loop");
@@ -51,6 +53,14 @@ export async function* runAgentLoop(
   let toolCalls = 0;
   let terminalEmitted = false;
   const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
+  const signal = control.signal;
+
+  const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
+    const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
+    const cancelled = agentLoopEvent("agent.loop.cancelled", sessionId, turnId, trace, { ...summary, reason: "user-cancelled" }, request.agentId);
+    await recordRuntimeAdapterEvent(deps, cancelled);
+    yield cancelled;
+  };
 
   const started = agentLoopEvent("agent.loop.started", sessionId, turnId, trace, {
     schemaVersion: "1.0.0",
@@ -62,6 +72,11 @@ export async function* runAgentLoop(
   }, request.agentId);
   await recordRuntimeAdapterEvent(deps, started);
   yield started;
+
+  if (signal?.aborted) {
+    yield* emitCancelled();
+    return;
+  }
 
   const turnStarted = agentLoopEvent("turn.started", sessionId, turnId, trace, {
     promptHash: stableHash(request.prompt),
@@ -84,6 +99,11 @@ export async function* runAgentLoop(
   }
 
   while (iterations < limits.maxModelIterations) {
+    if (signal?.aborted) {
+      yield* emitCancelled();
+      terminalEmitted = true;
+      return;
+    }
     iterations += 1;
     let iterationReasoning = "";
     const visibleCapabilities = projectToolSet(await deps.capabilities.listModelVisible(), request);
@@ -103,6 +123,7 @@ export async function* runAgentLoop(
       tools: visibleCapabilities.map(modelToolSchema),
       ...(request.credentialRef ? { credentialRef: request.credentialRef } : {}),
       ...(request.reasoning ? { reasoning: request.reasoning } : {}),
+      ...(signal ? { signal } : {}),
       timeoutMs: request.timeoutMs ?? limits.turnTimeoutMs,
       metadata: {
         agentLoop: true,
@@ -113,6 +134,11 @@ export async function* runAgentLoop(
         live: request.live === true
       }
     })) {
+      if (signal?.aborted) {
+        yield* emitCancelled();
+        terminalEmitted = true;
+        return;
+      }
       if (modelEvent.kind === "delta") {
         assistantText += modelEvent.text;
         const event = agentLoopEvent("model.delta", sessionId, turnId, trace, {

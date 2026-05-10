@@ -57,6 +57,7 @@ export type RuntimeEventKind =
   | "agent.loop.started"
   | "agent.loop.completed"
   | "agent.loop.failed"
+  | "agent.loop.cancelled"
   | "model.requested"
   | "context.projection.started"
   | "context.projection.cache-hit"
@@ -233,6 +234,10 @@ export interface AgentLoopRequest extends JsonObject {
   readonly live?: boolean;
   readonly toolProjection?: AgentLoopToolProjection;
   readonly trace?: TraceContext;
+}
+
+export interface AgentLoopControl {
+  readonly signal?: AbortSignal;
 }
 
 export interface AgentLoopSummary extends JsonObject {

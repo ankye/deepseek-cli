@@ -17,8 +17,8 @@ import type {
   SessionResumeResult
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { invokeLocalReadinessCommand } from "@deepseek/command-system";
-import type { LocalReadinessEnvironment } from "@deepseek/command-system";
+import { invokeLocalReadinessCommand, invokeInteractiveCommand, isInteractiveControlResult, renderInteractiveControlText } from "@deepseek/command-system";
+import type { InteractiveControlResult, LocalReadinessEnvironment } from "@deepseek/command-system";
 import { PersistentConfigService } from "@deepseek/config";
 import {
   CredentialAuthModelCredentialProvider,
@@ -201,38 +201,143 @@ function resumeHint(sessionId: string): string {
 async function runChatCommand(options: CliOptions, write: (line: string) => Promise<void>, writeInline: (chunk: string) => Promise<void>, bufferedInline: boolean, input: CliInputStream, runOptions: CliRunOptions): Promise<void> {
   const workspaceRoot = process.cwd();
   const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
-  let sessionId: SessionId | undefined;
-  let turns = 0;
+  const state: ChatSessionState = {
+    sessionId: undefined,
+    turns: 0,
+    usage: { inputTokens: 0, outputTokens: 0, elapsedMs: 0 },
+    activeController: undefined,
+    pendingExit: false,
+    pendingExitTimer: undefined
+  };
+  const sigintHandler = makeSigintHandler(state, write, options.output);
+  process.on("SIGINT", sigintHandler);
   try {
     if (options.output === "text") {
       await write("DeepSeek chat");
-      await write("Type /exit or /quit to close.");
+      await write("Type /help for commands, Ctrl+C to cancel a turn, Ctrl+C twice to exit.");
     }
     for await (const line of readCliLines(input)) {
       const prompt = line.trim();
       if (!prompt) continue;
-      if (prompt === "/exit" || prompt === "/quit") break;
-      turns += 1;
+      if (state.pendingExit) break;
+      if (prompt.startsWith("/")) {
+        const outcome = await handleSlashCommand(prompt, options, state, write);
+        if (outcome === "exit") break;
+        continue;
+      }
+      state.turns += 1;
+      state.activeController = new AbortController();
       const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
         prompt,
-        ...(sessionId ? { sessionId } : {}),
+        ...(state.sessionId ? { sessionId: state.sessionId } : {}),
         outputMode: options.output,
         workspaceRoot,
         caller: "cli.chat",
         profile: defaultDeepSeekProfile,
         live: options.live,
         ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
-      }, write, writeInline, bufferedInline);
+      }, write, writeInline, bufferedInline, state.activeController.signal);
       const terminal = finalAgentLoopEvent(events);
-      sessionId = terminal?.sessionId ?? sessionId;
+      state.sessionId = terminal?.sessionId ?? state.sessionId;
+      accumulateUsage(state, events);
       await renderFinalJsonIfNeeded(options.output, events, write);
+      state.activeController = undefined;
+      if (state.pendingExit) break;
     }
     if (options.output === "text") {
-      await write(`[chat completed] turns=${turns}${sessionId ? ` session=${sessionId}` : ""}`);
-      if (sessionId) await write(resumeHint(sessionId));
+      await write(`[chat completed] turns=${state.turns}${state.sessionId ? ` session=${state.sessionId}` : ""}`);
+      if (state.sessionId) await write(resumeHint(state.sessionId));
     }
   } finally {
+    process.off("SIGINT", sigintHandler);
+    if (state.pendingExitTimer) clearTimeout(state.pendingExitTimer);
     await runtime.kernel.shutdown("cli-chat-completed");
+  }
+}
+
+interface ChatUsageAccumulator {
+  inputTokens: number;
+  outputTokens: number;
+  elapsedMs: number;
+}
+
+interface ChatSessionState {
+  sessionId: SessionId | undefined;
+  turns: number;
+  usage: ChatUsageAccumulator;
+  activeController: AbortController | undefined;
+  pendingExit: boolean;
+  pendingExitTimer: NodeJS.Timeout | undefined;
+}
+
+function makeSigintHandler(state: ChatSessionState, write: (line: string) => Promise<void>, output: AgentLoopOutputMode): () => void {
+  return () => {
+    if (state.activeController) {
+      state.activeController.abort();
+      state.activeController = undefined;
+      if (output === "text") {
+        void write("[chat] press Ctrl+C again within 2s to exit");
+      }
+      if (state.pendingExitTimer) clearTimeout(state.pendingExitTimer);
+      state.pendingExitTimer = setTimeout(() => {
+        state.pendingExitTimer = undefined;
+      }, 2000);
+      return;
+    }
+    if (state.pendingExitTimer) {
+      clearTimeout(state.pendingExitTimer);
+      state.pendingExitTimer = undefined;
+      state.pendingExit = true;
+      return;
+    }
+    state.pendingExit = true;
+  };
+}
+
+async function handleSlashCommand(prompt: string, options: CliOptions, state: ChatSessionState, write: (line: string) => Promise<void>): Promise<"continue" | "exit"> {
+  const raw = prompt.slice(1).trim();
+  const name = raw.split(/\s+/)[0] ?? "";
+  if (options.output === "text" && (name === "cost" || name === "model")) {
+    if (name === "cost") {
+      await write(`[chat] tokens in=${state.usage.inputTokens} out=${state.usage.outputTokens} elapsed_ms=${state.usage.elapsedMs}`);
+    } else {
+      await write(`[chat] model=${defaultDeepSeekProfile.model} provider=${defaultDeepSeekProfile.providerId}`);
+    }
+    return "continue";
+  }
+  const result = await invokeInteractiveCommand(name);
+  if (!result.ok || !isInteractiveControlResult(result.value)) {
+    if (options.output === "text") await write(`[chat] unknown command /${name}`);
+    else if (options.output === "json") await write(JSON.stringify({ kind: "chat.command.unknown", command: name }));
+    return "continue";
+  }
+  const control: InteractiveControlResult = result.value;
+  if (control.action === "cancel") {
+    if (state.activeController) {
+      state.activeController.abort();
+      state.activeController = undefined;
+      if (options.output === "text") await write("[chat] cancelling active turn");
+    } else if (options.output === "text") {
+      await write("[chat] nothing to cancel");
+    }
+    return "continue";
+  }
+  if (options.output === "text") {
+    for (const line of renderInteractiveControlText(control)) await write(line);
+  } else if (options.output === "json") {
+    await write(JSON.stringify({ kind: "chat.command.result", control }));
+  }
+  return control.terminal ? "exit" : "continue";
+}
+
+function accumulateUsage(state: ChatSessionState, events: readonly RuntimeEvent[]): void {
+  for (const event of events) {
+    if (event.kind === "usage.updated") {
+      const input = typeof event.data.inputTokens === "number" ? event.data.inputTokens : 0;
+      const output = typeof event.data.outputTokens === "number" ? event.data.outputTokens : 0;
+      state.usage.inputTokens += input;
+      state.usage.outputTokens += output;
+    }
   }
 }
 
@@ -242,7 +347,8 @@ async function emitAgentLoop(
   request: Parameters<typeof runAgentLoop>[2],
   write: (line: string) => Promise<void>,
   writeInline: (chunk: string) => Promise<void> = write,
-  bufferedInline = false
+  bufferedInline = false,
+  signal?: AbortSignal
 ): Promise<readonly RuntimeEvent[]> {
   const events: RuntimeEvent[] = [];
   const stream: TextStreamState = { deltaOpen: false, reasoningOpen: false, inlineBuffer: "" };
@@ -263,7 +369,7 @@ async function emitAgentLoop(
       await write("");
     }
   };
-  for await (const event of runAgentLoop(deps, kernel, request)) {
+  for await (const event of runAgentLoop(deps, kernel, request, signal ? { signal } : {})) {
     events.push(event);
     if (request.outputMode === "jsonl") {
       await write(renderJsonLine(event));
@@ -352,6 +458,10 @@ function renderText(event: RuntimeEvent): string {
     const summary = event.data as AgentLoopSummary;
     return `[completed] trace=${summary.traceId} session=${summary.sessionId}`;
   }
+  if (event.kind === "agent.loop.cancelled") {
+    const summary = event.data as AgentLoopSummary;
+    return `[cancelled] trace=${summary.traceId} session=${summary.sessionId}`;
+  }
   if (event.kind === "agent.loop.failed") return `[failed] ${event.error?.message ?? ""}`.trim();
   if (event.kind === "runtime.error") return `[error] ${event.error?.message ?? ""}`.trim();
   return "";
@@ -380,7 +490,7 @@ async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, events: read
 }
 
 function finalAgentLoopEvent(events: readonly RuntimeEvent[]): RuntimeEvent | undefined {
-  return [...events].reverse().find((event) => event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed");
+  return [...events].reverse().find((event) => event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed" || event.kind === "agent.loop.cancelled");
 }
 
 async function runSessionCommand(options: CliOptions, write: (line: string) => Promise<void>, runOptions: CliRunOptions): Promise<void> {

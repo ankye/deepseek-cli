@@ -243,6 +243,32 @@ export function interactiveHelpProjection(): readonly JsonObject[] {
   }));
 }
 
+export function renderInteractiveControlText(result: InteractiveControlResult): readonly string[] {
+  if (result.action === "help") {
+    const lines: string[] = ["Chat controls:"];
+    for (const entry of interactiveHelpProjection()) {
+      const name = String(entry.name ?? "");
+      const aliases = Array.isArray(entry.aliases) ? (entry.aliases as readonly string[]) : [];
+      const aliasSuffix = aliases.length > 0 ? ` (aliases: ${aliases.join(", ")})` : "";
+      lines.push(`  ${name}${aliasSuffix} — ${String(entry.sideEffect ?? "")}`);
+    }
+    lines.push("  /cost — show accumulated token usage for the current session");
+    lines.push("  /model — show the active model profile");
+    lines.push("Ctrl+C once cancels an active turn; Ctrl+C twice within 2s exits.");
+    return lines;
+  }
+  if (result.action === "clear") {
+    return ["\x1B[2J\x1B[H", ""];
+  }
+  if (result.action === "exit") {
+    return [`[chat] ${result.message || "exit requested"}`];
+  }
+  if (result.action === "cancel") {
+    return [`[chat] ${result.message || "cancellation requested"}`];
+  }
+  return [`[chat] ${result.action}: ${result.message}`];
+}
+
 function readinessResult(
   command: ReadinessCommandName,
   environment: LocalReadinessEnvironment,

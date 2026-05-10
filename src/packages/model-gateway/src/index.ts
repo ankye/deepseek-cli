@@ -114,7 +114,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
     const providerRequest = this.buildProviderRequest(request, credential?.value);
     const accumulator = createToolCallAccumulator();
     try {
-      for await (const chunk of this.options.transport.stream(providerRequest)) {
+      for await (const chunk of this.options.transport.stream(providerRequest, request.signal ? { signal: request.signal } : undefined)) {
         for (const event of normalizeDeepSeekChunk(chunk, provider, accumulator)) {
           yield event;
         }
@@ -232,14 +232,20 @@ export class FixtureModelProviderTransport implements ModelProviderTransport {
 }
 
 export class FetchModelProviderTransport implements ModelProviderTransport {
-  async *stream(request: ModelProviderRequest): AsyncIterable<ModelProviderResponseChunk> {
+  async *stream(request: ModelProviderRequest, options?: { signal?: AbortSignal }): AsyncIterable<ModelProviderResponseChunk> {
     const init: RequestInit = {
       method: request.method,
       headers: request.headers as Record<string, string>,
       body: JSON.stringify(request.body)
     };
-    if (request.timeoutMs) {
-      init.signal = AbortSignal.timeout(request.timeoutMs);
+    const signals: AbortSignal[] = [];
+    if (request.timeoutMs) signals.push(AbortSignal.timeout(request.timeoutMs));
+    if (options?.signal) signals.push(options.signal);
+    if (signals.length === 1) {
+      const only = signals[0];
+      if (only) init.signal = only;
+    } else if (signals.length > 1) {
+      init.signal = AbortSignal.any(signals);
     }
     const response = await fetch(request.url, init);
 
@@ -273,7 +279,7 @@ export class FetchModelProviderTransport implements ModelProviderTransport {
 }
 
 export class OpenAIModelProviderTransport implements ModelProviderTransport {
-  async *stream(request: ModelProviderRequest): AsyncIterable<ModelProviderResponseChunk> {
+  async *stream(request: ModelProviderRequest, options?: { signal?: AbortSignal }): AsyncIterable<ModelProviderResponseChunk> {
     const apiKey = authorizationBearerToken(request.headers.authorization);
     if (!apiKey) {
       throw new Error("DeepSeek provider credential is missing.");
@@ -285,15 +291,17 @@ export class OpenAIModelProviderTransport implements ModelProviderTransport {
       timeout: request.timeoutMs
     });
 
-    const completion = await client.chat.completions.create(request.body as never);
-    if (isAsyncIterable(completion)) {
-      for await (const chunk of completion) {
+    const createParams = options?.signal
+      ? await client.chat.completions.create(request.body as never, { signal: options.signal })
+      : await client.chat.completions.create(request.body as never);
+    if (isAsyncIterable(createParams)) {
+      for await (const chunk of createParams) {
         yield { data: chunk as unknown as JsonObject };
       }
       return;
     }
 
-    yield { data: completion as unknown as JsonObject };
+    yield { data: createParams as unknown as JsonObject };
   }
 }
 

@@ -59,6 +59,7 @@ export interface ModelRequest {
   readonly toolChoice?: ModelToolChoice;
   readonly reasoning?: ModelReasoningOptions;
   readonly metadata?: JsonObject;
+  readonly signal?: AbortSignal;
 }
 
 export interface ModelProviderRequest extends JsonObject {
@@ -73,8 +74,12 @@ export interface ModelProviderResponseChunk extends JsonObject {
   readonly data: JsonObject;
 }
 
+export interface ModelProviderTransportOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface ModelProviderTransport {
-  stream(request: ModelProviderRequest): AsyncIterable<ModelProviderResponseChunk>;
+  stream(request: ModelProviderRequest, options?: ModelProviderTransportOptions): AsyncIterable<ModelProviderResponseChunk>;
 }
 
 export interface ModelCredentialValue extends JsonObject {

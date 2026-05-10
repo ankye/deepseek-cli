@@ -1,1 +1,1 @@
-Change 'persist-session-resume-across-cli-invocations' is valid
+Change 'graceful-chat-ctrl-c-and-basic-slash-commands' is valid
