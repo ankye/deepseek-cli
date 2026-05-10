@@ -286,6 +286,9 @@ export async function* runAgentLoop(
         yield resultEvent;
         if (terminal?.error) {
           diagnostics.push(terminal.error);
+          if (executionFeedback.continuation === "continue") {
+            continue;
+          }
           const status = terminal.kind === "capability.cancelled"
             ? "cancelled"
             : terminal.kind === "execution.rejected"

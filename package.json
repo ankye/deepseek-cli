@@ -22,6 +22,7 @@
     "smoke:headless": "tsx src/apps/cli/src/index.ts run \"smoke\" --output jsonl",
     "smoke:live:deepseek": "tsx --test \"tests/live/deepseek-provider-live-smoke.test.ts\"",
     "smoke:live:agent-loop": "tsx --test \"tests/live/deepseek-agent-loop-live-smoke.test.ts\"",
+    "smoke:live:agent-tools": "tsx --test \"tests/live/deepseek-agent-tool-live-smoke.test.ts\"",
     "acceptance:index": "node scripts/write-acceptance-index.mjs"
   },
   "devDependencies": {

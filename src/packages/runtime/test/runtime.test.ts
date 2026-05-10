@@ -126,7 +126,7 @@ describe("headless runtime", () => {
     await kernel.shutdown();
   });
 
-  it("returns rejected terminal status when policy denies a tool execution", async () => {
+  it("sends denied tool feedback back to the model when policy denies execution", async () => {
     const deps = createDeterministicRuntimeDependencies();
     const loopDeps = { ...deps, models: new SingleToolCallModelGateway("core.file.read", { path: "README.md" }), policy: new DenyAllPolicyEngine() };
     await loopDeps.platform.writeFile("/workspace/README.md", "policy denied\n");
@@ -142,7 +142,8 @@ describe("headless runtime", () => {
 
     assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.code === "KERNEL_POLICY_DENIED"), true);
     assert.equal(events.some((event) => event.kind === "model.tool.result" && event.error?.code === "KERNEL_POLICY_DENIED"), true);
-    assert.equal(events.at(-1)?.data.status, "rejected");
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    assert.equal(events.at(-1)?.data.status, "completed");
     await kernel.shutdown();
   });
 });

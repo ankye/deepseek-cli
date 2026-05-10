@@ -164,6 +164,28 @@ describe("agent loop typed tool feedback", () => {
     assert.equal(sideEffects.has("process"), true);
     await kernel.shutdown();
   });
+
+  it("continues the model loop after a denied tool feedback instead of terminating", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "deny\n");
+    const loopDeps = { ...deps, models: new SingleToolCallModelGateway("core.file.read", { path: "README.md" }), policy: new DenyAllPolicyEngine() };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "retry please",
+      caller: "runtime.feedback.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const feedback = readFeedback(events);
+    assert.ok(feedback);
+    assert.equal(feedback.status, "denied");
+    assert.equal(feedback.continuation, "continue");
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    await kernel.shutdown();
+  });
 });
 
 function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {
@@ -197,6 +219,26 @@ class LoopingToolCallModelGateway implements ModelGateway {
   async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     yield { kind: "tool-call", id: "call-a", name: this.name, input: this.input };
     yield { kind: "tool-call", id: "call-b", name: this.name, input: this.input };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class SingleToolCallModelGateway implements ModelGateway {
+  constructor(private readonly name: string, private readonly input: JsonObject) {}
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "tool outcome acknowledged" };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "tool-call", id: "call-runtime", name: this.name, input: this.input };
     yield { kind: "finish", reason: "tool-call" };
     yield { kind: "done" };
   }
