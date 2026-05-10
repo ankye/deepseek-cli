@@ -29,7 +29,7 @@ import { coreToolIds } from "@deepseek/core-coding-tools";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
-import { createDeterministicRuntimeDependencies, registerDeterministicCoreTools } from "@deepseek/testing-regression";
+import { createDeterministicRuntimeDependencies, createLiveCliDependencies, registerDeterministicCoreTools } from "@deepseek/testing-regression";
 
 export interface CliTerminalFlags {
   readonly stdinIsTTY: boolean;
@@ -233,17 +233,14 @@ async function emitAgentLoop(
 
 async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, runOptions: CliRunOptions): Promise<{ readonly deps: RuntimeDependencies; readonly kernel: RuntimeKernel }> {
   if (runOptions.createRuntime) return runOptions.createRuntime(options);
-  const baseDeps = createDeterministicRuntimeDependencies();
   const deps: RuntimeDependencies = options.live
-    ? {
-        ...baseDeps,
-        models: new DeepSeekOpenAIProvider({
-          credentials: new CredentialAuthModelCredentialProvider(await createDeepSeekCredentialAuthServiceFromEnv()),
-          transport: new OpenAIModelProviderTransport(),
-          timeoutMs: 90_000
-        })
-      }
-    : baseDeps;
+    ? createLiveCliDependencies({
+        workspaceRoot: options.workspaceRoot,
+        credentials: new CredentialAuthModelCredentialProvider(await createDeepSeekCredentialAuthServiceFromEnv()),
+        transport: new OpenAIModelProviderTransport(),
+        timeoutMs: 90_000
+      })
+    : createDeterministicRuntimeDependencies();
   await registerRuntimeCoreTools(deps, options.workspaceRoot);
   return { deps, kernel: await createDefaultRuntimeKernel(deps) };
 }

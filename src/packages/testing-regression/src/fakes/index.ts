@@ -1,4 +1,4 @@
-import type { RuntimeDependencies } from "@deepseek/platform-contracts";
+import type { ModelCredentialProvider, ModelProviderTransport, RuntimeDependencies } from "@deepseek/platform-contracts";
 import { InMemoryAgentManager } from "@deepseek/agent-management";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
@@ -9,6 +9,8 @@ import { InMemoryConfigStore } from "@deepseek/config";
 import { registerCoreCodingToolsForRuntime } from "@deepseek/core-coding-tools";
 import { InMemoryContextEngine } from "@deepseek/context-engine";
 import { FakeCredentialManager } from "@deepseek/credential-auth-management";
+import { DeepSeekOpenAIProvider } from "@deepseek/model-gateway";
+import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { StaticDistributionUpdateManager } from "@deepseek/distribution-update-management";
 import { InMemoryEvolutionEngine } from "@deepseek/evolution-engine";
 import { InMemoryExtensionManager } from "@deepseek/extension-system";
@@ -82,4 +84,28 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
 
 export async function registerDeterministicCoreTools(deps: RuntimeDependencies, workspaceRoot = "/workspace"): Promise<void> {
   await registerCoreCodingToolsForRuntime(deps, workspaceRoot);
+}
+
+export interface LiveCliDependencyOptions {
+  readonly workspaceRoot?: string;
+  readonly credentials?: ModelCredentialProvider;
+  readonly transport?: ModelProviderTransport;
+  readonly timeoutMs?: number;
+}
+
+export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}): RuntimeDependencies {
+  const base = createDeterministicRuntimeDependencies();
+  const platform = new NodePlatformRuntime();
+  const modelOptions = {
+    ...(options.credentials ? { credentials: options.credentials } : {}),
+    ...(options.transport ? { transport: options.transport } : {}),
+    timeoutMs: options.timeoutMs ?? 90_000
+  };
+  return {
+    ...base,
+    platform,
+    workspaceState: new InMemoryWorkspaceStateManager(platform),
+    codeIntelligence: new DeterministicCodeIntelligenceService(platform),
+    models: new DeepSeekOpenAIProvider(modelOptions)
+  };
 }

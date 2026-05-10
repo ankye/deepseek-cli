@@ -136,8 +136,32 @@ Commands / 命令:
 ```bash
 npm run smoke:headless
 npx tsx src/apps/cli/src/index.ts tools-smoke --output jsonl
+npm run smoke:live:e2e
 DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 npm run smoke:live:agent-tools
 ```
+
+`smoke:live:e2e` runs a real-filesystem integration test through
+`createLiveCliDependencies` against `tests/fixtures/fake-workspace/`
+using deterministic models, so contributors can reproduce a live
+platform tool turn without credentials. / `smoke:live:e2e` 通过
+`createLiveCliDependencies` 加 deterministic 模型在 `tests/fixtures/fake-workspace/`
+上跑真实文件系统集成测试，贡献者无需凭证即可复现 live 平台工具回合。
+
+Live dependency contract / Live 依赖契约:
+
+- `--live` swaps `platform`, `workspaceState`, `codeIntelligence`,
+  and `models` for real-host implementations. All other dependencies
+  (bus, workflow, scheduler, sessions, policy, sandbox, usage,
+  context, hooks, skills, MCP, plugins, capability registry,
+  observability, regression) stay deterministic to keep event
+  ordering and replay stable. / `--live` 会替换 `platform`、
+  `workspaceState`、`codeIntelligence` 和 `models` 为真实 host 实现，
+  其它依赖保持 deterministic 以便事件顺序和回放稳定。
+- `createLiveCliDependencies({ workspaceRoot, credentials,
+  transport, timeoutMs })` in `@deepseek/testing-regression` is the
+  single factory both CLI and future same-process hosts import. /
+  `@deepseek/testing-regression` 中的 `createLiveCliDependencies` 是
+  CLI 与未来进程内 host 共用的唯一 factory。
 
 Troubleshooting / 排障:
 

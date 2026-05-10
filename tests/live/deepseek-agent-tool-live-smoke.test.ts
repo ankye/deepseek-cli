@@ -5,10 +5,10 @@ import {
   CredentialAuthModelCredentialProvider,
   createDeepSeekCredentialAuthServiceFromEnv
 } from "@deepseek/credential-auth-management";
-import { DeepSeekOpenAIProvider, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
-import type { RuntimeDependencies, ToolResultFeedback } from "@deepseek/platform-contracts";
+import { OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
+import type { ToolResultFeedback } from "@deepseek/platform-contracts";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
-import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
+import { createLiveCliDependencies } from "@deepseek/testing-regression";
 
 describe("DeepSeek live agent tool-loop smoke", () => {
   it("runs a live DeepSeek tool turn only when explicitly enabled", async (testContext) => {
@@ -23,15 +23,13 @@ describe("DeepSeek live agent tool-loop smoke", () => {
     }
 
     const credentialAuth = await createDeepSeekCredentialAuthServiceFromEnv();
-    const deps: RuntimeDependencies = {
-      ...createDeterministicRuntimeDependencies(),
-      models: new DeepSeekOpenAIProvider({
-        credentials: new CredentialAuthModelCredentialProvider(credentialAuth),
-        transport: new OpenAIModelProviderTransport(),
-        timeoutMs: 90_000
-      })
-    };
     const workspaceRoot = process.cwd();
+    const deps = createLiveCliDependencies({
+      workspaceRoot,
+      credentials: new CredentialAuthModelCredentialProvider(credentialAuth),
+      transport: new OpenAIModelProviderTransport(),
+      timeoutMs: 90_000
+    });
     await registerRuntimeCoreTools(deps, workspaceRoot);
     const kernel = await createDefaultRuntimeKernel(deps);
     const events = [];
@@ -72,6 +70,7 @@ describe("DeepSeek live agent tool-loop smoke", () => {
     const serialised = JSON.stringify(events);
     assert.equal(token ? serialised.includes(token) : false, false);
     assert.equal(serialised.includes("Bearer "), false);
+    assert.equal(serialised.includes("Fake file not found"), false, "live smoke must run against the real filesystem, not the fake platform");
   });
 });
 

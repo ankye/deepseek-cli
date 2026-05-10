@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 
+// Helper: exercise the CLI against the real DeepSeek API using credentials
+// loaded from .env. With createLiveCliDependencies, --live now binds a real
+// NodePlatformRuntime, so any core.file.* tool the model calls reads or
+// writes real files under process.cwd(). Only run this from a throwaway
+// workspace or a clean git tree because a model-driven edit is a real edit.
+
 const content = readFileSync(".env", "utf8");
 for (const line of content.split(/\r?\n/)) {
   const idx = line.indexOf("=");
