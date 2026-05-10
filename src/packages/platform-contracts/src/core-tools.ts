@@ -9,12 +9,15 @@ export type CoreCodingToolName =
   | "file.list"
   | "search.text"
   | "shell.run"
+  | "shell.output"
+  | "shell.kill"
   | "git.status"
   | "git.diff"
   | "test.run"
   | "todo.plan"
   | "web.fetch"
-  | "web.search";
+  | "web.search"
+  | "agent.spawn";
 
 export type CoreCodingToolStatus = "completed" | "failed" | "rejected";
 export type PlanItemStatus = "pending" | "in_progress" | "completed" | "blocked";
@@ -52,6 +55,9 @@ export interface FileReadInput extends JsonObject {
   readonly path: string;
   readonly workspaceRoot?: string;
   readonly limitBytes?: number;
+  readonly offset?: number;
+  readonly limit?: number;
+  readonly pages?: string;
 }
 
 export interface FileWriteInput extends JsonObject {
@@ -75,13 +81,21 @@ export interface FileListInput extends JsonObject {
   readonly workspaceRoot?: string;
   readonly limit?: number;
   readonly limitBytes?: number;
+  readonly sort?: "alpha" | "mtime-desc";
 }
+
+export type SearchTextOutputMode = "content" | "files_with_matches" | "count";
 
 export interface SearchTextInput extends JsonObject {
   readonly pattern: string;
   readonly workspaceRoot?: string;
   readonly limit?: number;
   readonly limitBytes?: number;
+  readonly contextLines?: number;
+  readonly multiline?: boolean;
+  readonly glob?: string;
+  readonly caseInsensitive?: boolean;
+  readonly outputMode?: SearchTextOutputMode;
 }
 
 export interface ShellRunInput extends JsonObject {
@@ -92,6 +106,47 @@ export interface ShellRunInput extends JsonObject {
   readonly timeoutMs?: number;
   readonly limitBytes?: number;
   readonly shellProfile?: string;
+  readonly runInBackground?: boolean;
+}
+
+export interface ShellOutputInput extends JsonObject {
+  readonly taskId: string;
+  readonly offsetBytes?: number;
+  readonly limitBytes?: number;
+}
+
+export interface ShellKillInput extends JsonObject {
+  readonly taskId: string;
+}
+
+export interface BackgroundTaskSummary extends JsonObject {
+  readonly taskId: string;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly startedAt: string;
+  readonly status: "running" | "exited" | "killed" | "failed";
+  readonly exitCode?: number;
+  readonly done: boolean;
+}
+
+export interface BackgroundTaskOutput extends JsonObject {
+  readonly taskId: string;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stdoutOffset: number;
+  readonly stderrOffset: number;
+  readonly done: boolean;
+  readonly exitCode?: number;
+  readonly status: BackgroundTaskSummary["status"];
+}
+
+export interface BackgroundTaskManager {
+  start(input: { readonly command: string; readonly args: readonly string[]; readonly cwd: string }): Promise<BackgroundTaskSummary>;
+  output(input: { readonly taskId: string; readonly stdoutOffset?: number; readonly stderrOffset?: number }): Promise<BackgroundTaskOutput>;
+  kill(input: { readonly taskId: string }): Promise<BackgroundTaskSummary>;
+  list(): Promise<readonly BackgroundTaskSummary[]>;
+  disposeAll(): Promise<void>;
 }
 
 export interface GitEvidenceInput extends JsonObject {
@@ -178,4 +233,28 @@ export interface WebFetchProvider {
 export interface WebSearchProvider {
   readonly name: string;
   search(input: WebSearchInput): Promise<readonly WebSearchResultItem[]>;
+}
+
+export type AgentSpawnToolProjection = "read-only" | "read-write" | "all";
+
+export interface AgentSpawnRequest extends JsonObject {
+  readonly prompt: string;
+  readonly toolProjection?: AgentSpawnToolProjection;
+  readonly timeoutMs?: number;
+  readonly maxIterations?: number;
+  readonly parentSessionId?: SessionId;
+  readonly reason?: string;
+}
+
+export interface AgentSpawnResult extends JsonObject {
+  readonly childSessionId: SessionId;
+  readonly terminalStatus: "completed" | "failed" | "cancelled" | "timed-out" | "rejected";
+  readonly assistantText: string;
+  readonly iterations: number;
+  readonly toolCalls: number;
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface AgentSpawner {
+  spawn(input: AgentSpawnRequest): Promise<AgentSpawnResult>;
 }

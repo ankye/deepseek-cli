@@ -22,10 +22,15 @@ describe("core coding tool contracts", () => {
       "core.file.list",
       "core.search.text",
       "core.shell.run",
+      "core.shell.output",
+      "core.shell.kill",
       "core.git.status",
       "core.git.diff",
       "core.test.run",
-      "core.todo.plan"
+      "core.todo.plan",
+      "core.web.fetch",
+      "core.web.search",
+      "core.agent.spawn"
     ]);
     for (const manifest of manifests) {
       assert.equal(manifest.enabled, true);

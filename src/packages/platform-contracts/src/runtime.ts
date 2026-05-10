@@ -312,6 +312,10 @@ export interface RuntimeDependencies {
   readonly config: ConfigStore;
   readonly observability: ObservabilitySink;
   readonly regression: RegressionHarness;
+  readonly webFetch?: import("./core-tools.js").WebFetchProvider;
+  readonly webSearch?: import("./core-tools.js").WebSearchProvider;
+  readonly backgroundTasks?: import("./core-tools.js").BackgroundTaskManager;
+  readonly agentSpawner?: import("./core-tools.js").AgentSpawner;
 }
 
 export interface AgentRuntime {

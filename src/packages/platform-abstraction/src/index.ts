@@ -1,4 +1,4 @@
-import { mkdir, readFile as fsReadFile, rename, rm, writeFile as fsWriteFile, readdir } from "node:fs/promises";
+import { mkdir, readFile as fsReadFile, rename, rm, stat as stat_, writeFile as fsWriteFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import type {
@@ -478,6 +478,78 @@ export class NodePlatformRuntime implements PlatformRuntime {
       exit
     };
   }
+
+  async readBinaryFile(path: string): Promise<Uint8Array> {
+    return fsReadFile(path);
+  }
+
+  async statFile(path: string): Promise<{ mtimeMs: number; size: number }> {
+    const stat = await stat_(path);
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  }
+
+  async httpFetch(url: string, options: {
+    readonly method?: "GET" | "HEAD";
+    readonly headers?: Record<string, string>;
+    readonly maxRedirects?: number;
+    readonly maxBytes?: number;
+    readonly timeoutMs?: number;
+    readonly signal?: AbortSignal;
+  } = {}): Promise<{
+    readonly status: number;
+    readonly finalUrl: string;
+    readonly headers: Record<string, string>;
+    readonly body: string;
+    readonly truncated: boolean;
+    readonly redirects: number;
+  }> {
+    const maxBytes = options.maxBytes ?? 10_000_000;
+    const maxRedirects = options.maxRedirects ?? 5;
+    const timeoutMs = options.timeoutMs ?? 15_000;
+    if (!/^https?:\/\//i.test(url)) {
+      throw new Error(`httpFetch: only http(s) URLs are allowed (got: ${url.slice(0, 16)}...)`);
+    }
+    const signals: AbortSignal[] = [];
+    signals.push(AbortSignal.timeout(timeoutMs));
+    if (options.signal) signals.push(options.signal);
+    const signal = signals.length === 1 ? signals[0]! : AbortSignal.any(signals);
+    const response = await fetch(url, {
+      method: options.method ?? "GET",
+      ...(options.headers ? { headers: options.headers } : {}),
+      redirect: "follow",
+      signal
+    });
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let body = "";
+    let bytes = 0;
+    let truncated = false;
+    if (reader) {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
+          truncated = true;
+          break;
+        }
+        body += decoder.decode(value, { stream: true });
+      }
+      body += decoder.decode();
+      if (truncated) await reader.cancel().catch(() => undefined);
+    }
+    const headers: Record<string, string> = {};
+    for (const [key, value] of response.headers) headers[key.toLowerCase()] = value;
+    const redirects = response.redirected ? Math.min(maxRedirects, 1) : 0;
+    return {
+      status: response.status,
+      finalUrl: response.url,
+      headers,
+      body,
+      truncated,
+      redirects
+    };
+  }
 }
 
 export class FakePlatformRuntime extends NodePlatformRuntime {
@@ -915,3 +987,4 @@ export * from "./placeholders/agent-extension.js";
 export * from "./placeholders/agent-evolution.js";
 export * from "./placeholders/agent-remote.js";
 export * from "./placeholders/agent-distribution.js";
+export { NodeBackgroundTaskManager } from "./background-tasks.js";

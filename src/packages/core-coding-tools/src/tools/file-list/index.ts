@@ -17,7 +17,14 @@ export function defineFileListTool(deps: CoreCodingToolsDependencies | undefined
     "File List",
     "read",
     ["workspace:read"],
-    objectSchema([], { pattern: { type: "string" }, path: { type: "string" }, workspaceRoot: { type: "string" }, limit: { type: "number" }, limitBytes: { type: "number" } }),
+    objectSchema([], {
+      pattern: { type: "string" },
+      path: { type: "string" },
+      workspaceRoot: { type: "string" },
+      limit: { type: "number" },
+      limitBytes: { type: "number" },
+      sort: { type: "string" }
+    }),
     objectSchema(["evidence"], { evidence: { type: "object" } }),
     (input, context) => requireDeps(deps).then((ready) => listFilesTool(input, context, ready))
   );
@@ -29,10 +36,28 @@ async function listFilesTool(input: JsonObject, context: CapabilityExecutionCont
   if (!listRoot.ok || !listRoot.value) return failure("file.list", "PATH_REJECTED", listRoot.error?.message ?? "Path rejected.", [String(parsed.path ?? ".")]);
   const root = listRoot.value.path;
   const pattern = parsed.pattern ?? "";
-  const files = [...await deps.platform.findFiles(pattern, root)].sort().slice(0, parsed.limit ?? 200);
-  return success("file.list", files, {
-    preview: boundedText(files.join("\n"), parsed.limitBytes ?? 8_000),
-    metadata: { pattern, count: files.length, root, relativePath: listRoot.value.relativePath },
+  const limit = parsed.limit ?? 200;
+  const sort = parsed.sort ?? "mtime-desc";
+  const files = [...await deps.platform.findFiles(pattern, root)];
+  const ordered = await orderFiles(deps.platform as unknown as { statFile?: (path: string) => Promise<{ mtimeMs: number }> }, files, sort);
+  const limited = ordered.slice(0, limit);
+  return success("file.list", limited, {
+    preview: boundedText(limited.join("\n"), parsed.limitBytes ?? 8_000),
+    metadata: { pattern, count: limited.length, root, relativePath: listRoot.value.relativePath, sort },
     replay: replay(context)
   });
+}
+
+async function orderFiles(platform: { statFile?: (path: string) => Promise<{ mtimeMs: number }> }, files: readonly string[], sort: "alpha" | "mtime-desc"): Promise<string[]> {
+  if (sort === "alpha" || !platform.statFile) return [...files].sort();
+  const stats = await Promise.all(files.map(async (file) => {
+    try {
+      const stat = await platform.statFile!(file);
+      return { file, mtime: stat.mtimeMs };
+    } catch {
+      return { file, mtime: 0 };
+    }
+  }));
+  stats.sort((a, b) => b.mtime - a.mtime);
+  return stats.map((entry) => entry.file);
 }

@@ -1,45 +1,52 @@
 ## A. Web Access / 网络接入
 
-- [ ] A.1 `platform-contracts`：新增 `core.web.fetch` / `core.web.search` capability id（在 `coreToolIds` 同源 ids 里），新增 `WebFetchProvider` + `WebSearchProvider` 接口（可选，`RuntimeDependencies.webFetch`/`webSearch`）。
-- [ ] A.2 `core-coding-tools`：新增 `coreToolIds.webFetch` / `webSearch`；注册 `core.web.fetch` + `core.web.search` manifest（`sideEffect: "read"`, permissions: `network:read`）。
-- [ ] A.3 `core.web.fetch` 实现：Node `fetch` 请求 URL（强制 https/http、5 次 redirect 上限、10MB 截断）；HTML→markdown（剥离 script/style/iframe 后按标签转换）；默认 `summarize: false` 直接返回 markdown；`summarize: true` 时调 `deps.models.stream(prompt)` 总结。15 分钟内存缓存按 URL。
-- [ ] A.4 `core.web.search` 实现：检查 `deps.webSearch?.provider`；无则返回 `WEB_SEARCH_UNAVAILABLE`；有则调 provider 返回 `[{title, url, snippet}]`。
-- [ ] A.5 `tests/contracts/web-tools.test.ts`：`web.fetch` 用 `node:http` 起本地 mock server 验证 markdown 转换 + 缓存；`web.search` 无 provider 时返回 `UNAVAILABLE`、注入 stub provider 返回 mock 结果。
+- [x] A.1 `platform-contracts` 增加 `WebFetchInput/Provider`、`WebSearchInput/Provider/ResultItem`、`WebFetchResponseMetadata`；`RuntimeDependencies` 加可选 `webFetch`/`webSearch`。
+- [x] A.2 `NodePlatformRuntime` 新增 `httpFetch(url, options)` 封装（https-only、5 redirect、10MB 截断、AbortSignal.any 复合超时）+ `readBinaryFile`。
+- [x] A.3 `core-coding-tools` 拆分后新增 `tools/web-fetch/`、`tools/web-search/`；`shared/html.ts` 手写 HTML→markdown。
+- [x] A.4 `core.web.fetch`：默认纯 markdown 抽取 + 15 分钟缓存；`summarize: true` 走注入 provider。
+- [x] A.5 `core.web.search`：缺 provider 时 typed `WEB_SEARCH_UNAVAILABLE`；`allowedDomains`/`blockedDomains` 过滤。
+- [x] A.6 `tests/contracts/web-tools.test.ts`：HTTP mock server + 不同入参 5 case。
 
 ## B. Sub-Agent Delegation / 子 agent 委派
 
-- [ ] B.1 `platform-contracts`：新增 `core.agent.spawn` id 和 `AgentSpawnRequest` / `AgentSpawnResult` schema（prompt、toolProjection、timeoutMs、maxIterations、childSessionId、terminalStatus、assistantText、iterations、toolCalls、diagnostics）。
-- [ ] B.2 `core-coding-tools`：注册 `core.agent.spawn` manifest（`sideEffect: "process"`, permissions: 继承父 agent）。handler 内部：调 `deps.sessions.fork({ parentSessionId, reason: "agent.spawn" })` → 构造独立 `RuntimeKernel`（同 `deps`）→ `runAgentLoop` 生成器消费所有 events → 返回 terminal summary。
-- [ ] B.3 sub-agent 默认 `toolProjection: "read-only"`；`timeoutMs` 默认父 agent 的 1/2，不超过 60s；`maxIterations` 默认 8。
-- [ ] B.4 sub-agent events 写进 child session store，不 emit 到父 session bus（通过不共享 `deps.bus` 的 replay channel 实现，或构造一个 `ForkedBus` 装饰器）。
-- [ ] B.5 `tests/contracts/agent-spawn.test.ts`：deterministic model 模式下 spawn 一个 "say hello" sub-agent，断言返回 summary、childSessionId 在 `deps.sessions.events(childId)` 可见、父 session events 不包含 sub-agent 的 `agent.loop.started`。
+- [x] B.1 `platform-contracts` 定义 `AgentSpawnRequest/Result/Spawner`、`RuntimeDependencies.agentSpawner` 可选字段。
+- [x] B.2 `core.agent.spawn` tool 通过注入的 `AgentSpawner` 调用；缺注入时 typed `AGENT_SPAWNER_UNAVAILABLE`。
+- [x] B.3 默认 `toolProjection: "read-only"`。
+- [x] B.4 `@deepseek/runtime` 新增 `createAgentSpawner(deps, kernel, workspaceRoot)`：fork session、独立 `runAgentLoop`、只把 terminal summary 返回调用方。
+- [x] B.5 `tests/contracts/agent-spawn.test.ts` 3 case 全绿（fail-closed、真实 spawn、默认 projection）。
 
 ## C. Background Shell / 后台 Shell
 
-- [ ] C.1 `platform-contracts`：新增 `BackgroundTaskManager` 接口 + `BackgroundTaskSummary` + `BackgroundTaskOutput` 类型；新增 `core.shell.output` / `core.shell.kill` capability id。
-- [ ] C.2 `platform-abstraction`：`NodeBackgroundTaskManager` 实现（spawn 子进程、stdout/stderr append 到 `<workspaceRoot>/.deepseek/tasks/<taskId>.{out,err}`）；`dispose()` SIGTERM 所有存活任务。
-- [ ] C.3 `core-coding-tools`：`shell.run` schema 增加 `runInBackground: boolean` 可选，为 true 时走 `deps.backgroundTasks.start()` 并立刻返回 `{taskId, status:"running"}`；新增 `core.shell.output` handler 读取 `.deepseek/tasks/` 文件；新增 `core.shell.kill` handler 调 `deps.backgroundTasks.kill`。
-- [ ] C.4 `RuntimeDependencies` 加 `backgroundTasks: BackgroundTaskManager` 字段；`testing-regression` fake 提供 `FakeBackgroundTaskManager`（不真 spawn，直接合成 stdout）。
-- [ ] C.5 CLI 的 `runOneShotCommand` / `runChatCommand` 在 `finally` 调 `deps.backgroundTasks.dispose()`。
-- [ ] C.6 `tests/contracts/background-shell.test.ts`：fake 模式下跑 runInBackground=true → 读 shell.output → 调 shell.kill，断言 exitCode 和 done 字段；真实模式下（`process.env.BACKGROUND_TASK_SMOKE=1` 门控）跑 `sleep 1` 流程。
+- [x] C.1 `platform-contracts` 定义 `BackgroundTaskManager`、`BackgroundTaskSummary`、`BackgroundTaskOutput`、`ShellOutputInput`、`ShellKillInput`；`shell.run` 输入加可选 `runInBackground`。
+- [x] C.2 `platform-abstraction` 新增 `NodeBackgroundTaskManager`（`child_process.spawn` + stdout/stderr buffer + SIGTERM→SIGKILL disposer）。
+- [x] C.3 `core.shell.run` 分流：`runInBackground: true` 走 `backgroundTasks.start()` 返回 `taskId`；否则原同步路径。
+- [x] C.4 新增 `core.shell.output`、`core.shell.kill` 工具。
+- [x] C.5 `testing-regression` 提供 `FakeBackgroundTaskManager`；`createDeterministicRuntimeDependencies` + `createLiveCliDependencies` 都挂接。
+- [x] C.6 `tests/contracts/background-shell.test.ts` 5 case 全绿。
 
 ## D. Grep / Glob / Read Polish / 精细化
 
-- [ ] D.1 `core.search.text` schema 增加 `contextLines`（`-C`）、`multiline`、`glob`（`*.ts` 过滤）、`outputMode`（默认 `files_with_matches`）、`headLimit`（限条目数）、`caseInsensitive`。实现按 Node regex 组合。
-- [ ] D.2 `core.file.list`：匹配文件按 mtime 降序排序（stat 调用数限流）；支持 `**/**` pattern。
-- [ ] D.3 `core.file.read`：schema 加 `offset`（从第 N 行开始）、`limit`（最多 N 行）；内容是图片 mime 时返回 `{ kind: "image", mime, base64 }`（size limit 10MB）；PDF mime 时读取 `pages: "1-5"` 文本（需要 `deps.platform.readPdfPages` 可选扩展，缺失时 UNAVAILABLE）。
-- [ ] D.4 `tests/contracts/grep-glob-read-polish.test.ts`：每个新参数一个用例 + 向后兼容 sanity（不传参数时行为等于改造前）。
+- [x] D.1 `search.text` 新增 `contextLines`、`multiline`、`glob`、`caseInsensitive`、`outputMode`（默认 `files_with_matches`）；向后兼容（缺省参数时走原 `platform.searchText` 快路径）。
+- [x] D.2 `file.list` 新增 `sort: "alpha" | "mtime-desc"`（默认 mtime 降序）；`NodePlatformRuntime.statFile` 支撑。
+- [x] D.3 `file.read` 新增 `offset`/`limit` 行级切片 + 图片 base64 + PDF placeholder（`PDF_READER_UNAVAILABLE`）；向后兼容（缺省时返回完整文件）。
+- [x] D.4 `tests/contracts/grep-glob-read-polish.test.ts` 7 case 全绿。
 
 ## E. Docs / 文档
 
-- [ ] E.1 `docs/development/testing-and-acceptance.md` 新增「内建工具集 / Built-in tools」小节列出所有 14 个 tool id、它们的 sideEffect / permissions / 典型输入输出，并标注 web.search 默认 UNAVAILABLE。
-- [ ] E.2 `docs/architecture/` 若有 capability 矩阵，同步更新。
+- [x] E.1 `docs/development/testing-and-acceptance.md` 新增「Built-in tools / 内建工具集」小节：列全部 15 个 capability、依赖注入约定、后台 shell 行为、测试入口。
+- [x] E.2 现有 `openspec/specs/core-coding-tools` 的 Semantic Search / File Read 语义在 change delta 里通过 MODIFIED Requirements 升级。
 
-## F. Verification / 验证
+## F. Refactor 前置 / Pre-refactor
 
-- [ ] F.1 `npm run typecheck`。
-- [ ] F.2 `npm run lint`（新加 web.fetch 注意 `node:net` / credential 相关 lint 规则）。
-- [ ] F.3 `node scripts/check-boundaries.mjs`（27 packages，testing-regression 依赖集可能增加 network adapter 相关）。
-- [ ] F.4 `npm test`（预计原 280 + 新增 4 个文件 × 3-4 case ≈ 293 pass；确定性模式下网络全 stub）。
-- [ ] F.5 刷新 `tests/acceptance/latest/` 证据。
-- [ ] F.6 `openspec validate align-builtin-tools-with-claude-cli --strict` + `openspec validate --specs --strict`。
+- [x] F.1 `core-coding-tools/src/index.ts` 拆分为 `tools/<tool-name>/index.ts` + `shared/{tool-kit,workspace,html,ids}.ts`；0 行为变化。
+- [x] F.2 `scripts/lint-framework/rules/imports.mjs` 的 `imports/no-cross-package-relative-imports` 改为只在真正跨越 `packages/<name>` / `apps/<name>` 边界时报错。
+
+## G. Verification / 验证
+
+- [ ] G.1 `npm run typecheck` —— 通过。
+- [ ] G.2 `npm run lint` —— ast lint passed (237 files, 16 rules)。
+- [ ] G.3 `node scripts/check-boundaries.mjs` —— 27 packages 通过。
+- [ ] G.4 `npm test` —— 300 pass + 4 skip（新增 20 case）。
+- [ ] G.5 `npm run smoke:live:e2e` —— 环境门控；无 key 时 skip。
+- [ ] G.6 刷新 `tests/acceptance/latest/` 证据。
+- [ ] G.7 `openspec validate align-builtin-tools-with-claude-cli --strict` + `openspec validate --specs --strict` —— 通过。

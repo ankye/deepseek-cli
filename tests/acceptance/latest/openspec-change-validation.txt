@@ -1,1 +1,1 @@
-Change 'mcp-client-against-real-servers' is valid
+Change 'align-builtin-tools-with-claude-cli' is valid

@@ -270,6 +270,53 @@ Chat slash commands / 聊天斜杠命令:
   `tests/integration/chat-sigint-cancel.test.ts` 触发
   `process.emit("SIGINT")` 并校验取消事件。
 
+Built-in tools / 内建工具集:
+
+- 全部 15 个 capability 都通过 `@deepseek/core-coding-tools` 注册，每个
+  工具独立一个 `tools/<tool-name>/index.ts`，共用逻辑（manifest builder、
+  bounded text、edit transaction）在 `shared/`。跨平台 I/O 一律走
+  `@deepseek/platform-abstraction`（`readFile`、`findFiles`、`statFile`、
+  `searchText`、`runProcess`、`spawnMcpServer`、`httpFetch`、
+  `readBinaryFile`），tool 层只收集输入、调 platform、包装成 typed
+  evidence。The 15 capabilities each live in their own
+  `tools/<tool-name>/index.ts` folder; cross-platform I/O goes
+  exclusively through `@deepseek/platform-abstraction` so tools just
+  gather inputs, call the platform, and wrap the typed evidence.
+- 工具矩阵：file.read / file.write / file.edit / file.list /
+  search.text / shell.run / shell.output / shell.kill / git.status /
+  git.diff / test.run / todo.plan / web.fetch / web.search /
+  agent.spawn。最后三个需要显式的依赖注入：web.fetch 可由
+  `RuntimeDependencies.webFetch` 提供自定义 provider（缺省走 platform
+  的 `httpFetch` + HTML→markdown），web.search 没注册时返回 typed
+  `WEB_SEARCH_UNAVAILABLE`，agent.spawn 依赖 runtime 构造的
+  `createAgentSpawner(deps, kernel, workspaceRoot)` 注入。Tool
+  matrix: the last three require explicit dependency injection —
+  `web.fetch` uses `RuntimeDependencies.webFetch` when set otherwise
+  falls back to the platform's `httpFetch` + local HTML→markdown;
+  `web.search` returns `WEB_SEARCH_UNAVAILABLE` without a provider;
+  `agent.spawn` requires `createAgentSpawner(deps, kernel,
+  workspaceRoot)` from `@deepseek/runtime`.
+- 后台 shell：`shell.run` 带 `runInBackground: true` 时通过
+  `RuntimeDependencies.backgroundTasks`（`NodeBackgroundTaskManager`
+  实现基于 `child_process.spawn`，fake 实现在 testing-regression 里）
+  启动子进程并立即返回 `taskId`；之后 `shell.output` 按 offset 拉
+  stdout/stderr，`shell.kill` 发 SIGTERM→2s→SIGKILL。CLI 退出时
+  runtime 负责 `disposeAll()`。Background shell routes through
+  `backgroundTasks` — Node impl spawns a child process and returns a
+  `taskId`; `shell.output` polls stdout/stderr at an offset and
+  `shell.kill` drains via SIGTERM→SIGKILL. CLI shutdown calls
+  `disposeAll`.
+- Grep/Glob/Read 精细化：`search.text` 新增 `contextLines`、
+  `multiline`、`glob`、`caseInsensitive`、`outputMode`（默认
+  `files_with_matches`）；`file.list` 默认按 mtime 降序，可 `sort:
+  "alpha"` 切回字母序；`file.read` 新增 `offset`/`limit` 切片、
+  图片（png/jpeg/gif/webp）返回 `{kind:"image",mime,base64}`，PDF 返回
+  `PDF_READER_UNAVAILABLE` 直到注入 reader。
+- 回归用例：`tests/contracts/web-tools.test.ts`、
+  `tests/contracts/grep-glob-read-polish.test.ts`、
+  `tests/contracts/background-shell.test.ts`、
+  `tests/contracts/agent-spawn.test.ts`。
+
 Real MCP transport / 真实 MCP 通道:
 
 - 默认行为不变：未 opt-in 时，stdio/HTTP/WebSocket/IDE 传输一律返回

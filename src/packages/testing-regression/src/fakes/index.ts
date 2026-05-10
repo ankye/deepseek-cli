@@ -1,4 +1,4 @@
-import type { ModelCredentialProvider, ModelProviderTransport, RuntimeDependencies } from "@deepseek/platform-contracts";
+import type { BackgroundTaskManager, BackgroundTaskOutput, BackgroundTaskSummary, ModelCredentialProvider, ModelProviderTransport, RuntimeDependencies } from "@deepseek/platform-contracts";
 import { InMemoryAgentManager } from "@deepseek/agent-management";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
@@ -15,6 +15,7 @@ import {
   InMemoryEvolutionEngine,
   InMemoryExtensionManager,
   InMemoryPluginManager,
+  NodeBackgroundTaskManager,
   NodePlatformRuntime,
   NoopRemoteRuntimeConnectivity,
   StaticDistributionUpdateManager
@@ -33,6 +34,71 @@ import { InMemoryUsageBudgetManager } from "@deepseek/usage-budget-management";
 import { SingleTurnWorkflowOrchestrator } from "@deepseek/workflow-orchestration";
 import { InMemoryWorkspaceStateManager } from "@deepseek/workspace-state-management";
 import { DeterministicRegressionHarness } from "../harness/index.js";
+
+export class FakeBackgroundTaskManager implements BackgroundTaskManager {
+  private readonly tasks = new Map<string, { summary: BackgroundTaskSummary; stdout: string; stderr: string; status: BackgroundTaskSummary["status"]; exitCode?: number; done: boolean }>();
+  private counter = 0;
+  injectedStdout = "";
+  injectedStderr = "";
+  injectedExitCode = 0;
+
+  async start(input: { readonly command: string; readonly args: readonly string[]; readonly cwd: string }): Promise<BackgroundTaskSummary> {
+    this.counter += 1;
+    const taskId = `fake-bg-${this.counter}`;
+    const summary: BackgroundTaskSummary = {
+      taskId,
+      command: input.command,
+      args: [...input.args],
+      cwd: input.cwd,
+      startedAt: new Date(0).toISOString(),
+      status: "exited",
+      exitCode: this.injectedExitCode,
+      done: true
+    };
+    this.tasks.set(taskId, {
+      summary,
+      stdout: this.injectedStdout,
+      stderr: this.injectedStderr,
+      status: "exited",
+      exitCode: this.injectedExitCode,
+      done: true
+    });
+    return summary;
+  }
+
+  async output(input: { readonly taskId: string; readonly stdoutOffset?: number; readonly stderrOffset?: number }): Promise<BackgroundTaskOutput> {
+    const entry = this.tasks.get(input.taskId);
+    if (!entry) throw new Error(`FAKE_BACKGROUND_TASK_NOT_FOUND: ${input.taskId}`);
+    const stdoutOffset = Math.max(0, input.stdoutOffset ?? 0);
+    const stderrOffset = Math.max(0, input.stderrOffset ?? 0);
+    return {
+      taskId: input.taskId,
+      stdout: entry.stdout.slice(stdoutOffset),
+      stderr: entry.stderr.slice(stderrOffset),
+      stdoutOffset: entry.stdout.length,
+      stderrOffset: entry.stderr.length,
+      done: entry.done,
+      ...(entry.exitCode !== undefined ? { exitCode: entry.exitCode } : {}),
+      status: entry.status
+    };
+  }
+
+  async kill(input: { readonly taskId: string }): Promise<BackgroundTaskSummary> {
+    const entry = this.tasks.get(input.taskId);
+    if (!entry) throw new Error(`FAKE_BACKGROUND_TASK_NOT_FOUND: ${input.taskId}`);
+    entry.status = "killed";
+    entry.done = true;
+    return { ...entry.summary, status: "killed", done: true };
+  }
+
+  async list(): Promise<readonly BackgroundTaskSummary[]> {
+    return [...this.tasks.values()].map((entry) => entry.summary);
+  }
+
+  async disposeAll(): Promise<void> {
+    this.tasks.clear();
+  }
+}
 
 export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
   const runtimePlaceholder = async () => ({
@@ -79,7 +145,8 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     distribution: new StaticDistributionUpdateManager(),
     config: new InMemoryConfigStore(),
     observability: new InMemoryObservabilitySink(),
-    regression: new DeterministicRegressionHarness()
+    regression: new DeterministicRegressionHarness(),
+    backgroundTasks: new FakeBackgroundTaskManager()
   };
   return dependencies;
 }
@@ -119,6 +186,7 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
     workspaceState: new InMemoryWorkspaceStateManager(platform),
     codeIntelligence: new DeterministicCodeIntelligenceService(platform),
     models: new DeepSeekOpenAIProvider(modelOptions),
-    sessions
+    sessions,
+    backgroundTasks: new NodeBackgroundTaskManager()
   };
 }
