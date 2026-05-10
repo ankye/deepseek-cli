@@ -1,0 +1,169 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import type {
+  JsonObject,
+  ModelGateway,
+  ModelRequest,
+  ModelStreamEvent,
+  PolicyDecision,
+  PolicyEngine,
+  PolicyRequest,
+  RuntimeEvent,
+  ToolResultFeedback
+} from "@deepseek/platform-contracts";
+import {
+  collectRuntimeEvents,
+  createDefaultRuntimeKernel,
+  registerRuntimeCoreTools,
+  runAgentLoop
+} from "../src/index.js";
+import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
+import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
+
+describe("agent loop typed tool feedback", () => {
+  it("emits a success feedback DTO when a tool execution completes", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "feedback success\n");
+    const loopDeps = { ...deps, models: new OneToolThenFinishModelGateway("core.file.read", { path: "README.md" }) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "read readme",
+      caller: "runtime.feedback.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const feedback = readFeedback(events);
+    assert.ok(feedback, "model.tool.result event should carry a typed feedback payload");
+    assert.equal(feedback.schemaVersion, "1.0.0");
+    assert.equal(feedback.status, "success");
+    assert.equal(feedback.continuation, "continue");
+    assert.equal(feedback.toolCallId, "call-runtime");
+    assert.equal(feedback.toolName, "core.file.read");
+    assert.equal(feedback.preview.limitBytes > 0, true);
+    assert.equal(feedback.trace.traceId.length > 0, true);
+    assert.equal(feedback.trace.correlationId.length > 0, true);
+    await kernel.shutdown();
+  });
+
+  it("emits a denied feedback DTO when policy rejects the tool execution", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "feedback deny\n");
+    const loopDeps = { ...deps, models: new OneToolThenFinishModelGateway("core.file.read", { path: "README.md" }), policy: new DenyAllPolicyEngine() };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "policy denies this",
+      caller: "runtime.feedback.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const feedback = readFeedback(events);
+    assert.ok(feedback);
+    assert.equal(feedback.status, "denied");
+    assert.equal(feedback.diagnostics.length >= 1, true);
+    assert.equal(feedback.diagnostics[0]?.code, "KERNEL_POLICY_DENIED");
+    await kernel.shutdown();
+  });
+
+  it("emits a rejected feedback DTO when preflight rejects an unsafe path", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const loopDeps = { ...deps, models: new OneToolThenFinishModelGateway("core.file.read", { path: "../outside.txt" }) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "unsafe path",
+      caller: "runtime.feedback.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      limits: { maxModelIterations: 1 }
+    }));
+
+    const feedback = readFeedback(events);
+    assert.ok(feedback, "preflight rejection must still produce a typed feedback record");
+    assert.equal(feedback.status, "rejected");
+    assert.equal(feedback.continuation, "continue");
+    assert.equal(feedback.preview.truncated, false);
+    await kernel.shutdown();
+  });
+
+  it("emits a rejected feedback DTO when the tool-call limit is exceeded", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "limit test\n");
+    const loopDeps = { ...deps, models: new LoopingToolCallModelGateway("core.file.read", { path: "README.md" }) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "looping tool",
+      caller: "runtime.feedback.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      limits: { maxToolCalls: 1, maxModelIterations: 3 }
+    }));
+
+    const rejectedEvent = events.find((event) => event.kind === "model.tool.rejected" && (event.data as JsonObject).reason === "tool-call-limit");
+    assert.ok(rejectedEvent, "tool-call-limit rejection event is expected");
+    const feedback = (rejectedEvent!.data as { feedback?: ToolResultFeedback }).feedback;
+    assert.ok(feedback, "tool-call-limit rejection must include a typed feedback record");
+    assert.equal(feedback.status, "rejected");
+    assert.equal(feedback.continuation, "terminate");
+    assert.equal(events.at(-1)?.kind, "agent.loop.failed");
+    await kernel.shutdown();
+  });
+});
+
+function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {
+  const resultEvent = events.find((event) => event.kind === "model.tool.result");
+  return resultEvent ? (resultEvent.data as { feedback?: ToolResultFeedback }).feedback : undefined;
+}
+
+class OneToolThenFinishModelGateway implements ModelGateway {
+  constructor(private readonly name: string, private readonly input: JsonObject) {}
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "tool turn resolved" };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "tool-call", id: "call-runtime", name: this.name, input: this.input };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class LoopingToolCallModelGateway implements ModelGateway {
+  constructor(private readonly name: string, private readonly input: JsonObject) {}
+
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield { kind: "tool-call", id: "call-a", name: this.name, input: this.input };
+    yield { kind: "tool-call", id: "call-b", name: this.name, input: this.input };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class DenyAllPolicyEngine implements PolicyEngine {
+  async decide(_request: PolicyRequest): Promise<PolicyDecision> {
+    return {
+      action: "deny",
+      reason: "Denied by runtime feedback test policy",
+      audit: { policy: "deny-all-feedback-test" }
+    };
+  }
+}

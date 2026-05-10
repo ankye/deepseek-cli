@@ -68,3 +68,33 @@ export interface ToolIntentPreflightResult extends JsonObject {
 export interface ToolIntentPreflightService {
   check(request: ToolIntentPreflightRequest): Promise<ToolIntentPreflightResult>;
 }
+
+export type ToolFeedbackStatus =
+  | "success"
+  | "repaired"
+  | "rejected"
+  | "denied"
+  | "timeout"
+  | "cancelled"
+  | "failed";
+
+export interface ToolFeedbackPreview extends JsonObject {
+  readonly text: string;
+  readonly byteLength: number;
+  readonly truncated: boolean;
+  readonly limitBytes: number;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface ToolResultFeedback extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly capabilityId?: string;
+  readonly status: ToolFeedbackStatus;
+  readonly preview: ToolFeedbackPreview;
+  readonly diagnostics: readonly RedactedError[];
+  readonly trace: { readonly traceId: string; readonly correlationId: string };
+  readonly continuation: "continue" | "terminate";
+  readonly redaction: RedactionMetadata;
+}

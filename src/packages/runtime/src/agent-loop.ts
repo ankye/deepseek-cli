@@ -9,6 +9,7 @@ import type {
   RuntimeKernel,
   RuntimeKernelRequest,
   SessionId,
+  ToolFeedbackStatus,
   TraceContext,
   TurnId
 } from "@deepseek/platform-contracts";
@@ -18,6 +19,7 @@ import { kernelError, toolIntentError } from "./errors.js";
 import { agentLoopEvent, collectRuntimeEvents, lastRuntimeEvent, recordRuntimeAdapterEvent } from "./events.js";
 import {
   boundedModelText,
+  buildToolResultFeedback,
   modelToolResultText,
   modelToolSchema,
   providerMetadata
@@ -143,13 +145,25 @@ export async function* runAgentLoop(
       }
       if (modelEvent.kind === "tool-call") {
         requestedTool = true;
+        const toolCallId = modelEvent.id ?? "";
         if (toolCalls >= limits.maxToolCalls) {
           const error = kernelError("KERNEL_QUEUE_BACKPRESSURE", "Agent loop tool-call limit exceeded", { maxToolCalls: limits.maxToolCalls });
           diagnostics.push(error);
+          const limitFeedback = buildToolResultFeedback({
+            toolCallId,
+            toolName: modelEvent.name,
+            status: "rejected",
+            text: error.message,
+            diagnostics: [error],
+            trace,
+            limitBytes: limits.maxOutputBytes,
+            continuation: "terminate"
+          });
           const rejected = agentLoopEvent("model.tool.rejected", sessionId, turnId, trace, {
             reason: "tool-call-limit",
             maxToolCalls: limits.maxToolCalls,
-            toolName: modelEvent.name
+            toolName: modelEvent.name,
+            feedback: limitFeedback
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, rejected);
           yield rejected;
@@ -162,7 +176,7 @@ export async function* runAgentLoop(
         }
         toolCalls += 1;
         const intentEvent = agentLoopEvent("model.tool.intent", sessionId, turnId, trace, {
-          toolCallId: modelEvent.id ?? "",
+          toolCallId,
           name: modelEvent.name,
           input: modelEvent.input,
           provider: modelEvent.provider ?? providerMetadata(request),
@@ -207,7 +221,27 @@ export async function* runAgentLoop(
         if (preflight.status === "rejected" || !preflight.capabilityId) {
           const error = toolIntentError(preflight.diagnostics);
           diagnostics.push(error);
-          messages.push({ role: "tool", content: `Tool request rejected: ${error.message}`, toolCallId: modelEvent.id ?? "", toolName: modelEvent.name });
+          const preflightFeedback = buildToolResultFeedback({
+            toolCallId,
+            toolName: modelEvent.name,
+            ...(preflight.capabilityId ? { capabilityId: String(preflight.capabilityId) } : {}),
+            status: "rejected",
+            text: `Tool request rejected: ${error.message}`,
+            diagnostics: [error, ...preflight.diagnostics],
+            trace,
+            limitBytes: limits.maxOutputBytes,
+            continuation: "continue"
+          });
+          const preflightResultEvent = agentLoopEvent("model.tool.result", sessionId, turnId, trace, {
+            toolCallId,
+            toolName: modelEvent.name,
+            result: preflightFeedback.preview.text,
+            terminalKind: "preflight.rejected",
+            feedback: preflightFeedback
+          }, request.agentId, error);
+          await recordRuntimeAdapterEvent(deps, preflightResultEvent);
+          yield preflightResultEvent;
+          messages.push({ role: "tool", content: preflightFeedback.preview.text, toolCallId, toolName: modelEvent.name });
           continue;
         }
 
@@ -230,12 +264,23 @@ export async function* runAgentLoop(
         }
         const terminal = lastRuntimeEvent(toolEvents, (event) => event.kind === "capability.completed" || event.kind === "capability.failed" || event.kind === "capability.cancelled" || event.kind === "execution.rejected");
         const toolResultText = modelToolResultText(terminal);
-        messages.push({ role: "tool", content: toolResultText, toolCallId: modelEvent.id ?? "", toolName: modelEvent.name });
+        messages.push({ role: "tool", content: toolResultText, toolCallId, toolName: modelEvent.name });
+        const executionFeedback = buildToolResultFeedback({
+          toolCallId,
+          toolName: modelEvent.name,
+          capabilityId: String(preflight.capabilityId),
+          status: executionFeedbackStatus(terminal),
+          text: toolResultText,
+          diagnostics: terminal?.error ? [terminal.error] : [],
+          trace,
+          limitBytes: limits.maxOutputBytes
+        });
         const resultEvent = agentLoopEvent("model.tool.result", sessionId, turnId, trace, {
-          toolCallId: modelEvent.id ?? "",
+          toolCallId,
           toolName: modelEvent.name,
           result: boundedModelText(toolResultText, limits.maxOutputBytes),
-          terminalKind: terminal?.kind ?? "unknown"
+          terminalKind: terminal?.kind ?? "unknown",
+          feedback: executionFeedback
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
@@ -335,4 +380,15 @@ export function summarizeAgentLoop(
     diagnostics,
     redaction: { class: "internal", fields: ["assistantText", "diagnostics.details"] }
   };
+}
+
+function executionFeedbackStatus(terminal: RuntimeEvent | undefined): ToolFeedbackStatus {
+  if (!terminal) return "failed";
+  if (terminal.kind === "capability.completed") return "success";
+  if (terminal.kind === "capability.cancelled") return "cancelled";
+  if (terminal.kind === "execution.rejected") {
+    return terminal.error?.code === "KERNEL_POLICY_DENIED" ? "denied" : "rejected";
+  }
+  if (terminal.error?.code === "KERNEL_SCHEDULER_TIMEOUT") return "timeout";
+  return "failed";
 }
