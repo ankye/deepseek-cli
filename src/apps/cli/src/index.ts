@@ -29,6 +29,7 @@ import { coreToolIds } from "@deepseek/core-coding-tools";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
+import { PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { createDeterministicRuntimeDependencies, createLiveCliDependencies, registerDeterministicCoreTools } from "@deepseek/testing-regression";
 
 export interface CliTerminalFlags {
@@ -146,7 +147,7 @@ export async function runCli(
     return;
   }
   if (options.command === "session") {
-    await runSessionCommand(options, writer);
+    await runSessionCommand(options, writer, runOptions);
     return;
   }
   if (options.command === "chat") {
@@ -184,9 +185,17 @@ async function runOneShotCommand(options: CliOptions, write: (line: string) => P
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
     }, write, writeInline, bufferedInline);
     await renderFinalJsonIfNeeded(options.output, events, write);
+    if (options.output === "text") {
+      const finalSessionId = finalAgentLoopEvent(events)?.sessionId ?? events.at(-1)?.sessionId;
+      if (finalSessionId) await write(resumeHint(finalSessionId));
+    }
   } finally {
     await runtime.kernel.shutdown("cli-run-completed");
   }
+}
+
+function resumeHint(sessionId: string): string {
+  return `[session] deepseek session resume ${sessionId}`;
 }
 
 async function runChatCommand(options: CliOptions, write: (line: string) => Promise<void>, writeInline: (chunk: string) => Promise<void>, bufferedInline: boolean, input: CliInputStream, runOptions: CliRunOptions): Promise<void> {
@@ -213,13 +222,14 @@ async function runChatCommand(options: CliOptions, write: (line: string) => Prom
         profile: defaultDeepSeekProfile,
         live: options.live,
         ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
-      }, write, writeInline);
+      }, write, writeInline, bufferedInline);
       const terminal = finalAgentLoopEvent(events);
       sessionId = terminal?.sessionId ?? sessionId;
       await renderFinalJsonIfNeeded(options.output, events, write);
     }
     if (options.output === "text") {
       await write(`[chat completed] turns=${turns}${sessionId ? ` session=${sessionId}` : ""}`);
+      if (sessionId) await write(resumeHint(sessionId));
     }
   } finally {
     await runtime.kernel.shutdown("cli-chat-completed");
@@ -355,14 +365,16 @@ async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, events: read
   if (output !== "json") return;
   const terminal = finalAgentLoopEvent(events);
   const fallback = events.at(-1);
+  const sessionId = terminal?.sessionId ?? fallback?.sessionId ?? "";
   await write(JSON.stringify({
     schemaVersion: "1.0.0",
     status: String(terminal?.data.status ?? (terminal?.kind === "agent.loop.completed" ? "completed" : "failed")),
-    sessionId: terminal?.sessionId ?? fallback?.sessionId ?? "",
+    sessionId,
     turnId: terminal?.turnId ?? fallback?.turnId ?? "",
     traceId: String(terminal?.trace.traceId ?? fallback?.trace.traceId ?? ""),
     assistantText: String(terminal?.data.assistantText ?? ""),
     diagnostics: Array.isArray(terminal?.data.diagnostics) ? terminal?.data.diagnostics : [],
+    resumeCommand: sessionId ? `deepseek session resume ${sessionId}` : "",
     redaction: terminal?.data.redaction ?? { class: "internal" }
   }));
 }
@@ -371,8 +383,8 @@ function finalAgentLoopEvent(events: readonly RuntimeEvent[]): RuntimeEvent | un
   return [...events].reverse().find((event) => event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed");
 }
 
-async function runSessionCommand(options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
-  const deps = await createCliRuntimeDependencies();
+async function runSessionCommand(options: CliOptions, write: (line: string) => Promise<void>, runOptions: CliRunOptions): Promise<void> {
+  const deps = await resolveSessionDependencies(runOptions);
   let result: { ok: boolean; value?: SessionResumeResult | SessionForkResult; error?: JsonObject };
   if (options.sessionAction === "fork") {
     result = options.parentSessionId
@@ -398,10 +410,27 @@ async function runSessionCommand(options: CliOptions, write: (line: string) => P
   await write(`resumed ${result.value.sessionId} (${result.value.eventCount} events)`);
 }
 
-async function createCliRuntimeDependencies(workspaceRoot = process.cwd()): Promise<RuntimeDependencies> {
+async function resolveSessionDependencies(runOptions: CliRunOptions, workspaceRoot = process.cwd()): Promise<RuntimeDependencies> {
+  if (runOptions.createRuntime) {
+    const runtime = await runOptions.createRuntime({ live: false, workspaceRoot });
+    return runtime.deps;
+  }
+  return createCliSessionDependencies(workspaceRoot);
+}
+
+async function createCliSessionDependencies(workspaceRoot = process.cwd()): Promise<RuntimeDependencies> {
   const deps = createDeterministicRuntimeDependencies();
-  await registerRuntimeCoreTools(deps, workspaceRoot);
-  return deps;
+  const persistentSessionsDirectory = userSessionsDirectory();
+  try {
+    const persistentSessions = new PersistentFilesystemSessionStore(persistentSessionsDirectory);
+    const withPersistence: RuntimeDependencies = { ...deps, sessions: persistentSessions };
+    await registerRuntimeCoreTools(withPersistence, workspaceRoot);
+    return withPersistence;
+  } catch (error) {
+    console.warn(`deepseek: falling back to in-memory sessions because ${persistentSessionsDirectory} could not be initialized:`, error instanceof Error ? error.message : String(error));
+    await registerRuntimeCoreTools(deps, workspaceRoot);
+    return deps;
+  }
 }
 
 function cliSessionError(code: string, message: string): JsonObject {

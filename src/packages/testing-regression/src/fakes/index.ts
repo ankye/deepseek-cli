@@ -25,7 +25,7 @@ import { InMemoryPluginManager } from "@deepseek/plugin-system";
 import { DefaultPolicyEngine, DevelopmentSandboxRuntime, HeadlessApprovalBroker } from "@deepseek/policy-sandbox";
 import { NoopRemoteRuntimeConnectivity } from "@deepseek/remote-runtime-connectivity";
 import { InMemoryRuntimeMessageBus } from "@deepseek/runtime-message-bus";
-import { InMemorySessionStore } from "@deepseek/session-store";
+import { InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
 import { InMemoryUsageBudgetManager } from "@deepseek/usage-budget-management";
 import { SingleTurnWorkflowOrchestrator } from "@deepseek/workflow-orchestration";
@@ -91,6 +91,7 @@ export interface LiveCliDependencyOptions {
   readonly credentials?: ModelCredentialProvider;
   readonly transport?: ModelProviderTransport;
   readonly timeoutMs?: number;
+  readonly sessionsDirectory?: string;
 }
 
 export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}): RuntimeDependencies {
@@ -101,11 +102,21 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
     ...(options.transport ? { transport: options.transport } : {}),
     timeoutMs: options.timeoutMs ?? 90_000
   };
+  const sessionsDir = options.sessionsDirectory ?? userSessionsDirectory();
+  const sessions = (() => {
+    try {
+      return new PersistentFilesystemSessionStore(sessionsDir);
+    } catch (error) {
+      console.warn(`deepseek: falling back to in-memory sessions because ${sessionsDir} could not be initialized:`, error instanceof Error ? error.message : String(error));
+      return new InMemorySessionStore();
+    }
+  })();
   return {
     ...base,
     platform,
     workspaceState: new InMemoryWorkspaceStateManager(platform),
     codeIntelligence: new DeterministicCodeIntelligenceService(platform),
-    models: new DeepSeekOpenAIProvider(modelOptions)
+    models: new DeepSeekOpenAIProvider(modelOptions),
+    sessions
   };
 }

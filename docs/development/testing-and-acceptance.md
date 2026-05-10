@@ -209,3 +209,31 @@ Troubleshooting / 排障:
 - `KERNEL_POLICY_DENIED`: policy profile does not allow the side
   effect; raise `toolProjection` or configure policy. / policy profile
   不允许此 side effect；提升 `toolProjection` 或配置 policy。
+
+Session persistence / 会话持久化:
+
+- Live CLI runs persist session events to a per-user directory:
+  POSIX `~/.deepseek/sessions`, Windows
+  `%APPDATA%/deepseek/sessions`, XDG `$XDG_DATA_HOME/deepseek/sessions`
+  when set. The deterministic runtime dependencies still use the
+  in-memory store, so unit/contract tests stay hermetic. / Live CLI
+  会把 session 事件持久化到每用户目录：POSIX
+  `~/.deepseek/sessions`、Windows `%APPDATA%/deepseek/sessions`、有
+  `XDG_DATA_HOME` 时落到 `$XDG_DATA_HOME/deepseek/sessions`。确定性
+  依赖仍然用 in-memory store，单测与契约测试保持隔离。
+- After a text-mode `deepseek run` or `deepseek chat` finishes, the
+  CLI prints `[session] deepseek session resume <id>` so you can
+  copy-paste to continue later. JSON summaries include the same
+  command as a `resumeCommand` field. JSONL output keeps raw events
+  only. / text 模式下 `deepseek run` 或 `deepseek chat` 结束时会打印
+  `[session] deepseek session resume <id>`，可直接复制继续；JSON 摘要
+  通过 `resumeCommand` 字段给出同一命令；JSONL 仍是原始事件流。
+- `deepseek session resume <id>` and `deepseek session fork <id>`
+  read from the same per-user directory, so they work across CLI
+  invocations without any extra flag. To wipe history, remove the
+  directory (`rm -rf ~/.deepseek/sessions`, or delete the Windows
+  folder in Explorer). / `deepseek session resume <id>` 与
+  `deepseek session fork <id>` 读同一个每用户目录，跨进程调用无需额外
+  参数。如需清空历史，删除该目录即可
+  （`rm -rf ~/.deepseek/sessions`，Windows 可在资源管理器里删掉对应
+  文件夹）。

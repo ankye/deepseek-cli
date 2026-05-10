@@ -14,13 +14,15 @@ import type {
 } from "@deepseek/platform-contracts";
 import { SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 export class InMemorySessionStore implements SessionStore {
-  private next = 1;
-  private readonly eventsBySession = new Map<string, SessionEvent[]>();
-  private readonly metadataBySession = new Map<string, SessionMetadata>();
-  private readonly snapshotsBySession = new Map<string, SessionSnapshot>();
+  protected next = 1;
+  protected readonly eventsBySession = new Map<string, SessionEvent[]>();
+  protected readonly metadataBySession = new Map<string, SessionMetadata>();
+  protected readonly snapshotsBySession = new Map<string, SessionSnapshot>();
 
   async create(metadata: JsonObject = {}): Promise<SessionId> {
     const id = asId<"session">(`session-${this.next++}`);
@@ -133,7 +135,7 @@ export class InMemorySessionStore implements SessionStore {
     return this.metadataBySession.get(sessionId);
   }
 
-  private buildMetadata(sessionId: SessionId, metadata: JsonObject, lineage: SessionLineage): SessionMetadata {
+  protected buildMetadata(sessionId: SessionId, metadata: JsonObject, lineage: SessionLineage): SessionMetadata {
     const events = this.eventsBySession.get(sessionId) ?? [];
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
@@ -148,9 +150,72 @@ export class InMemorySessionStore implements SessionStore {
   }
 }
 
-export class DevelopmentFilesystemSessionStore extends InMemorySessionStore {
+export class PersistentFilesystemSessionStore extends InMemorySessionStore {
   constructor(private readonly root: string) {
     super();
+    this.hydrate();
+  }
+
+  private hydrate(): void {
+    try {
+      mkdirSync(this.root, { recursive: true });
+    } catch {
+      return;
+    }
+    let entries: readonly string[] = [];
+    try {
+      entries = readdirSync(this.root);
+    } catch {
+      return;
+    }
+    let maxSessionOrdinal = 0;
+    for (const name of entries) {
+      if (name.endsWith(".jsonl")) {
+        const sessionId = asId<"session">(name.slice(0, -".jsonl".length));
+        const ordinal = parseSessionOrdinal(sessionId);
+        if (ordinal !== undefined && ordinal > maxSessionOrdinal) maxSessionOrdinal = ordinal;
+        try {
+          const content = readFileSync(join(this.root, name), "utf8");
+          const events: SessionEvent[] = [];
+          for (const line of content.split(/\r?\n/)) {
+            if (!line.trim()) continue;
+            try {
+              const record = JSON.parse(line) as { recordType?: string; event?: SessionEvent };
+              if (record.recordType === "event" && record.event) events.push(record.event);
+            } catch {
+              continue;
+            }
+          }
+          if (events.length > 0) {
+            this.eventsBySession.set(sessionId, events);
+            this.metadataBySession.set(sessionId, this.buildMetadata(sessionId, {}, {}));
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    for (const name of entries) {
+      if (name.endsWith(".metadata.json")) {
+        const sessionId = asId<"session">(name.slice(0, -".metadata.json".length));
+        try {
+          const metadata = JSON.parse(readFileSync(join(this.root, name), "utf8")) as SessionMetadata;
+          this.metadataBySession.set(sessionId, metadata);
+        } catch {
+          continue;
+        }
+      }
+      if (name.endsWith(".snapshot.json")) {
+        const sessionId = asId<"session">(name.slice(0, -".snapshot.json".length));
+        try {
+          const snapshot = JSON.parse(readFileSync(join(this.root, name), "utf8")) as SessionSnapshot;
+          this.snapshotsBySession.set(sessionId, snapshot);
+        } catch {
+          continue;
+        }
+      }
+    }
+    this.next = maxSessionOrdinal + 1;
   }
 
   override async append(event: SessionEvent): Promise<void> {
@@ -169,6 +234,38 @@ export class DevelopmentFilesystemSessionStore extends InMemorySessionStore {
     await writeFile(join(this.root, `${sessionId}.snapshot.json`), JSON.stringify(snapshot, null, 2), "utf8");
     return snapshot;
   }
+}
+
+/** @deprecated Use PersistentFilesystemSessionStore. Kept as an alias until callers migrate. */
+export const DevelopmentFilesystemSessionStore = PersistentFilesystemSessionStore;
+
+function parseSessionOrdinal(sessionId: string): number | undefined {
+  const match = /^session-(\d+)$/.exec(sessionId);
+  if (!match) return undefined;
+  const ordinal = Number(match[1]);
+  return Number.isFinite(ordinal) ? ordinal : undefined;
+}
+
+export function userSessionsDirectory(env?: NodeJS.ProcessEnv, platform?: NodeJS.Platform): string {
+  const resolvedEnv = env ?? sessionEnv();
+  const resolvedPlatform = platform ?? sessionPlatform();
+  if (resolvedPlatform === "win32") {
+    const appData = resolvedEnv.APPDATA ?? resolvedEnv.LOCALAPPDATA ?? join(homedir(), "AppData", "Roaming");
+    return join(appData, "deepseek", "sessions");
+  }
+  const xdgDataHome = resolvedEnv.XDG_DATA_HOME;
+  if (xdgDataHome && xdgDataHome.length > 0) return join(xdgDataHome, "deepseek", "sessions");
+  return join(homedir(), ".deepseek", "sessions");
+}
+
+function sessionEnv(): NodeJS.ProcessEnv {
+  const proc = globalThis as unknown as { process?: { env?: NodeJS.ProcessEnv } };
+  return proc.process?.env ?? {};
+}
+
+function sessionPlatform(): NodeJS.Platform {
+  const proc = globalThis as unknown as { process?: { platform?: NodeJS.Platform } };
+  return proc.process?.platform ?? "linux";
 }
 
 function latestSequenceOf(events: readonly SessionEvent[]): number {

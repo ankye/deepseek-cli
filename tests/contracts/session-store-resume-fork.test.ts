@@ -2,9 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SessionEvent, SessionStore } from "@deepseek/platform-contracts";
 import { SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
-import { DevelopmentFilesystemSessionStore, InMemorySessionStore } from "@deepseek/session-store";
+import { DevelopmentFilesystemSessionStore, InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 function event(sessionId: string, sequence: number, kind = "runtime.test"): SessionEvent {
@@ -73,5 +73,46 @@ describe("session store resume and fork contracts", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("hydrates from disk so a new store instance sees prior events", async () => {
+    const root = await mkdtemp(join(tmpdir(), "deepseek-session-hydrate-"));
+    try {
+      const first = new PersistentFilesystemSessionStore(root);
+      const sessionId = await first.create({ label: "hydration" });
+      await first.append(event(sessionId, 1, "runtime.initial"));
+      await first.append(event(sessionId, 2, "runtime.final"));
+
+      const second = new PersistentFilesystemSessionStore(root);
+      const events = await second.events(sessionId);
+      assert.equal(events.length, 2);
+      assert.equal(events[0]?.kind, "runtime.initial");
+      assert.equal(events[1]?.kind, "runtime.final");
+
+      const resumed = await second.resume(sessionId);
+      assert.equal(resumed.ok, true, resumed.error?.message);
+      assert.equal(resumed.value?.eventCount, 2);
+      assert.equal(resumed.value?.latestSequence, 2);
+
+      const freshSessionId = await second.create({ label: "post-hydrate" });
+      assert.notEqual(freshSessionId, sessionId, "new session id must not collide with hydrated one");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps DevelopmentFilesystemSessionStore as a backwards-compatible alias", () => {
+    assert.equal(DevelopmentFilesystemSessionStore, PersistentFilesystemSessionStore);
+  });
+
+  it("picks a per-user sessions directory from environment", () => {
+    const defaultLinux = userSessionsDirectory({}, "linux");
+    assert.equal(defaultLinux.endsWith(`${sep}.deepseek${sep}sessions`), true, defaultLinux);
+    const xdgLinux = userSessionsDirectory({ XDG_DATA_HOME: `${sep}xdg` }, "linux");
+    assert.equal(xdgLinux.endsWith(`deepseek${sep}sessions`), true, xdgLinux);
+    assert.equal(xdgLinux.startsWith(`${sep}xdg`), true, xdgLinux);
+    const winPath = userSessionsDirectory({ APPDATA: "C:\\\\Users\\\\Tester\\\\AppData\\\\Roaming" }, "win32");
+    assert.equal(winPath.includes("deepseek"), true);
+    assert.equal(winPath.endsWith("sessions"), true);
   });
 });
