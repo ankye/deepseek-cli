@@ -30,6 +30,8 @@ chat shell 必须支持 help、exit、clear、cancellation 等有边界的内置
 - **THEN** the shell renders `model=<name> provider=<providerId>` from the active `AgentLoopRequest.profile`, without touching runtime or provider state
 - **中文** 当用户在 chat 中输入 `/model` 时，shell 必须从当前 `AgentLoopRequest.profile` 渲染 `model=<name> provider=<providerId>`，不得触及 runtime 或 provider 状态。
 
+## ADDED Requirements
+
 ### Requirement: Chat Cancellation Controls / Chat 取消控制
 
 The chat shell SHALL cancel the in-flight turn when the user types `/cancel` OR presses Ctrl+C, using the same `AbortSignal` path so both surfaces emit identical `agent.loop.cancelled` events.
