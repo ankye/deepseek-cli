@@ -16,6 +16,7 @@ import type {
   ModelProviderTransport,
   ModelRequest,
   ModelStreamEvent,
+  ModelToolChoice,
   ModelUsageMetadata,
   RedactedError
 } from "@deepseek/platform-contracts";
@@ -111,12 +112,14 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
     }
 
     const providerRequest = this.buildProviderRequest(request, credential?.value);
+    const accumulator = createToolCallAccumulator();
     try {
       for await (const chunk of this.options.transport.stream(providerRequest)) {
-        for (const event of normalizeDeepSeekChunk(chunk, provider)) {
+        for (const event of normalizeDeepSeekChunk(chunk, provider, accumulator)) {
           yield event;
         }
       }
+      for (const event of accumulator.flush(provider)) yield event;
       yield { kind: "done", provider };
     } catch (error) {
       yield {
@@ -142,6 +145,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
       stream: true,
       temperature: request.profile.temperature ?? 0,
       ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
+      ...(request.toolChoice !== undefined ? { tool_choice: formatToolChoice(request.toolChoice) } : {}),
       ...(request.reasoning ? { thinking: { type: request.reasoning.enabled === false ? "disabled" : "enabled" } } : {}),
       ...(request.reasoning?.effort ? { reasoning_effort: request.reasoning.effort } : {}),
       ...(request.profile.providerOptions ? request.profile.providerOptions : {})
@@ -289,7 +293,80 @@ export class OpenAIModelProviderTransport implements ModelProviderTransport {
   }
 }
 
-export function normalizeDeepSeekChunk(chunk: ModelProviderResponseChunk, provider: ModelProviderEventMetadata): readonly ModelStreamEvent[] {
+export interface ToolCallAccumulator {
+  ingest(value: unknown, provider: ModelProviderEventMetadata): ModelStreamEvent[];
+  flush(provider: ModelProviderEventMetadata): ModelStreamEvent[];
+}
+
+interface ToolCallFragment {
+  id?: string;
+  name?: string;
+  argumentsBuffer: string;
+  argumentsIsString: boolean;
+  argumentsObject?: JsonObject;
+}
+
+export function createToolCallAccumulator(): ToolCallAccumulator {
+  const fragments = new Map<number, ToolCallFragment>();
+  let fallbackIndex = 0;
+
+  function ingest(value: unknown, _provider: ModelProviderEventMetadata): ModelStreamEvent[] {
+    if (!isJsonObject(value)) return [];
+    const rawIndex = numberValue(value.index);
+    const index = rawIndex !== undefined ? rawIndex : fallbackIndex;
+    if (rawIndex === undefined) fallbackIndex += 1;
+
+    let fragment = fragments.get(index);
+    if (!fragment) {
+      fragment = { argumentsBuffer: "", argumentsIsString: false };
+      fragments.set(index, fragment);
+    }
+    if (typeof value.id === "string" && value.id) fragment.id = value.id;
+    const fn = isJsonObject(value.function) ? value.function : undefined;
+    const name = stringValue(fn?.name) ?? stringValue(value.name);
+    if (name) fragment.name = name;
+    const rawArguments = fn?.arguments ?? value.arguments ?? value.input;
+    if (typeof rawArguments === "string") {
+      fragment.argumentsBuffer += rawArguments;
+      fragment.argumentsIsString = true;
+    } else if (isJsonObject(rawArguments)) {
+      fragment.argumentsObject = rawArguments;
+    }
+    return [];
+  }
+
+  function flush(provider: ModelProviderEventMetadata): ModelStreamEvent[] {
+    const events: ModelStreamEvent[] = [];
+    const indices = [...fragments.keys()].sort((a, b) => a - b);
+    for (const index of indices) {
+      const fragment = fragments.get(index);
+      if (!fragment || !fragment.name) continue;
+      const input = fragment.argumentsObject
+        ? fragment.argumentsObject
+        : fragment.argumentsIsString
+          ? parseToolInput(fragment.argumentsBuffer)
+          : {};
+      events.push({
+        kind: "tool-call",
+        ...(fragment.id ? { id: fragment.id } : {}),
+        name: fragment.name,
+        input,
+        provider
+      });
+    }
+    fragments.clear();
+    fallbackIndex = 0;
+    return events;
+  }
+
+  return { ingest, flush };
+}
+
+export function normalizeDeepSeekChunk(
+  chunk: ModelProviderResponseChunk,
+  provider: ModelProviderEventMetadata,
+  accumulator?: ToolCallAccumulator
+): readonly ModelStreamEvent[] {
   const data = chunk.data;
   if (typeof data.error === "object" && data.error !== null) {
     const error = data.error as JsonObject;
@@ -313,12 +390,21 @@ export function normalizeDeepSeekChunk(chunk: ModelProviderResponseChunk, provid
       }
       const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
       for (const toolCall of toolCalls) {
-        const event = normalizeToolCall(toolCall, requestProvider);
-        if (event) events.push(event);
+        if (accumulator) {
+          events.push(...accumulator.ingest(toolCall, requestProvider));
+        } else {
+          const event = normalizeToolCall(toolCall, requestProvider);
+          if (event) events.push(event);
+        }
       }
     }
     const finishReason = normalizeFinishReason(choice.finish_reason);
-    if (finishReason) events.push({ kind: "finish", reason: finishReason, provider: requestProvider });
+    if (finishReason) {
+      if (accumulator && (finishReason === "tool-call" || finishReason === "stop" || finishReason === "length")) {
+        events.push(...accumulator.flush(requestProvider));
+      }
+      events.push({ kind: "finish", reason: finishReason, provider: requestProvider });
+    }
   }
 
   const usage = normalizeUsage(data.usage, requestProvider);
@@ -394,6 +480,11 @@ function parseToolInput(value: unknown): JsonObject {
   } catch {
     return { raw: value };
   }
+}
+
+export function formatToolChoice(choice: ModelToolChoice): JsonValue {
+  if (choice === "auto" || choice === "required" || choice === "none") return choice;
+  return { type: "function", function: { name: choice.name } };
 }
 
 function providerError(code: string, message: string, retryable: boolean, details: JsonObject = {}): RedactedError {

@@ -41,6 +41,12 @@ export interface ModelChatMessage extends JsonObject {
   readonly toolCalls?: readonly ModelChatToolCall[];
 }
 
+export type ModelToolChoice =
+  | "auto"
+  | "required"
+  | "none"
+  | { readonly type: "function"; readonly name: string };
+
 export interface ModelRequest {
   readonly profile: ModelProfile;
   readonly prompt: string;
@@ -48,6 +54,7 @@ export interface ModelRequest {
   readonly credentialRef?: CredentialRef;
   readonly timeoutMs?: number;
   readonly tools?: readonly JsonObject[];
+  readonly toolChoice?: ModelToolChoice;
   readonly reasoning?: ModelReasoningOptions;
   readonly metadata?: JsonObject;
 }
