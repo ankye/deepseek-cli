@@ -41,6 +41,7 @@ for (const name of apps) {
       ? {
           name: "deepseek-agent-cli",
           private: false,
+          license: "MIT",
           exports: {
             ".": "./dist/index.js"
           },
