@@ -59,9 +59,9 @@ command system 必须提供 bounded command discovery、help projection、aliase
 
 ### Requirement: CLI Runtime Command Delegation
 
-The CLI command system SHALL provide at least one command that delegates executable work to the runtime execution kernel.
+The CLI command system SHALL provide user-facing commands that delegate executable agent and tool work to the runtime execution kernel through the runtime-owned agent loop.
 
-CLI command system 必须提供至少一个 command，将 executable work 委托给 runtime execution kernel。
+CLI command system 必须提供面向用户的 commands，通过 runtime-owned agent loop 把 executable agent 与 tool work 委托给 runtime execution kernel。
 
 #### Scenario: CLI command invokes kernel
 
@@ -73,22 +73,34 @@ CLI command system 必须提供至少一个 command，将 executable work 委托
 - **WHEN** the kernel emits completed, failed, cancelled, or timeout events
 - **THEN** CLI maps those events to process output and exit code without creating a separate execution lifecycle
 
+#### Scenario: CLI live tool run delegates / CLI live 工具运行委托
+
+- **WHEN** a user runs a live tool-enabled agent command
+- **THEN** CLI passes prompt, output mode, live mode, policy profile, timeout, and tool-loop options to runtime and never calls model gateway or core tools directly
+- **中文** 当用户运行 live tool-enabled agent command 时，CLI 必须把 prompt、output mode、live mode、policy profile、timeout 和 tool-loop options 传给 runtime，且不得直接调用 model gateway 或 core tools。
+
 ### Requirement: CLI JSONL Event Output
 
-The CLI command system SHALL support a JSONL output mode for kernel-backed runtime events.
+The CLI command system SHALL support a JSONL output mode for kernel-backed runtime events, including live tool intent, repair, policy, scheduler, tool result, continuation, and terminal events.
 
-CLI command system 必须支持 kernel-backed runtime events 的 JSONL output mode。
+CLI command system 必须支持 kernel-backed runtime events 的 JSONL output mode，包括 live tool intent、repair、policy、scheduler、tool result、continuation 和 terminal events。
 
 #### Scenario: Stream canonical runtime events
 
 - **WHEN** the user runs the kernel-backed command with JSONL output
 - **THEN** each emitted line is a serialized canonical runtime event with stable event type and trace metadata
 
+#### Scenario: JSONL exposes tool-loop state / JSONL 暴露工具循环状态
+
+- **WHEN** a live tool-enabled CLI run emits tool events
+- **THEN** JSONL output includes canonical events for intent, repair, execution, result feedback, continuation, and terminal status without embedding terminal-only formatting
+- **中文** 当 live tool-enabled CLI run 发出 tool events 时，JSONL output 必须包含 intent、repair、execution、result feedback、continuation 和 terminal status 的 canonical events，且不得嵌入 terminal-only formatting。
+
 ### Requirement: CLI Commands Are Kernel Backed
 
-CLI commands that trigger executable runtime work SHALL delegate to `RuntimeKernel` and SHALL NOT own direct execution state machines.
+CLI commands that trigger executable runtime work SHALL delegate to `RuntimeKernel` and SHALL NOT own direct execution state machines, legacy prompt compatibility paths, or provider/tool bypasses.
 
-触发 executable runtime work 的 CLI commands 必须委托给 `RuntimeKernel`，不得拥有 direct execution state machines。
+触发 executable runtime work 的 CLI commands 必须委托给 `RuntimeKernel`，不得拥有 direct execution state machines、legacy prompt compatibility paths 或 provider/tool bypasses。
 
 #### Scenario: Default prompt uses kernel
 
@@ -99,6 +111,12 @@ CLI commands that trigger executable runtime work SHALL delegate to `RuntimeKern
 
 - **WHEN** CLI code directly calls model, capability, scheduler, policy, workflow, bus, command, skill, hook, MCP, plugin, or sandbox execution primitives
 - **THEN** architecture lint fails before tests pass
+
+#### Scenario: Legacy live tool aliases are absent / 旧 live tool aliases 不存在
+
+- **WHEN** users inspect help or command parsing
+- **THEN** only the current `run`, `chat`, and explicit smoke/readiness commands are exposed, and old direct prompt flags are not accepted
+- **中文** 当用户查看 help 或 command parsing 时，只暴露当前 `run`、`chat` 和显式 smoke/readiness commands，旧 direct prompt flags 不被接受。
 
 ### Requirement: Local Readiness Command Roadmap / 本地可用性命令路线图
 
@@ -171,3 +189,70 @@ chat commands 必须返回 structured results，可被 CLI text、CLI JSONL、te
 - **WHEN** the user enters an unsupported chat slash command
 - **THEN** the command system returns a typed command error that the shell can render without throwing an unstructured exception
 - **中文** 当用户输入不支持的 chat slash command 时，command system 必须返回 typed command error，使 shell 可以渲染而不是抛出非结构化异常。
+
+### Requirement: Live Tool Smoke Command / Live 工具 Smoke 命令
+
+The CLI SHALL provide an explicit local command or documented `run` mode for testing the live-capable tool loop with deterministic fakes by default and live provider access only under explicit flags.
+
+CLI 必须提供一个显式本地命令或文档化 `run` mode，用于测试 live-capable tool loop；默认使用 deterministic fakes，只有显式 flags 才访问 live provider。
+
+#### Scenario: Deterministic tool smoke is offline / Deterministic 工具 smoke 离线
+
+- **WHEN** users run the default tool-loop smoke command
+- **THEN** it executes deterministic model/tool fixtures without network credentials and emits governed runtime events
+- **中文** 当用户运行默认 tool-loop smoke command 时，它必须在无网络 credentials 下执行 deterministic model/tool fixtures，并发出受治理 runtime events。
+
+#### Scenario: Live tool smoke is gated / Live 工具 smoke 受开关控制
+
+- **WHEN** users run a live tool smoke without the required environment flag or credential reference
+- **THEN** CLI reports a typed skipped or missing-credential diagnostic without calling the provider
+- **中文** 当用户在没有必要环境变量或 credential reference 的情况下运行 live tool smoke 时，CLI 必须报告 typed skipped 或 missing-credential diagnostic，且不得调用 provider。
+
+### Requirement: Agent CLI Commands / Agent CLI 命令
+
+The command system SHALL provide `deepseek run` and `deepseek chat` commands that submit work to runtime through platform contracts and render runtime events without owning model, tool, scheduler, or policy state machines.
+
+command system 必须提供 `deepseek run` 与 `deepseek chat` 命令，通过 platform contracts 向 runtime 提交工作，并渲染 runtime events，不得拥有 model、tool、scheduler 或 policy state machines。
+
+#### Scenario: Run command submits one task / Run 命令提交一个任务
+
+- **WHEN** a user executes `deepseek run "fix tests"` with valid configuration
+- **THEN** the command creates a runtime request with task text, workspace scope, output mode, session options, and cancellation signal, then streams runtime events until the turn reaches a terminal state
+- **中文** 当用户以有效配置执行 `deepseek run "fix tests"` 时，该命令必须创建包含 task text、workspace scope、output mode、session options 和 cancellation signal 的 runtime request，并串流 runtime events 直到 turn 达到终态。
+
+#### Scenario: Chat command submits multiple turns / Chat 命令提交多个 turns
+
+- **WHEN** a user executes `deepseek chat`
+- **THEN** the command opens a chat prompt loop and submits each user message as a runtime turn using the active session id
+- **中文** 当用户执行 `deepseek chat` 时，该命令必须打开 chat prompt loop，并使用 active session id 把每条 user message 提交为 runtime turn。
+
+### Requirement: Agent CLI Output Modes / Agent CLI 输出模式
+
+The command system SHALL support text, JSON, and JSONL output modes for agent loop commands with stable exit codes and redacted diagnostics.
+
+command system 必须为 agent loop commands 支持 text、JSON 和 JSONL output modes，并提供稳定 exit codes 与脱敏 diagnostics。
+
+#### Scenario: JSONL output is stream-safe / JSONL 输出适合流式消费
+
+- **WHEN** `deepseek run --output jsonl "inspect repo"` is executed
+- **THEN** each runtime event is written as one JSON line and process exit code reflects terminal success, failure, cancellation, or usage error
+- **中文** 当执行 `deepseek run --output jsonl "inspect repo"` 时，每个 runtime event 必须写成一行 JSON，且进程退出码反映 terminal success、failure、cancellation 或 usage error。
+
+#### Scenario: JSON output summarizes final result / JSON 输出总结最终结果
+
+- **WHEN** `deepseek run --output json "inspect repo"` completes
+- **THEN** stdout contains a single JSON object with final status, assistant summary, trace id, session id, turn id, diagnostics, and redaction metadata
+- **中文** 当 `deepseek run --output json "inspect repo"` 完成时，stdout 必须包含单个 JSON object，包含 final status、assistant summary、trace id、session id、turn id、diagnostics 和 redaction metadata。
+
+### Requirement: Agent Command Configuration / Agent 命令配置
+
+Agent CLI commands SHALL resolve model profile, credential reference, workspace root, policy profile, output mode, timeout, and live/offline mode through the shared config service and platform abstraction.
+
+agent CLI commands 必须通过 shared config service 与 platform abstraction 解析 model profile、credential reference、workspace root、policy profile、output mode、timeout 和 live/offline mode。
+
+#### Scenario: Missing configuration fails with guidance / 缺少配置时返回指引
+
+- **WHEN** agent command configuration is missing a required model profile or credential for live mode
+- **THEN** the command exits with a typed diagnostic, redacted details, and suggested setup command or environment variable
+- **中文** 当 agent command configuration 缺少 live mode 必需的 model profile 或 credential 时，命令必须以 typed diagnostic、脱敏 details 和建议的 setup command 或 environment variable 退出。
+

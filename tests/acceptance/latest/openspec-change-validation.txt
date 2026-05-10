@@ -1,1 +1,3 @@
-Change 'enable-live-agent-tool-execution' is valid
+Archived: 2026-05-10-enable-live-agent-tool-execution
+Archived: 2026-05-10-deliver-first-usable-agent-loop
+No active changes remaining. `openspec list` reports 0 active changes.

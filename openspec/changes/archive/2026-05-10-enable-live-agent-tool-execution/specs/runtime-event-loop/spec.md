@@ -66,7 +66,7 @@ kernel-backed runtime loop 必须以稳定顺序输出 lifecycle、context、mod
 - **THEN** the runtime event stream includes the successful kernel execution sequence between model tool intent and tool feedback, then a continuation model request before turn completion
 - **中文** 当 live tool call 成功且 model continuation 完成时，runtime event stream 必须在 model tool intent 与 tool feedback 之间包含成功 kernel execution sequence，然后在 turn completion 前包含 continuation model request。
 
-### Requirement: Projection Failure Blocks Model Dispatch
+### Requirement: Projection Failure Blocks Model Dispatch / Projection 失败阻止模型派发
 
 Runtime SHALL fail closed when projection returns a hard budget rejection, unsupported schema, unsafe redaction state, corrupted projection evidence, or live tool continuation would exceed the configured context/tool feedback budget.
 

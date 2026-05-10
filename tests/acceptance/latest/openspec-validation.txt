@@ -1,4 +1,5 @@
 - Validating...
+✓ spec/agent-loop
 ✓ spec/agent-management
 ✓ spec/bilingual-openspec-documentation
 ✓ spec/capability-execution-governance
@@ -21,6 +22,7 @@
 ✓ spec/framework-acceptance
 ✓ spec/future-capability-landings
 ✓ spec/hook-system
+✓ spec/live-agent-tool-execution
 ✓ spec/live-provider-smoke
 ✓ spec/local-readiness
 ✓ spec/mcp-gateway
@@ -46,4 +48,4 @@
 ✓ spec/vscode-extension-adapter
 ✓ spec/workflow-orchestration
 ✓ spec/workspace-state-management
-Totals: 47 passed, 0 failed (47 items)
+Totals: 49 passed, 0 failed (49 items)

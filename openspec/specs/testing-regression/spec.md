@@ -16,25 +16,37 @@ The framework SHALL provide deterministic fakes for protocol, runtime message bu
 
 ### Requirement: Contract and Type Tests
 
-The framework SHALL include contract and type-level tests for platform contracts, dependency direction, serializability, and fake substitutability.
+The testing regression framework SHALL include contract tests for platform contracts, runtime events, execution envelopes, model gateway streams, tool feedback DTOs, command manifests, and public schema versioning.
 
-框架必须包含 platform contracts、dependency direction、serializability 和 fake substitutability 的 contract/type-level tests。
+testing regression framework 必须包含 platform contracts、runtime events、execution envelopes、model gateway streams、tool feedback DTOs、command manifests 和 public schema versioning 的 contract tests。
 
-#### Scenario: Contract package has no implementation dependency
+#### Scenario: Contract test validates DTO shape
 
-- **WHEN** contract tests inspect `platform-contracts`
-- **THEN** no imports from apps, implementation packages, host APIs, or model SDKs are allowed
+- **WHEN** a public contract is added or changed
+- **THEN** a contract test verifies required ids, schema version, redaction metadata, and typed error behavior
+
+#### Scenario: Live tool feedback contract is covered / Live 工具反馈契约被覆盖
+
+- **WHEN** live tool feedback DTOs or event payloads are introduced or changed
+- **THEN** contract tests verify schema versioning, bounded previews, redaction metadata, normalized status, trace ids, and provider-neutral shape
+- **中文** 当 live tool feedback DTOs 或 event payloads 被引入或修改时，contract tests 必须验证 schema versioning、bounded previews、redaction metadata、normalized status、trace ids 和 provider-neutral shape。
 
 ### Requirement: Golden Trace Replay
 
-The regression harness SHALL support golden traces for protocol messages, runtime bus events, runtime events, workflow events, task events, model events, capability events, command events, skill events, hook events, MCP events, plugin events, workspace events, session events, usage events, policy decisions, sandbox events, and audit events.
+The testing regression framework SHALL support golden trace replay for deterministic runtime, model gateway, tool loop, scheduler, policy, sandbox, and host rendering behavior.
 
-regression harness 必须支持 protocol messages、runtime bus events、runtime events、workflow events、task events、model events、capability events、command events、skill events、hook events、MCP events、plugin events、workspace events、session events、usage events、policy decisions、sandbox events 和 audit events 的 golden traces。
+testing regression framework 必须支持 deterministic runtime、model gateway、tool loop、scheduler、policy、sandbox 和 host rendering behavior 的 golden trace replay。
 
-#### Scenario: Replay run smoke trace
+#### Scenario: Replay validates event order
 
-- **WHEN** the minimal `deepseek run` smoke trace is replayed
-- **THEN** normalized events match the stored golden trace except for declared nondeterministic fields
+- **WHEN** a deterministic scenario is replayed
+- **THEN** the replay asserts stable event ordering, stable ids when injected, normalized timestamps, and redacted payloads
+
+#### Scenario: Replay validates live tool continuation order / Replay 校验 live 工具继续顺序
+
+- **WHEN** a deterministic live-tool fixture is replayed
+- **THEN** the golden trace asserts model request, tool intent, optional repair, governed execution, tool feedback, continuation request, final output, and terminal event ordering
+- **中文** 当 deterministic live-tool fixture 被 replay 时，golden trace 必须断言 model request、tool intent、可选 repair、governed execution、tool feedback、continuation request、final output 和 terminal event ordering。
 
 ### Requirement: Self-Regression Scenario Suites
 
@@ -276,21 +288,20 @@ The testing framework SHALL require every roadmap node to declare the minimum re
 
 ### Requirement: Optional Live Provider Test Gate / 可选 Live Provider 测试门禁
 
-The testing framework SHALL keep live provider tests outside default test commands and SHALL expose them through an explicit optional script and environment gate.
+The testing regression framework SHALL keep live provider tests skipped by default and runnable only through explicit environment flags, credential availability, and bounded structural assertions.
 
-testing framework 必须把 live provider tests 排除在默认 test commands 之外，并通过明确的 optional script 和 environment gate 暴露。
+testing regression framework 必须让 live provider tests 默认跳过，仅能通过显式环境变量、credential availability 和有界 structural assertions 运行。
 
-#### Scenario: Default tests do not run live provider / 默认测试不运行 live provider
+#### Scenario: Live test skipped by default
 
-- **WHEN** `npm test` runs
-- **THEN** it does not require network access, DeepSeek credentials, provider availability, or account balance
-- **中文** 当 `npm test` 运行时，它不得要求 network access、DeepSeek credentials、provider availability 或 account balance。
+- **WHEN** default test suites run without live flags
+- **THEN** live DeepSeek provider, auth, agent-loop, and tool-loop tests are skipped without making network requests
 
-#### Scenario: Live smoke has structural assertions / Live smoke 使用结构断言
+#### Scenario: Live tool test asserts structure / Live 工具测试断言结构
 
-- **WHEN** optional live smoke runs against DeepSeek
-- **THEN** it asserts normalized event structure, non-empty assistant text, redacted credential handling, and terminal completion without snapshotting exact model text
-- **中文** 当 optional live smoke 针对 DeepSeek 运行时，它必须断言 normalized event structure、non-empty assistant text、redacted credential handling 和 terminal completion，而不是 snapshot 精确模型文本。
+- **WHEN** `DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1` is set with credentials
+- **THEN** the live test asserts provider reachability, tool-call intent structure, runtime event order, redaction, terminal status, and bounded feedback without snapshotting exact model prose
+- **中文** 当设置 `DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1` 且 credentials 可用时，live test 必须断言 provider reachability、tool-call intent structure、runtime event order、redaction、terminal status 和 bounded feedback，且不得 snapshot 精确模型文本。
 
 ### Requirement: Local Readiness Regression / 本地可用性回归
 
@@ -759,3 +770,100 @@ regression framework 必须为 MCP gateway v1 提供 deterministic unit、contra
 - **WHEN** MCP contracts or implementations reintroduce generic pre-v1 APIs
 - **THEN** architecture lint fails with a stable MCP gateway rule id
 - **中文** 当 MCP contracts 或 implementations 重新引入泛化 pre-v1 APIs 时，architecture lint 必须以稳定 MCP gateway rule id 失败。
+
+### Requirement: Live Tool Platform Matrix Coverage / Live 工具平台矩阵覆盖
+
+The regression suite SHALL include platform matrix coverage for live tool preflight behavior across Windows, macOS, Linux, and fake platforms.
+
+回归套件必须包含 Windows、macOS、Linux 和 fake 平台上 live 工具预检行为的平台矩阵覆盖。
+
+#### Scenario: Matrix covers live tool path repair / Matrix 覆盖 live 工具路径修复
+
+- **WHEN** provider-specific live tool repair touches path-like inputs
+- **THEN** matrix tests cover Windows separators, POSIX separators, drive-relative rejection, absolute path rejection, traversal rejection, null-byte rejection, and workspace-relative repair
+- **中文** 当 provider-specific live tool repair 处理 path-like inputs 时，matrix tests 必须覆盖 Windows separators、POSIX separators、drive-relative rejection、absolute path rejection、traversal rejection、null-byte rejection 和 workspace-relative repair。
+
+### Requirement: Unsafe Live Tool Regression Cases / 不安全 Live 工具回归用例
+
+The regression suite SHALL include deterministic cases for unsafe live tool calls, including unknown tools, hidden tools, schema-invalid inputs, traversal paths, unsupported platform commands, policy denial, timeout, cancellation, and repeated unsafe retries.
+
+回归套件必须包含不安全 live tool calls 的 deterministic cases，包括 unknown tools、hidden tools、schema-invalid inputs、traversal paths、unsupported platform commands、policy denial、timeout、cancellation 和 repeated unsafe retries。
+
+#### Scenario: Unsafe call never reaches executor / 不安全调用不进入执行器
+
+- **WHEN** a deterministic model fixture emits an unsafe live tool request
+- **THEN** tests assert no executor invocation occurred and the emitted events include typed rejection evidence
+- **中文** 当 deterministic model fixture 发出 unsafe live tool request 时，测试必须断言 executor 没有被调用，且 emitted events 包含 typed rejection evidence。
+
+#### Scenario: Repeated unsafe calls stop loop / 重复不安全调用停止循环
+
+- **WHEN** a model repeatedly emits unsafe tool calls after corrective feedback
+- **THEN** tests assert runtime stops according to loop policy and emits a terminal failure
+- **中文** 当模型在 corrective feedback 后重复发出 unsafe tool calls 时，测试必须断言 runtime 按 loop policy 停止，并发出 terminal failure。
+
+### Requirement: Agent Loop Deterministic Tests / Agent Loop 确定性测试
+
+The testing framework SHALL provide deterministic unit and integration fixtures for agent loop success, tool execution, repair, rejection, timeout, cancellation, and provider failure without network access.
+
+testing framework 必须为 agent loop success、tool execution、repair、rejection、timeout、cancellation 和 provider failure 提供无需网络访问的 deterministic unit 与 integration fixtures。
+
+#### Scenario: Offline tool loop test / 离线工具循环测试
+
+- **WHEN** tests run the agent loop with a fake model that requests a file read tool and then returns assistant text
+- **THEN** the event sequence, tool result evidence, terminal status, and rendered output match deterministic assertions
+- **中文** 当测试使用 fake model 运行 agent loop，且 fake model 请求 file read tool 后返回 assistant text 时，event sequence、tool result evidence、terminal status 和 rendered output 必须匹配确定性断言。
+
+#### Scenario: Unsafe tool request test / 不安全工具请求测试
+
+- **WHEN** tests run the agent loop with a fake model that requests an outside-workspace path or disabled command
+- **THEN** the loop rejects the request without mutation and emits typed validation evidence
+- **中文** 当测试使用 fake model 运行 agent loop，且 fake model 请求 outside-workspace path 或 disabled command 时，loop 必须拒绝该请求、不产生修改，并发出 typed validation evidence。
+
+### Requirement: Agent Loop Golden Replay / Agent Loop Golden Replay
+
+The testing framework SHALL include golden replay fixtures for canonical agent loop event streams and rendered CLI output.
+
+testing framework 必须为 canonical agent loop event streams 与 rendered CLI output 提供 golden replay fixtures。
+
+#### Scenario: Golden trace catches event drift / Golden trace 捕获事件漂移
+
+- **WHEN** runtime event order, event schema version, redaction metadata, trace correlation, or terminal status changes
+- **THEN** golden tests fail unless fixtures are intentionally updated with reviewable evidence
+- **中文** 当 runtime event order、event schema version、redaction metadata、trace correlation 或 terminal status 变化时，golden tests 必须失败，除非 fixtures 被有意更新并具备可审查证据。
+
+### Requirement: Agent Loop CLI E2E / Agent Loop CLI E2E
+
+The test suite SHALL include CLI e2e coverage for `deepseek run` and `deepseek chat` using deterministic runtime dependencies.
+
+test suite 必须使用 deterministic runtime dependencies 覆盖 `deepseek run` 与 `deepseek chat` 的 CLI e2e。
+
+#### Scenario: Run command e2e succeeds / Run 命令 e2e 成功
+
+- **WHEN** e2e tests invoke `deepseek run --output json "hello"` with deterministic provider fixtures
+- **THEN** the process exits successfully and stdout parses as the expected final JSON summary
+- **中文** 当 e2e tests 使用 deterministic provider fixtures 调用 `deepseek run --output json "hello"` 时，进程必须成功退出，且 stdout 可解析为预期 final JSON summary。
+
+#### Scenario: Chat command e2e exits / Chat 命令 e2e 退出
+
+- **WHEN** e2e tests feed one prompt and an exit command into `deepseek chat --output jsonl`
+- **THEN** the process emits valid JSONL events and exits without leaving child work running
+- **中文** 当 e2e tests 向 `deepseek chat --output jsonl` 输入一个 prompt 和 exit command 时，进程必须发出有效 JSONL events 并退出，且不留下 child work。
+
+### Requirement: Agent Loop Live Smoke Gate / Agent Loop Live Smoke Gate
+
+The test suite SHALL provide opt-in live DeepSeek agent loop smoke tests gated by explicit environment variables and skipped by default.
+
+test suite 必须提供 opt-in live DeepSeek agent loop smoke tests，通过显式环境变量启用，并默认跳过。
+
+#### Scenario: Live smoke is skipped by default / Live smoke 默认跳过
+
+- **WHEN** default tests run without live environment variables
+- **THEN** live DeepSeek agent loop smoke tests are skipped with a clear reason and no network request is sent
+- **中文** 当默认测试在没有 live 环境变量时运行时，live DeepSeek agent loop smoke tests 必须带明确原因跳过，且不得发送网络请求。
+
+#### Scenario: Live smoke asserts structure / Live smoke 断言结构
+
+- **WHEN** live smoke is explicitly enabled with credentials
+- **THEN** tests assert event structure, redaction, terminal status, provider reachability, and optional usage metadata without snapshotting exact generated text
+- **中文** 当 live smoke 通过凭证显式启用时，测试必须断言 event structure、redaction、terminal status、provider reachability 和可选 usage metadata，且不 snapshot 精确生成文本。
+
