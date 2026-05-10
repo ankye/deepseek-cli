@@ -7,2024 +7,2092 @@ TAP version 13
     # Subtest: parses the new run and chat commands without legacy prompt compatibility
     ok 1 - parses the new run and chat commands without legacy prompt compatibility
       ---
-      duration_ms: 2.6099
+      duration_ms: 2.6375
       type: 'test'
       ...
     # Subtest: prints deterministic help for no-arg usage
     ok 2 - prints deterministic help for no-arg usage
       ---
-      duration_ms: 0.6694
+      duration_ms: 0.6127
       type: 'test'
       ...
     # Subtest: runs one-shot tasks through the runtime-owned agent loop as JSONL
     ok 3 - runs one-shot tasks through the runtime-owned agent loop as JSONL
       ---
-      duration_ms: 26.5517
+      duration_ms: 18.2554
       type: 'test'
       ...
     # Subtest: renders one-shot final JSON summaries
     ok 4 - renders one-shot final JSON summaries
       ---
-      duration_ms: 7.2445
+      duration_ms: 6.8668
       type: 'test'
       ...
     # Subtest: runs scripted chat turns with one session id
     ok 5 - runs scripted chat turns with one session id
       ---
-      duration_ms: 10.1519
+      duration_ms: 10.4202
       type: 'test'
       ...
     # Subtest: preserves chat session id across runtime submissions
     ok 6 - preserves chat session id across runtime submissions
       ---
-      duration_ms: 10.6164
+      duration_ms: 12.4249
       type: 'test'
       ...
     # Subtest: routes model tool calls through preflight and governed execution
     ok 7 - routes model tool calls through preflight and governed execution
       ---
-      duration_ms: 25.3066
+      duration_ms: 33.8187
       type: 'test'
       ...
     # Subtest: runs scriptable session commands with typed failures for unknown sessions
     ok 8 - runs scriptable session commands with typed failures for unknown sessions
       ---
-      duration_ms: 3.9118
+      duration_ms: 4.5224
       type: 'test'
       ...
     1..8
 ok 1 - cli host adapter
   ---
-  duration_ms: 89.1384
+  duration_ms: 91.5259
   type: 'suite'
   ...
 # Subtest: vscode extension host adapter
     # Subtest: exposes a thin bridge without CLI app imports
     ok 1 - exposes a thin bridge without CLI app imports
       ---
-      duration_ms: 2.1382
+      duration_ms: 1.8832
       type: 'test'
       ...
     1..1
 ok 2 - vscode extension host adapter
   ---
-  duration_ms: 3.4381
+  duration_ms: 3.1313
   type: 'suite'
   ...
 # Subtest: deterministic code intelligence service
     # Subtest: indexes diagnostics, symbols, definitions, and references
     ok 1 - indexes diagnostics, symbols, definitions, and references
       ---
-      duration_ms: 4.1382
+      duration_ms: 4.0762
       type: 'test'
       ...
     # Subtest: creates redacted context nodes and hides secret-like diagnostics
     ok 2 - creates redacted context nodes and hides secret-like diagnostics
       ---
-      duration_ms: 1.3763
+      duration_ms: 1.3034
       type: 'test'
       ...
     # Subtest: keeps provider model identifiers visible in diagnostics
     ok 3 - keeps provider model identifiers visible in diagnostics
       ---
-      duration_ms: 0.562
+      duration_ms: 0.5301
       type: 'test'
       ...
     # Subtest: refreshes diagnostics after path-scoped invalidation
     ok 4 - refreshes diagnostics after path-scoped invalidation
       ---
-      duration_ms: 0.6622
+      duration_ms: 0.6469
       type: 'test'
       ...
     # Subtest: keeps null provider deterministic and unavailable
     ok 5 - keeps null provider deterministic and unavailable
       ---
-      duration_ms: 0.402
+      duration_ms: 0.4381
       type: 'test'
       ...
     1..5
 ok 3 - deterministic code intelligence service
   ---
-  duration_ms: 8.9262
+  duration_ms: 8.792
   type: 'suite'
   ...
 # Subtest: interactive control commands
     # Subtest: declares stable host-agnostic command manifests
     ok 1 - declares stable host-agnostic command manifests
       ---
-      duration_ms: 2.1195
+      duration_ms: 2.0701
       type: 'test'
       ...
     # Subtest: returns structured help and control results
     ok 2 - returns structured help and control results
       ---
-      duration_ms: 1.407
+      duration_ms: 1.3875
       type: 'test'
       ...
     1..2
 ok 4 - interactive control commands
   ---
-  duration_ms: 4.9704
+  duration_ms: 4.8848
   type: 'suite'
   ...
 # Subtest: communication protocol
     # Subtest: round-trips a versioned envelope
     ok 1 - round-trips a versioned envelope
       ---
-      duration_ms: 4.5883
+      duration_ms: 4.3115
       type: 'test'
       ...
     1..1
 ok 5 - communication protocol
   ---
-  duration_ms: 5.8371
+  duration_ms: 5.5852
   type: 'suite'
   ...
 # Subtest: deterministic scheduler
     # Subtest: serializes work through explicit locks
     ok 1 - serializes work through explicit locks
       ---
-      duration_ms: 4.9004
+      duration_ms: 4.536
       type: 'test'
       ...
     # Subtest: queues work beyond the concurrency limit
     ok 2 - queues work beyond the concurrency limit
       ---
-      duration_ms: 5.7539
+      duration_ms: 4.7939
       type: 'test'
       ...
     # Subtest: emits terminal events for deadlines and cancellation
     ok 3 - emits terminal events for deadlines and cancellation
       ---
-      duration_ms: 1.8956
+      duration_ms: 1.0591
       type: 'test'
       ...
     # Subtest: cancels queued work without invoking its executor
     ok 4 - cancels queued work without invoking its executor
       ---
-      duration_ms: 2.2182
+      duration_ms: 1.9652
       type: 'test'
       ...
     # Subtest: aborts running work through AbortSignal on timeout without completing it
     ok 5 - aborts running work through AbortSignal on timeout without completing it
       ---
-      duration_ms: 12.3087
+      duration_ms: 1.606
       type: 'test'
       ...
     # Subtest: fails queued submissions with typed backpressure instead of unbounded growth
     ok 6 - fails queued submissions with typed backpressure instead of unbounded growth
       ---
-      duration_ms: 1.7713
+      duration_ms: 1.6061
       type: 'test'
       ...
     1..6
 ok 6 - deterministic scheduler
   ---
-  duration_ms: 30.7029
+  duration_ms: 17.4115
   type: 'suite'
   ...
 # Subtest: persistent config service
     # Subtest: resolves values by defaults, user, workspace, environment, then CLI precedence
     ok 1 - resolves values by defaults, user, workspace, environment, then CLI precedence
       ---
-      duration_ms: 3.7021
+      duration_ms: 3.3038
       type: 'test'
       ...
     # Subtest: rejects secret-like config values before persistence
     ok 2 - rejects secret-like config values before persistence
       ---
-      duration_ms: 0.4964
+      duration_ms: 0.4553
       type: 'test'
       ...
     # Subtest: reports atomic write failures without partial persisted values
     ok 3 - reports atomic write failures without partial persisted values
       ---
-      duration_ms: 1.0504
+      duration_ms: 1.005
       type: 'test'
       ...
     # Subtest: fails closed when the platform rejects workspace metadata paths
     ok 4 - fails closed when the platform rejects workspace metadata paths
       ---
-      duration_ms: 0.3747
+      duration_ms: 0.3641
       type: 'test'
       ...
     # Subtest: preserves persisted schema versions for migration diagnostics
     ok 5 - preserves persisted schema versions for migration diagnostics
       ---
-      duration_ms: 0.5209
+      duration_ms: 0.4809
       type: 'test'
       ...
     1..5
 ok 7 - persistent config service
   ---
-  duration_ms: 7.8128
+  duration_ms: 7.1175
   type: 'suite'
   ...
 # Subtest: InMemoryContextEngine
     # Subtest: filters, orders, budgets, redacts, and freezes projection results
     ok 1 - filters, orders, budgets, redacts, and freezes projection results
       ---
-      duration_ms: 6.9775
+      duration_ms: 10.2033
       type: 'test'
       ...
     # Subtest: returns deterministic cache-hit metadata for unchanged projection dependencies
     ok 2 - returns deterministic cache-hit metadata for unchanged projection dependencies
       ---
-      duration_ms: 0.8682
+      duration_ms: 0.8654
       type: 'test'
       ...
     # Subtest: rejects unsupported projection schema versions
     ok 3 - rejects unsupported projection schema versions
       ---
-      duration_ms: 0.4153
+      duration_ms: 0.4163
       type: 'test'
       ...
     # Subtest: keeps context nodes scoped to the requested session
     ok 4 - keeps context nodes scoped to the requested session
       ---
-      duration_ms: 2.3444
+      duration_ms: 2.7695
       type: 'test'
       ...
     1..4
 ok 8 - InMemoryContextEngine
   ---
-  duration_ms: 12.2471
+  duration_ms: 15.9479
   type: 'suite'
   ...
 # Subtest: core coding tool executors
     # Subtest: reads, lists, searches, and bounds file evidence
     ok 1 - reads, lists, searches, and bounds file evidence
       ---
-      duration_ms: 15.4989
+      duration_ms: 14.6489
       type: 'test'
       ...
     # Subtest: writes and exact-edits with transactions, then rejects ambiguous edits without mutation
     ok 2 - writes and exact-edits with transactions, then rejects ambiguous edits without mutation
       ---
-      duration_ms: 9.1417
+      duration_ms: 7.6229
       type: 'test'
       ...
     # Subtest: rejects path escapes before reading or mutating
     ok 3 - rejects path escapes before reading or mutating
       ---
-      duration_ms: 3.3486
+      duration_ms: 5.9852
       type: 'test'
       ...
     # Subtest: runs shell, git, test, and todo tools with structured evidence
     ok 4 - runs shell, git, test, and todo tools with structured evidence
       ---
-      duration_ms: 7.3645
+      duration_ms: 7.0868
       type: 'test'
       ...
     # Subtest: reports platform-unavailable process diagnostics
     ok 5 - reports platform-unavailable process diagnostics
       ---
-      duration_ms: 1.7802
+      duration_ms: 1.7679
       type: 'test'
       ...
     1..5
 ok 9 - core coding tool executors
   ---
-  duration_ms: 39.1276
+  duration_ms: 39.3495
   type: 'suite'
   ...
 # Subtest: hook system v1
     # Subtest: validates, registers, lists, orders, and invokes observe-only hooks
     ok 1 - validates, registers, lists, orders, and invokes observe-only hooks
       ---
-      duration_ms: 5.8007
+      duration_ms: 6.9433
       type: 'test'
       ...
     # Subtest: keeps untrusted and disabled hooks inert
     ok 2 - keeps untrusted and disabled hooks inert
       ---
-      duration_ms: 0.7305
+      duration_ms: 0.6173
       type: 'test'
       ...
     # Subtest: rejects malformed manifests and unsupported schema versions
     ok 3 - rejects malformed manifests and unsupported schema versions
       ---
-      duration_ms: 0.4657
+      duration_ms: 0.3776
       type: 'test'
       ...
     # Subtest: contains timeout and applies failure policies
     ok 4 - contains timeout and applies failure policies
       ---
-      duration_ms: 7.5265
+      duration_ms: 8.6156
       type: 'test'
       ...
     # Subtest: redacts secret-like output payloads
     ok 5 - redacts secret-like output payloads
       ---
-      duration_ms: 0.8
+      duration_ms: 0.8739
       type: 'test'
       ...
     1..5
 ok 10 - hook system v1
   ---
-  duration_ms: 17.4202
+  duration_ms: 19.9164
   type: 'suite'
   ...
 # Subtest: MCP gateway v1
     # Subtest: validates, connects, lists, calls tools, and reads resources
     ok 1 - validates, connects, lists, calls tools, and reads resources
       ---
-      duration_ms: 6.115
+      duration_ms: 8.1067
       type: 'test'
       ...
     # Subtest: keeps untrusted, disabled, and unavailable real transports inert
     ok 2 - keeps untrusted, disabled, and unavailable real transports inert
       ---
-      duration_ms: 16.9927
+      duration_ms: 19.1313
       type: 'test'
       ...
     # Subtest: rejects malformed manifests, namespace collisions, unknown targets, and unsupported request schemas
     ok 3 - rejects malformed manifests, namespace collisions, unknown targets, and unsupported request schemas
       ---
-      duration_ms: 1.3921
+      duration_ms: 1.5376
       type: 'test'
       ...
     # Subtest: contains handler timeouts
     ok 4 - contains handler timeouts
       ---
-      duration_ms: 7.2039
+      duration_ms: 9.7183
       type: 'test'
       ...
     1..4
 ok 11 - MCP gateway v1
   ---
-  duration_ms: 33.9407
+  duration_ms: 40.5224
+  type: 'suite'
+  ...
+# Subtest: DeepSeek partial tool-call normalization
+    # Subtest: assembles a tool call whose arguments span multiple chunks
+    ok 1 - assembles a tool call whose arguments span multiple chunks
+      ---
+      duration_ms: 3.8854
+      type: 'test'
+      ...
+    # Subtest: captures two interleaved tool calls by index without mixing arguments
+    ok 2 - captures two interleaved tool calls by index without mixing arguments
+      ---
+      duration_ms: 0.9165
+      type: 'test'
+      ...
+    # Subtest: preserves raw arguments when the streamed JSON never parses
+    ok 3 - preserves raw arguments when the streamed JSON never parses
+      ---
+      duration_ms: 0.5192
+      type: 'test'
+      ...
+    # Subtest: flushes pending tool calls even when finish_reason is missing
+    ok 4 - flushes pending tool calls even when finish_reason is missing
+      ---
+      duration_ms: 0.3437
+      type: 'test'
+      ...
+    # Subtest: formats tool_choice into OpenAI chat-completions shape
+    ok 5 - formats tool_choice into OpenAI chat-completions shape
+      ---
+      duration_ms: 0.2251
+      type: 'test'
+      ...
+    # Subtest: includes tool_choice in the built provider request body when provided
+    ok 6 - includes tool_choice in the built provider request body when provided
+      ---
+      duration_ms: 0.3085
+      type: 'test'
+      ...
+    # Subtest: omits tool_choice when not specified
+    ok 7 - omits tool_choice when not specified
+      ---
+      duration_ms: 0.21
+      type: 'test'
+      ...
+    1..7
+ok 12 - DeepSeek partial tool-call normalization
+  ---
+  duration_ms: 8.1809
   type: 'suite'
   ...
 # Subtest: DeepSeek OpenAI provider
     # Subtest: fails closed when transport is not configured
     ok 1 - fails closed when transport is not configured
       ---
-      duration_ms: 2.419
+      duration_ms: 1.8579
       type: 'test'
       ...
     # Subtest: fails closed when credential is missing
     ok 2 - fails closed when credential is missing
       ---
-      duration_ms: 0.3483
+      duration_ms: 0.3638
       type: 'test'
       ...
     # Subtest: builds a DeepSeek chat-completions request with injected credential and options
     ok 3 - builds a DeepSeek chat-completions request with injected credential and options
       ---
-      duration_ms: 1.5758
+      duration_ms: 2.002
       type: 'test'
       ...
     # Subtest: normalizes reasoning, text, tool calls, usage/cache, finish, and done
     ok 4 - normalizes reasoning, text, tool calls, usage/cache, finish, and done
       ---
-      duration_ms: 8.3887
+      duration_ms: 2.9097
       type: 'test'
       ...
     # Subtest: normalizes provider error chunks and transport failures
     ok 5 - normalizes provider error chunks and transport failures
       ---
-      duration_ms: 0.805
+      duration_ms: 0.5221
       type: 'test'
       ...
     # Subtest: parses OpenAI-style SSE chunks through fetch transport
     ok 6 - parses OpenAI-style SSE chunks through fetch transport
       ---
-      duration_ms: 43.7314
+      duration_ms: 36.3423
       type: 'test'
       ...
     # Subtest: normalizes OpenAI SDK non-stream completion shape
     ok 7 - normalizes OpenAI SDK non-stream completion shape
       ---
-      duration_ms: 0.3254
+      duration_ms: 0.3685
       type: 'test'
       ...
     # Subtest: keeps deterministic mock gateway behavior available
     ok 8 - keeps deterministic mock gateway behavior available
       ---
-      duration_ms: 0.6894
+      duration_ms: 0.7564
       type: 'test'
       ...
     # Subtest: passes live verification credential and timeout controls to provider requests
     ok 9 - passes live verification credential and timeout controls to provider requests
       ---
-      duration_ms: 0.8195
+      duration_ms: 1.5752
       type: 'test'
       ...
     1..9
-ok 12 - DeepSeek OpenAI provider
+ok 13 - DeepSeek OpenAI provider
   ---
-  duration_ms: 61.426
+  duration_ms: 49.5708
   type: 'suite'
   ...
 # Subtest: observability privacy sink
     # Subtest: normalizes emitted events into canonical redacted records
     ok 1 - normalizes emitted events into canonical redacted records
       ---
-      duration_ms: 4.1261
+      duration_ms: 5.8443
       type: 'test'
       ...
     # Subtest: generates bounded local diagnostic bundles and denies external export by default
     ok 2 - generates bounded local diagnostic bundles and denies external export by default
       ---
-      duration_ms: 0.9181
+      duration_ms: 1.1233
       type: 'test'
       ...
     # Subtest: honors local diagnostic opt-out
     ok 3 - honors local diagnostic opt-out
       ---
-      duration_ms: 0.9769
+      duration_ms: 1.1684
       type: 'test'
       ...
     # Subtest: redacts standalone observability artifacts
     ok 4 - redacts standalone observability artifacts
       ---
-      duration_ms: 0.3282
+      duration_ms: 0.4332
       type: 'test'
       ...
     1..4
-ok 13 - observability privacy sink
+ok 14 - observability privacy sink
   ---
-  duration_ms: 7.9201
+  duration_ms: 10.2733
   type: 'suite'
   ...
 # Subtest: platform-contracts boundary
     # Subtest: does not import hosts, processes, SDKs, or implementation packages
     ok 1 - does not import hosts, processes, SDKs, or implementation packages
       ---
-      duration_ms: 26.4678
+      duration_ms: 31.7879
       type: 'test'
       ...
     1..1
-ok 14 - platform-contracts boundary
+ok 15 - platform-contracts boundary
   ---
-  duration_ms: 27.9673
+  duration_ms: 33.2341
   type: 'suite'
   ...
 # Subtest: secret and sandbox policy helpers
     # Subtest: classifies and redacts common secret fixtures deterministically
     ok 1 - classifies and redacts common secret fixtures deterministically
       ---
-      duration_ms: 4.1346
+      duration_ms: 3.3572
       type: 'test'
       ...
     # Subtest: does not redact provider model identifiers as api keys
     ok 2 - does not redact provider model identifiers as api keys
       ---
-      duration_ms: 1.7947
+      duration_ms: 2.0177
       type: 'test'
       ...
     # Subtest: redacts nested JSON values and credential-like fields
     ok 3 - redacts nested JSON values and credential-like fields
       ---
-      duration_ms: 0.2497
+      duration_ms: 0.2496
       type: 'test'
       ...
     # Subtest: selects deterministic sandbox decisions for degraded platform states
     ok 4 - selects deterministic sandbox decisions for degraded platform states
       ---
-      duration_ms: 1.3304
+      duration_ms: 1.3566
       type: 'test'
       ...
     # Subtest: rewrites raw secret exposure before execution
     ok 5 - rewrites raw secret exposure before execution
       ---
-      duration_ms: 0.423
+      duration_ms: 0.4548
       type: 'test'
       ...
     1..5
-ok 15 - secret and sandbox policy helpers
+ok 16 - secret and sandbox policy helpers
   ---
-  duration_ms: 9.6174
+  duration_ms: 9.4305
   type: 'suite'
   ...
 # Subtest: runtime message bus
     # Subtest: records replayable envelopes in publish order
     ok 1 - records replayable envelopes in publish order
       ---
-      duration_ms: 8.3897
+      duration_ms: 2.9199
       type: 'test'
       ...
     # Subtest: bounds slow subscriber queues with typed backpressure failure
     ok 2 - bounds slow subscriber queues with typed backpressure failure
       ---
-      duration_ms: 6.15
+      duration_ms: 11.8631
       type: 'test'
       ...
     1..2
-ok 16 - runtime message bus
+ok 17 - runtime message bus
   ---
-  duration_ms: 16.1102
+  duration_ms: 16.2961
   type: 'suite'
   ...
 # Subtest: agent loop typed tool feedback
     # Subtest: emits a success feedback DTO when a tool execution completes
     ok 1 - emits a success feedback DTO when a tool execution completes
       ---
-      duration_ms: 41.1079
+      duration_ms: 40.7651
       type: 'test'
       ...
     # Subtest: emits a denied feedback DTO when policy rejects the tool execution
     ok 2 - emits a denied feedback DTO when policy rejects the tool execution
       ---
-      duration_ms: 13.9775
+      duration_ms: 14.0553
       type: 'test'
       ...
     # Subtest: emits a rejected feedback DTO when preflight rejects an unsafe path
     ok 3 - emits a rejected feedback DTO when preflight rejects an unsafe path
       ---
-      duration_ms: 7.1768
+      duration_ms: 5.9234
       type: 'test'
       ...
     # Subtest: emits a rejected feedback DTO when the tool-call limit is exceeded
     ok 4 - emits a rejected feedback DTO when the tool-call limit is exceeded
       ---
-      duration_ms: 14.886
+      duration_ms: 16.0782
       type: 'test'
       ...
     # Subtest: projects only read-only tools to the model when live=true is set
     ok 5 - projects only read-only tools to the model when live=true is set
       ---
-      duration_ms: 4.5045
+      duration_ms: 4.301
       type: 'test'
       ...
     # Subtest: projects all tools when toolProjection is explicitly set to all
     ok 6 - projects all tools when toolProjection is explicitly set to all
       ---
-      duration_ms: 4.1583
+      duration_ms: 4.764
       type: 'test'
       ...
     # Subtest: continues the model loop after a denied tool feedback instead of terminating
     ok 7 - continues the model loop after a denied tool feedback instead of terminating
       ---
-      duration_ms: 10.4044
+      duration_ms: 10.7957
       type: 'test'
       ...
     1..7
-ok 17 - agent loop typed tool feedback
+ok 18 - agent loop typed tool feedback
   ---
-  duration_ms: 99.5145
+  duration_ms: 99.1096
   type: 'suite'
   ...
 # Subtest: headless runtime
     # Subtest: delegates turns to the runtime kernel without direct model execution
     ok 1 - delegates turns to the runtime kernel without direct model execution
       ---
-      duration_ms: 24.8788
+      duration_ms: 27.9936
       type: 'test'
       ...
     # Subtest: executes deterministic built-in capabilities through the runtime kernel
     ok 2 - executes deterministic built-in capabilities through the runtime kernel
       ---
-      duration_ms: 14.2464
+      duration_ms: 12.2018
       type: 'test'
       ...
     # Subtest: runs the first usable agent loop without tool calls
     ok 3 - runs the first usable agent loop without tool calls
       ---
-      duration_ms: 9.0854
+      duration_ms: 9.4416
       type: 'test'
       ...
     # Subtest: rejects malformed model tool calls through preflight
     ok 4 - rejects malformed model tool calls through preflight
       ---
-      duration_ms: 7.3071
+      duration_ms: 8.3125
       type: 'test'
       ...
     # Subtest: fails the agent loop on provider errors
     ok 5 - fails the agent loop on provider errors
       ---
-      duration_ms: 4.743
+      duration_ms: 4.4009
       type: 'test'
       ...
     # Subtest: sends denied tool feedback back to the model when policy denies execution
     ok 6 - sends denied tool feedback back to the model when policy denies execution
       ---
-      duration_ms: 13.179
+      duration_ms: 15.2475
       type: 'test'
       ...
     1..6
-ok 18 - headless runtime
+ok 19 - headless runtime
   ---
-  duration_ms: 75.2688
+  duration_ms: 79.4733
   type: 'suite'
   ...
 # Subtest: skill system v1
     # Subtest: validates, registers, summarizes, and progressively loads trusted skills
     ok 1 - validates, registers, summarizes, and progressively loads trusted skills
       ---
-      duration_ms: 3.9671
+      duration_ms: 3.9444
       type: 'test'
       ...
     # Subtest: keeps untrusted and disabled skills inert
     ok 2 - keeps untrusted and disabled skills inert
       ---
-      duration_ms: 1.1161
+      duration_ms: 1.0561
       type: 'test'
       ...
     # Subtest: rejects malformed manifests and unsupported schema versions
     ok 3 - rejects malformed manifests and unsupported schema versions
       ---
-      duration_ms: 0.3599
+      duration_ms: 0.3568
       type: 'test'
       ...
     # Subtest: projects bounded redacted context nodes
     ok 4 - projects bounded redacted context nodes
       ---
-      duration_ms: 0.8698
+      duration_ms: 0.8572
       type: 'test'
       ...
     1..4
-ok 19 - skill system v1
+ok 20 - skill system v1
   ---
-  duration_ms: 7.938
+  duration_ms: 7.8929
   type: 'suite'
   ...
 # Subtest: tool intent preflight
     # Subtest: repairs safe workspace-relative paths before execution
     ok 1 - repairs safe workspace-relative paths before execution
       ---
-      duration_ms: 3.0037
+      duration_ms: 7.1126
       type: 'test'
       ...
     # Subtest: normalizes Windows separators deterministically
     ok 2 - normalizes Windows separators deterministically
       ---
-      duration_ms: 0.5117
+      duration_ms: 0.7473
       type: 'test'
       ...
     # Subtest: rejects unsafe absolute paths, parent traversal, home paths, null bytes, and ambiguous drive-relative paths
     ok 3 - rejects unsafe absolute paths, parent traversal, home paths, null bytes, and ambiguous drive-relative paths
       ---
-      duration_ms: 0.3211
+      duration_ms: 0.4927
       type: 'test'
       ...
     # Subtest: rejects unknown or non-model-visible tools before envelope creation
     ok 4 - rejects unknown or non-model-visible tools before envelope creation
       ---
-      duration_ms: 0.2628
+      duration_ms: 0.2761
       type: 'test'
       ...
     # Subtest: applies DeepSeek-specific tool aliases and arguments unwrapping before common safety checks
     ok 5 - applies DeepSeek-specific tool aliases and arguments unwrapping before common safety checks
       ---
-      duration_ms: 0.4994
+      duration_ms: 0.5168
       type: 'test'
       ...
     # Subtest: rejects invalid provider argument JSON before execution
     ok 6 - rejects invalid provider argument JSON before execution
       ---
-      duration_ms: 0.2273
+      duration_ms: 0.236
       type: 'test'
       ...
     1..6
-ok 20 - tool intent preflight
+ok 21 - tool intent preflight
   ---
-  duration_ms: 6.6612
+  duration_ms: 11.4653
   type: 'suite'
   ...
 # Subtest: workflow orchestration
     # Subtest: creates a valid single-turn graph
     ok 1 - creates a valid single-turn graph
       ---
-      duration_ms: 1.2525
+      duration_ms: 1.7369
       type: 'test'
       ...
     # Subtest: accepts workflow template contribution metadata
     ok 2 - accepts workflow template contribution metadata
       ---
-      duration_ms: 0.3055
+      duration_ms: 0.2951
       type: 'test'
       ...
     1..2
-ok 21 - workflow orchestration
+ok 22 - workflow orchestration
   ---
-  duration_ms: 3.0944
+  duration_ms: 3.4849
   type: 'suite'
   ...
 # Subtest: workspace checkpoint and undo manager
     # Subtest: creates checkpoint records and restores matching files
     ok 1 - creates checkpoint records and restores matching files
       ---
-      duration_ms: 2.8793
+      duration_ms: 3.0969
       type: 'test'
       ...
     # Subtest: rejects stale restores without overwriting newer content
     ok 2 - rejects stale restores without overwriting newer content
       ---
-      duration_ms: 0.5971
+      duration_ms: 0.6062
       type: 'test'
       ...
     # Subtest: undoes the latest eligible checkpoint within scope
     ok 3 - undoes the latest eligible checkpoint within scope
       ---
-      duration_ms: 0.6452
+      duration_ms: 0.6675
       type: 'test'
       ...
     # Subtest: keeps secret rollback content out of public records
     ok 4 - keeps secret rollback content out of public records
       ---
-      duration_ms: 0.3395
+      duration_ms: 0.3477
       type: 'test'
       ...
     # Subtest: fails closed when restore has no platform boundary
     ok 5 - fails closed when restore has no platform boundary
       ---
-      duration_ms: 0.2795
+      duration_ms: 0.2814
       type: 'test'
       ...
     1..5
-ok 22 - workspace checkpoint and undo manager
+ok 23 - workspace checkpoint and undo manager
   ---
-  duration_ms: 6.4872
+  duration_ms: 6.817
   type: 'suite'
   ...
 # Subtest: capability registry hardening
     # Subtest: returns immutable deep-copy host and model projections without executor bindings
     ok 1 - returns immutable deep-copy host and model projections without executor bindings
       ---
-      duration_ms: 2.2551
+      duration_ms: 2.0939
       type: 'test'
       ...
     # Subtest: keeps stored manifests isolated from registration input and get() mutations
     ok 2 - keeps stored manifests isolated from registration input and get() mutations
       ---
-      duration_ms: 0.4968
+      duration_ms: 0.3802
       type: 'test'
       ...
     1..2
-ok 23 - capability registry hardening
+ok 24 - capability registry hardening
   ---
-  duration_ms: 4.5122
+  duration_ms: 4.1738
   type: 'suite'
   ...
 # Subtest: checkpoint undo contracts
     # Subtest: returns contract-safe checkpoint and restore result shapes
     ok 1 - returns contract-safe checkpoint and restore result shapes
       ---
-      duration_ms: 2.4374
+      duration_ms: 2.4225
       type: 'test'
       ...
     1..1
-ok 24 - checkpoint undo contracts
+ok 25 - checkpoint undo contracts
   ---
-  duration_ms: 3.7117
+  duration_ms: 3.6803
   type: 'suite'
   ...
 # Subtest: code intelligence contracts
     # Subtest: emits versioned serializable analyzer DTOs
     ok 1 - emits versioned serializable analyzer DTOs
       ---
-      duration_ms: 3.2735
+      duration_ms: 3.2819
       type: 'test'
       ...
     # Subtest: projects host-neutral context graph nodes
     ok 2 - projects host-neutral context graph nodes
       ---
-      duration_ms: 1.8049
+      duration_ms: 1.8995
       type: 'test'
       ...
     1..2
-ok 25 - code intelligence contracts
+ok 26 - code intelligence contracts
   ---
-  duration_ms: 6.9438
+  duration_ms: 6.7426
   type: 'suite'
   ...
 # Subtest: context graph projection contracts
     # Subtest: defines serializable versioned projection request and result DTOs
     ok 1 - defines serializable versioned projection request and result DTOs
       ---
-      duration_ms: 4.9852
+      duration_ms: 5.2532
       type: 'test'
       ...
     # Subtest: creates projection cache entries with dependency invalidation metadata
     ok 2 - creates projection cache entries with dependency invalidation metadata
       ---
-      duration_ms: 0.9279
+      duration_ms: 0.913
       type: 'test'
       ...
     1..2
-ok 26 - context graph projection contracts
+ok 27 - context graph projection contracts
   ---
-  duration_ms: 7.5775
+  duration_ms: 7.6917
   type: 'suite'
   ...
 # Subtest: core coding tool contracts
     # Subtest: defines stable manifests with schema, replay, timeout, projection, and compatibility metadata
     ok 1 - defines stable manifests with schema, replay, timeout, projection, and compatibility metadata
       ---
-      duration_ms: 7.1261
+      duration_ms: 7.4907
       type: 'test'
       ...
     # Subtest: projects model-visible schemas while executor bindings remain registry-only
     ok 2 - projects model-visible schemas while executor bindings remain registry-only
       ---
-      duration_ms: 4.6677
+      duration_ms: 4.6342
       type: 'test'
       ...
     # Subtest: keeps workspace edit transaction evidence replay-safe and records only successful mutations
     ok 3 - keeps workspace edit transaction evidence replay-safe and records only successful mutations
       ---
-      duration_ms: 5.1257
+      duration_ms: 5.4602
       type: 'test'
       ...
     1..3
-ok 27 - core coding tool contracts
+ok 28 - core coding tool contracts
   ---
-  duration_ms: 18.4704
+  duration_ms: 19.604
   type: 'suite'
   ...
 # Subtest: cross-platform runtime contracts
     # Subtest: exposes stable descriptor shape and provider result metadata
     ok 1 - exposes stable descriptor shape and provider result metadata
       ---
-      duration_ms: 3.8559
+      duration_ms: 3.2877
       type: 'test'
       ...
     # Subtest: fails closed with diagnostics for unsafe paths and unavailable process execution
     ok 2 - fails closed with diagnostics for unsafe paths and unavailable process execution
       ---
-      duration_ms: 0.8091
+      duration_ms: 0.8383
       type: 'test'
       ...
     # Subtest: adds platform execution context to envelopes and policy decisions
     ok 3 - adds platform execution context to envelopes and policy decisions
       ---
-      duration_ms: 6.9129
+      duration_ms: 7.0303
       type: 'test'
       ...
     1..3
-ok 28 - cross-platform runtime contracts
+ok 29 - cross-platform runtime contracts
   ---
-  duration_ms: 13.487
+  duration_ms: 12.7993
   type: 'suite'
   ...
 # Subtest: hook system contracts
     # Subtest: emits serializable v1 DTOs for summaries, order projection, and invocation
     ok 1 - emits serializable v1 DTOs for summaries, order projection, and invocation
       ---
-      duration_ms: 3.874
+      duration_ms: 3.9641
       type: 'test'
       ...
     # Subtest: does not expose legacy generic hook APIs
     ok 2 - does not expose legacy generic hook APIs
       ---
-      duration_ms: 0.2152
+      duration_ms: 0.4114
       type: 'test'
       ...
     1..2
-ok 29 - hook system contracts
+ok 30 - hook system contracts
   ---
-  duration_ms: 5.5377
+  duration_ms: 5.9146
   type: 'suite'
   ...
 # Subtest: architecture lint framework
     # Subtest: passes a valid minimal workspace
     ok 1 - passes a valid minimal workspace
       ---
-      duration_ms: 880.0334
+      duration_ms: 832.7131
       type: 'test'
       ...
     # Subtest: reports stable rule ids for boundary violations
     ok 2 - reports stable rule ids for boundary violations
       ---
-      duration_ms: 813.8619
+      duration_ms: 850.6097
       type: 'test'
       ...
     # Subtest: allows governed execution primitives in runtime, owner packages, and tests
     ok 3 - allows governed execution primitives in runtime, owner packages, and tests
       ---
-      duration_ms: 831.6312
+      duration_ms: 828.9234
       type: 'test'
       ...
     # Subtest: rejects direct governed execution primitive bypasses outside approved owners
     ok 4 - rejects direct governed execution primitive bypasses outside approved owners
       ---
-      duration_ms: 810.4476
+      duration_ms: 784.8368
       type: 'test'
       ...
     # Subtest: rejects legacy generic skill system APIs
     ok 5 - rejects legacy generic skill system APIs
       ---
-      duration_ms: 817.8904
+      duration_ms: 822.445
       type: 'test'
       ...
     # Subtest: rejects legacy generic hook system APIs
     ok 6 - rejects legacy generic hook system APIs
       ---
-      duration_ms: 695.6229
+      duration_ms: 763.2979
       type: 'test'
       ...
     # Subtest: rejects legacy generic MCP gateway APIs
     ok 7 - rejects legacy generic MCP gateway APIs
       ---
-      duration_ms: 452.2725
+      duration_ms: 486.2198
       type: 'test'
       ...
     # Subtest: rejects legacy runtime direct execution paths inside runtime package
     ok 8 - rejects legacy runtime direct execution paths inside runtime package
       ---
-      duration_ms: 432.6133
+      duration_ms: 446.0772
       type: 'test'
       ...
     # Subtest: rejects direct provider credential access outside credential owners and tests
     ok 9 - rejects direct provider credential access outside credential owners and tests
       ---
-      duration_ms: 425.1189
+      duration_ms: 439.387
       type: 'test'
       ...
     # Subtest: allows credential owner and tests to access host credential seams
     ok 10 - allows credential owner and tests to access host credential seams
       ---
-      duration_ms: 414.0191
+      duration_ms: 431.8771
       type: 'test'
       ...
     # Subtest: rejects direct platform primitive access outside platform owners
     ok 11 - rejects direct platform primitive access outside platform owners
       ---
-      duration_ms: 421.1487
+      duration_ms: 413.451
       type: 'test'
       ...
     # Subtest: rejects direct secret, filesystem, process, native, and sandbox bypasses outside owners
     ok 12 - rejects direct secret, filesystem, process, native, and sandbox bypasses outside owners
       ---
-      duration_ms: 425.3492
+      duration_ms: 418.8347
       type: 'test'
       ...
     # Subtest: rejects direct context projection assembly outside approved owners
     ok 13 - rejects direct context projection assembly outside approved owners
       ---
-      duration_ms: 423.2894
+      duration_ms: 425.6918
       type: 'test'
       ...
     # Subtest: allows platform owners and tests to access platform primitives
     ok 14 - allows platform owners and tests to access platform primitives
       ---
-      duration_ms: 419.5832
+      duration_ms: 417.2875
       type: 'test'
       ...
     1..14
-ok 30 - architecture lint framework
+ok 31 - architecture lint framework
   ---
-  duration_ms: 8265.3997
+  duration_ms: 8364.1912
   type: 'suite'
   ...
 # Subtest: local readiness contracts
     # Subtest: defines stable manifests for every readiness command
     ok 1 - defines stable manifests for every readiness command
       ---
-      duration_ms: 2.081
+      duration_ms: 2.0244
       type: 'test'
       ...
     # Subtest: runs every readiness command through the command registry
     ok 2 - runs every readiness command through the command registry
       ---
-      duration_ms: 2.571
+      duration_ms: 2.3362
       type: 'test'
       ...
     # Subtest: reports credential references without raw secret fields
     ok 3 - reports credential references without raw secret fields
       ---
-      duration_ms: 0.3706
+      duration_ms: 0.2761
       type: 'test'
       ...
     1..3
-ok 31 - local readiness contracts
+ok 32 - local readiness contracts
   ---
-  duration_ms: 6.5546
+  duration_ms: 6.1014
   type: 'suite'
   ...
 # Subtest: MCP gateway contracts
     # Subtest: uses canonical v1 DTOs and fake substitutability
     ok 1 - uses canonical v1 DTOs and fake substitutability
       ---
-      duration_ms: 5.8524
+      duration_ms: 6.0501
       type: 'test'
       ...
     1..1
-ok 32 - MCP gateway contracts
+ok 33 - MCP gateway contracts
   ---
-  duration_ms: 7.1598
+  duration_ms: 7.3449
   type: 'suite'
   ...
 # Subtest: observability privacy contracts
     # Subtest: serializes privacy settings, canonical records, and diagnostic bundles
     ok 1 - serializes privacy settings, canonical records, and diagnostic bundles
       ---
-      duration_ms: 4.9068
+      duration_ms: 4.6859
       type: 'test'
       ...
     # Subtest: returns denied privacy decisions before external export payloads are produced
     ok 2 - returns denied privacy decisions before external export payloads are produced
       ---
-      duration_ms: 0.5873
+      duration_ms: 0.5395
       type: 'test'
       ...
     1..2
-ok 33 - observability privacy contracts
+ok 34 - observability privacy contracts
   ---
-  duration_ms: 6.9516
+  duration_ms: 6.5943
   type: 'suite'
   ...
 # Subtest: package boundaries
     # Subtest: passes dependency boundary checker
     ok 1 - passes dependency boundary checker
       ---
-      duration_ms: 3750.6471
+      duration_ms: 3839.7073
       type: 'test'
       ...
     1..1
-ok 34 - package boundaries
+ok 35 - package boundaries
   ---
-  duration_ms: 3752.0309
+  duration_ms: 3840.9964
   type: 'suite'
   ...
 # Subtest: persistent config and auth contracts
     # Subtest: serializes config documents without raw credential fields
     ok 1 - serializes config documents without raw credential fields
       ---
-      duration_ms: 1.1509
+      duration_ms: 1.1088
       type: 'test'
       ...
     # Subtest: stores credential references while keeping raw secret out of reference JSON
     ok 2 - stores credential references while keeping raw secret out of reference JSON
       ---
-      duration_ms: 0.6778
+      duration_ms: 0.6454
       type: 'test'
       ...
     # Subtest: defines readiness live-check and live verification result shapes
     ok 3 - defines readiness live-check and live verification result shapes
       ---
-      duration_ms: 0.2327
+      duration_ms: 0.2282
       type: 'test'
       ...
     1..3
-ok 35 - persistent config and auth contracts
+ok 36 - persistent config and auth contracts
   ---
-  duration_ms: 3.8261
+  duration_ms: 3.5147
   type: 'suite'
   ...
 # Subtest: runtime kernel contracts
     # Subtest: constructs the kernel and validates execution envelopes
     ok 1 - constructs the kernel and validates execution envelopes
       ---
-      duration_ms: 5.724
+      duration_ms: 14.0877
       type: 'test'
       ...
     # Subtest: returns typed rejection events for unknown capabilities
     ok 2 - returns typed rejection events for unknown capabilities
       ---
-      duration_ms: 5.1388
+      duration_ms: 4.6225
       type: 'test'
       ...
     # Subtest: rejects invalid timeout and malformed trace before policy or scheduler submission
     ok 3 - rejects invalid timeout and malformed trace before policy or scheduler submission
       ---
-      duration_ms: 8.8605
+      duration_ms: 13.92
       type: 'test'
       ...
     # Subtest: validates governance metadata shape directly
     ok 4 - validates governance metadata shape directly
       ---
-      duration_ms: 1.0218
+      duration_ms: 0.9353
       type: 'test'
       ...
     # Subtest: prevents denied policy invocations from reaching the scheduler
     ok 5 - prevents denied policy invocations from reaching the scheduler
       ---
-      duration_ms: 12.5274
+      duration_ms: 11.0887
       type: 'test'
       ...
     # Subtest: fails closed when replayable session or bus event persistence fails
     ok 6 - fails closed when replayable session or bus event persistence fails
       ---
-      duration_ms: 2.1084
+      duration_ms: 2.7699
       type: 'test'
       ...
     # Subtest: records explicit degraded observability events without failing successful execution
     ok 7 - records explicit degraded observability events without failing successful execution
       ---
-      duration_ms: 11.6479
+      duration_ms: 13.6923
       type: 'test'
       ...
     1..7
-ok 36 - runtime kernel contracts
+ok 37 - runtime kernel contracts
   ---
-  duration_ms: 48.852
+  duration_ms: 63.5569
   type: 'suite'
   ...
 # Subtest: secret sandbox hardening contracts
     # Subtest: serializes secret, sandbox, and audit DTOs without raw secret evidence
     ok 1 - serializes secret, sandbox, and audit DTOs without raw secret evidence
       ---
-      duration_ms: 1.4626
+      duration_ms: 1.5081
       type: 'test'
       ...
     # Subtest: requires execution envelopes to carry secret, resource, sandbox, and audit metadata
     ok 2 - requires execution envelopes to carry secret, resource, sandbox, and audit metadata
       ---
-      duration_ms: 4.1456
+      duration_ms: 3.9681
       type: 'test'
       ...
     1..2
-ok 37 - secret sandbox hardening contracts
+ok 38 - secret sandbox hardening contracts
   ---
-  duration_ms: 6.9637
+  duration_ms: 6.997
   type: 'suite'
   ...
 # Subtest: session store resume and fork contracts
     # Subtest: passes against in-memory store
     ok 1 - passes against in-memory store
       ---
-      duration_ms: 5.2598
+      duration_ms: 4.1931
       type: 'test'
       ...
     # Subtest: passes against development filesystem store
     ok 2 - passes against development filesystem store
       ---
-      duration_ms: 20.4639
+      duration_ms: 16.0936
       type: 'test'
       ...
     1..2
-ok 38 - session store resume and fork contracts
+ok 39 - session store resume and fork contracts
   ---
-  duration_ms: 27.1877
+  duration_ms: 21.8891
   type: 'suite'
   ...
 # Subtest: skill system contracts
     # Subtest: emits serializable v1 DTOs for summaries, activation, and context projection
     ok 1 - emits serializable v1 DTOs for summaries, activation, and context projection
       ---
-      duration_ms: 4.3446
+      duration_ms: 5.2448
       type: 'test'
       ...
     # Subtest: does not expose legacy generic skill APIs
     ok 2 - does not expose legacy generic skill APIs
       ---
-      duration_ms: 0.1895
+      duration_ms: 0.1962
       type: 'test'
       ...
     1..2
-ok 39 - skill system contracts
+ok 40 - skill system contracts
   ---
-  duration_ms: 5.8514
+  duration_ms: 6.7907
   type: 'suite'
   ...
 # Subtest: host adapter smoke
     # Subtest: runs CLI jsonl and activates VSCode bridge
     ok 1 - runs CLI jsonl and activates VSCode bridge
       ---
-      duration_ms: 18.4838
+      duration_ms: 18.1752
       type: 'test'
       ...
     # Subtest: runs CLI one-shot command in JSON summary mode
     ok 2 - runs CLI one-shot command in JSON summary mode
       ---
-      duration_ms: 8.1218
+      duration_ms: 5.9798
       type: 'test'
       ...
     # Subtest: runs CLI core tools smoke through runtime events without live provider access
     ok 3 - runs CLI core tools smoke through runtime events without live provider access
       ---
-      duration_ms: 43.2583
+      duration_ms: 45.2218
       type: 'test'
       ...
     # Subtest: runs scripted chat prompts and exits cleanly
     ok 4 - runs scripted chat prompts and exits cleanly
       ---
-      duration_ms: 5.9065
+      duration_ms: 6.1852
       type: 'test'
       ...
     # Subtest: runs scriptable session resume and fork failures without live provider access
     ok 5 - runs scriptable session resume and fork failures without live provider access
       ---
-      duration_ms: 3.6962
+      duration_ms: 3.497
       type: 'test'
       ...
     # Subtest: runs the built CLI binary with traceable runtime metadata
     ok 6 - runs the built CLI binary with traceable runtime metadata
       ---
-      duration_ms: 214.9374
+      duration_ms: 195.8901
       type: 'test'
       ...
     # Subtest: keeps raw secret fixtures out of CLI text and jsonl output
     ok 7 - keeps raw secret fixtures out of CLI text and jsonl output
       ---
-      duration_ms: 1672.6075
+      duration_ms: 1693.3946
       type: 'test'
       ...
     # Subtest: runs the built CLI binary in scripted chat mode
     ok 8 - runs the built CLI binary in scripted chat mode
       ---
-      duration_ms: 106.5815
+      duration_ms: 114.6998
       type: 'test'
       ...
     # Subtest: keeps the VSCode bridge transport-backed and isolated from CLI rendering
     ok 9 - keeps the VSCode bridge transport-backed and isolated from CLI rendering
       ---
-      duration_ms: 0.7361
+      duration_ms: 0.6122
       type: 'test'
       ...
     # Subtest: lets VSCode project runtime kernel events without importing CLI
     ok 10 - lets VSCode project runtime kernel events without importing CLI
       ---
-      duration_ms: 4.7434
+      duration_ms: 4.1277
       type: 'test'
       ...
     1..10
-ok 40 - host adapter smoke
+ok 41 - host adapter smoke
   ---
-  duration_ms: 2080.8332
+  duration_ms: 2089.3968
   type: 'suite'
   ...
 # Subtest: local readiness CLI
     # Subtest: renders init as text
     ok 1 - renders init as text
       ---
-      duration_ms: 107.83
+      duration_ms: 44.2654
       type: 'test'
       ...
     # Subtest: renders init as JSON
     ok 2 - renders init as JSON
       ---
-      duration_ms: 111.8773
+      duration_ms: 22.6505
       type: 'test'
       ...
     # Subtest: renders config as text
     ok 3 - renders config as text
       ---
-      duration_ms: 27.6528
+      duration_ms: 5.0021
       type: 'test'
       ...
     # Subtest: renders config as JSON
     ok 4 - renders config as JSON
       ---
-      duration_ms: 18.8271
+      duration_ms: 6.773
       type: 'test'
       ...
     # Subtest: renders auth as text
     ok 5 - renders auth as text
       ---
-      duration_ms: 21.3239
+      duration_ms: 5.6459
       type: 'test'
       ...
     # Subtest: renders auth as JSON
     ok 6 - renders auth as JSON
       ---
-      duration_ms: 9.4462
+      duration_ms: 3.7618
       type: 'test'
       ...
     # Subtest: renders doctor as text
     ok 7 - renders doctor as text
       ---
-      duration_ms: 8.3806
+      duration_ms: 5.3187
       type: 'test'
       ...
     # Subtest: renders doctor as JSON
     ok 8 - renders doctor as JSON
       ---
-      duration_ms: 3.9679
+      duration_ms: 3.9518
       type: 'test'
       ...
     # Subtest: renders privacy as text
     ok 9 - renders privacy as text
       ---
-      duration_ms: 8.6211
+      duration_ms: 4.6083
       type: 'test'
       ...
     # Subtest: renders privacy as JSON
     ok 10 - renders privacy as JSON
       ---
-      duration_ms: 4.0607
+      duration_ms: 4.6537
       type: 'test'
       ...
     # Subtest: renders verify-install as text
     ok 11 - renders verify-install as text
       ---
-      duration_ms: 9.9754
+      duration_ms: 5.9983
       type: 'test'
       ...
     # Subtest: renders verify-install as JSON
     ok 12 - renders verify-install as JSON
       ---
-      duration_ms: 10.8016
+      duration_ms: 5.8829
       type: 'test'
       ...
     # Subtest: sets config values with redacted structured output
     ok 13 - sets config values with redacted structured output
       ---
-      duration_ms: 21.7853
+      duration_ms: 7.2302
       type: 'test'
       ...
     # Subtest: initializes workspace metadata with non-secret defaults
     ok 14 - initializes workspace metadata with non-secret defaults
       ---
-      duration_ms: 28.904
+      duration_ms: 47.0385
       type: 'test'
       ...
     # Subtest: runs fake live doctor without network and returns structural evidence
     ok 15 - runs fake live doctor without network and returns structural evidence
       ---
-      duration_ms: 4.5457
+      duration_ms: 16.2558
       type: 'test'
       ...
     # Subtest: reports platform provider diagnostics while doctor stays offline
     ok 16 - reports platform provider diagnostics while doctor stays offline
       ---
-      duration_ms: 5.1997
+      duration_ms: 34.0397
       type: 'test'
       ...
     1..16
-ok 41 - local readiness CLI
+ok 42 - local readiness CLI
   ---
-  duration_ms: 407.7071
+  duration_ms: 226.8069
   type: 'suite'
   ...
 # Subtest: checkpoint undo golden replay
     # Subtest: normalizes checkpoint evidence without raw rollback content
     ok 1 - normalizes checkpoint evidence without raw rollback content
       ---
-      duration_ms: 27.4258
+      duration_ms: 35.4604
       type: 'test'
       ...
     1..1
-ok 42 - checkpoint undo golden replay
+ok 43 - checkpoint undo golden replay
   ---
-  duration_ms: 28.8218
+  duration_ms: 36.8375
   type: 'suite'
   ...
 # Subtest: code intelligence golden replay
     # Subtest: normalizes code intelligence context evidence without raw secrets
     ok 1 - normalizes code intelligence context evidence without raw secrets
       ---
-      duration_ms: 11.0567
+      duration_ms: 5.6225
       type: 'test'
       ...
     1..1
-ok 43 - code intelligence golden replay
+ok 44 - code intelligence golden replay
   ---
-  duration_ms: 12.4017
+  duration_ms: 6.9534
   type: 'suite'
   ...
 # Subtest: context projection golden replay
     # Subtest: captures selected nodes, budget, redaction, and cache metadata in replay
     ok 1 - captures selected nodes, budget, redaction, and cache metadata in replay
       ---
-      duration_ms: 25.873
+      duration_ms: 34.7057
       type: 'test'
       ...
     1..1
-ok 44 - context projection golden replay
+ok 45 - context projection golden replay
   ---
-  duration_ms: 28.6482
+  duration_ms: 36.6075
   type: 'suite'
   ...
 # Subtest: core coding tools golden replay
     # Subtest: normalizes and replays deterministic core tool evidence
     ok 1 - normalizes and replays deterministic core tool evidence
       ---
-      duration_ms: 34.5337
+      duration_ms: 31.7697
       type: 'test'
       ...
     1..1
-ok 45 - core coding tools golden replay
+ok 46 - core coding tools golden replay
   ---
-  duration_ms: 35.9602
+  duration_ms: 33.1629
   type: 'suite'
   ...
 # Subtest: DeepSeek provider golden trace
     # Subtest: replays normalized provider event order from fake transport
     ok 1 - replays normalized provider event order from fake transport
       ---
-      duration_ms: 6.7292
+      duration_ms: 3.9921
       type: 'test'
       ...
     1..1
-ok 46 - DeepSeek provider golden trace
+ok 47 - DeepSeek provider golden trace
   ---
-  duration_ms: 8.5358
+  duration_ms: 5.5262
   type: 'suite'
   ...
 # Subtest: golden replay
     # Subtest: replays a normalized minimal headless trace
     ok 1 - replays a normalized minimal headless trace
       ---
-      duration_ms: 24.4623
+      duration_ms: 34.2828
       type: 'test'
       ...
     1..1
-ok 47 - golden replay
+ok 48 - golden replay
   ---
-  duration_ms: 25.8893
+  duration_ms: 35.6364
   type: 'suite'
   ...
 # Subtest: hook system golden replay
     # Subtest: normalizes hook ordering, invocation, and output evidence
     ok 1 - normalizes hook ordering, invocation, and output evidence
       ---
-      duration_ms: 4.0682
+      duration_ms: 4.9254
       type: 'test'
       ...
     1..1
-ok 48 - hook system golden replay
+ok 49 - hook system golden replay
   ---
-  duration_ms: 5.2174
+  duration_ms: 6.3429
+  type: 'suite'
+  ...
+# Subtest: live tool execution golden replay
+    # Subtest: emits the canonical tool turn event order with typed feedback and trace correlation
+    ok 1 - emits the canonical tool turn event order with typed feedback and trace correlation
+      ---
+      duration_ms: 56.4085
+      type: 'test'
+      ...
+    # Subtest: captures a denied tool outcome with terminated continuation? false in the replay stream
+    ok 2 - captures a denied tool outcome with terminated continuation? false in the replay stream
+      ---
+      duration_ms: 13.9766
+      type: 'test'
+      ...
+    1..2
+ok 50 - live tool execution golden replay
+  ---
+  duration_ms: 72.055
   type: 'suite'
   ...
 # Subtest: MCP gateway golden replay
     # Subtest: normalizes MCP discovery, invocation, resource, and failure evidence
     ok 1 - normalizes MCP discovery, invocation, resource, and failure evidence
       ---
-      duration_ms: 8.9165
+      duration_ms: 7.3325
       type: 'test'
       ...
     1..1
-ok 49 - MCP gateway golden replay
+ok 51 - MCP gateway golden replay
   ---
-  duration_ms: 10.2285
+  duration_ms: 8.737
   type: 'suite'
   ...
 # Subtest: minimal chat CLI golden replay
     # Subtest: keeps chat prompt semantics aligned with runtime agent-loop events
     ok 1 - keeps chat prompt semantics aligned with runtime agent-loop events
       ---
-      duration_ms: 27.8677
+      duration_ms: 28.3489
       type: 'test'
       ...
     1..1
-ok 50 - minimal chat CLI golden replay
+ok 52 - minimal chat CLI golden replay
   ---
-  duration_ms: 29.1948
+  duration_ms: 29.6387
   type: 'suite'
   ...
 # Subtest: observability privacy golden replay
     # Subtest: replays runtime trace with redacted observability diagnostic bundle evidence
     ok 1 - replays runtime trace with redacted observability diagnostic bundle evidence
       ---
-      duration_ms: 40.1667
+      duration_ms: 24.7941
       type: 'test'
       ...
     1..1
-ok 51 - observability privacy golden replay
+ok 53 - observability privacy golden replay
   ---
-  duration_ms: 41.7444
+  duration_ms: 26.1795
   type: 'suite'
   ...
 # Subtest: runtime kernel replay
     # Subtest: replays a normalized kernel invocation trace
     ok 1 - replays a normalized kernel invocation trace
       ---
-      duration_ms: 30.3217
+      duration_ms: 28.2555
       type: 'test'
       ...
     1..1
-ok 52 - runtime kernel replay
+ok 54 - runtime kernel replay
   ---
-  duration_ms: 31.6719
+  duration_ms: 29.9686
   type: 'suite'
   ...
 # Subtest: secret sandbox audit golden replay
     # Subtest: replays allow, deny, rewrite, and degraded platform audit evidence deterministically
     ok 1 - replays allow, deny, rewrite, and degraded platform audit evidence deterministically
       ---
-      duration_ms: 55.9334
+      duration_ms: 58.1626
       type: 'test'
       ...
     1..1
-ok 53 - secret sandbox audit golden replay
+ok 55 - secret sandbox audit golden replay
   ---
-  duration_ms: 57.7102
+  duration_ms: 59.7491
   type: 'suite'
   ...
 # Subtest: session resume and fork golden replay
     # Subtest: replays resumed and forked session lineage
     ok 1 - replays resumed and forked session lineage
       ---
-      duration_ms: 32.8695
+      duration_ms: 31.8961
       type: 'test'
       ...
     1..1
-ok 54 - session resume and fork golden replay
+ok 56 - session resume and fork golden replay
   ---
-  duration_ms: 34.2372
+  duration_ms: 33.2733
   type: 'suite'
   ...
 # Subtest: skill system golden replay
     # Subtest: normalizes trusted skill activation and context evidence
     ok 1 - normalizes trusted skill activation and context evidence
       ---
-      duration_ms: 5.1283
+      duration_ms: 7.8956
       type: 'test'
       ...
     1..1
-ok 55 - skill system golden replay
+ok 57 - skill system golden replay
   ---
-  duration_ms: 6.5534
+  duration_ms: 9.2534
   type: 'suite'
   ...
 # Subtest: checkpoint undo runtime integration
     # Subtest: records checkpoint evidence for governed edits and supports undo through workspace state
     ok 1 - records checkpoint evidence for governed edits and supports undo through workspace state
       ---
-      duration_ms: 25.4914
+      duration_ms: 25.5915
       type: 'test'
       ...
     1..1
-ok 56 - checkpoint undo runtime integration
+ok 58 - checkpoint undo runtime integration
   ---
-  duration_ms: 26.9094
+  duration_ms: 26.8419
   type: 'suite'
   ...
 # Subtest: code intelligence context integration
     # Subtest: feeds diagnostic context nodes into context projection
     ok 1 - feeds diagnostic context nodes into context projection
       ---
-      duration_ms: 15.2172
+      duration_ms: 7.8162
       type: 'test'
       ...
     1..1
-ok 57 - code intelligence context integration
+ok 59 - code intelligence context integration
   ---
-  duration_ms: 18.3076
+  duration_ms: 9.1259
   type: 'suite'
   ...
 # Subtest: context projection runtime integration
     # Subtest: projects context before kernel-backed execution
     ok 1 - projects context before kernel-backed execution
       ---
-      duration_ms: 32.432
+      duration_ms: 25.4139
       type: 'test'
       ...
     # Subtest: fails closed before kernel execution when projection exceeds hard budget
     ok 2 - fails closed before kernel execution when projection exceeds hard budget
       ---
-      duration_ms: 2.0867
+      duration_ms: 2.574
       type: 'test'
       ...
     1..2
-ok 58 - context projection runtime integration
+ok 60 - context projection runtime integration
   ---
-  duration_ms: 36.0703
+  duration_ms: 29.5274
   type: 'suite'
   ...
 # Subtest: core coding tools runtime integration
     # Subtest: executes the minimal read-edit-test loop through governed runtime events
     ok 1 - executes the minimal read-edit-test loop through governed runtime events
       ---
-      duration_ms: 47.8814
+      duration_ms: 48.6676
       type: 'test'
       ...
     # Subtest: prevents denied write tools from reaching scheduler
     ok 2 - prevents denied write tools from reaching scheduler
       ---
-      duration_ms: 10.1001
+      duration_ms: 13.6797
       type: 'test'
       ...
     1..2
-ok 59 - core coding tools runtime integration
+ok 61 - core coding tools runtime integration
   ---
-  duration_ms: 59.5968
+  duration_ms: 63.7953
   type: 'suite'
   ...
 # Subtest: ecosystem and governance integration
     # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
     ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
       ---
-      duration_ms: 16.1447
+      duration_ms: 9.4947
       type: 'test'
       ...
     # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
     ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
       ---
-      duration_ms: 7.5345
+      duration_ms: 5.4124
       type: 'test'
       ...
     1..2
-ok 60 - ecosystem and governance integration
+ok 62 - ecosystem and governance integration
   ---
-  duration_ms: 25.6839
+  duration_ms: 16.3351
   type: 'suite'
   ...
 # Subtest: hook system integration
     # Subtest: records observe-only hook evidence without mutating owner subsystems
     ok 1 - records observe-only hook evidence without mutating owner subsystems
       ---
-      duration_ms: 7.5027
+      duration_ms: 7.6684
       type: 'test'
       ...
     1..1
-ok 61 - hook system integration
+ok 63 - hook system integration
   ---
-  duration_ms: 8.7497
+  duration_ms: 8.9993
   type: 'suite'
   ...
 # Subtest: MCP gateway integration
     # Subtest: records governed MCP evidence without mutating owner subsystems
     ok 1 - records governed MCP evidence without mutating owner subsystems
       ---
-      duration_ms: 7.5609
+      duration_ms: 7.4542
       type: 'test'
       ...
     1..1
-ok 62 - MCP gateway integration
+ok 64 - MCP gateway integration
   ---
-  duration_ms: 9.1265
+  duration_ms: 8.9071
   type: 'suite'
   ...
 # Subtest: minimal chat CLI runtime integration
     # Subtest: renders scripted chat prompts from the runtime-owned agent loop
     ok 1 - renders scripted chat prompts from the runtime-owned agent loop
       ---
-      duration_ms: 23.0411
+      duration_ms: 24.6175
       type: 'test'
       ...
     1..1
-ok 63 - minimal chat CLI runtime integration
+ok 65 - minimal chat CLI runtime integration
   ---
-  duration_ms: 24.3518
+  duration_ms: 25.9113
   type: 'suite'
   ...
 # Subtest: observability privacy runtime integration
     # Subtest: captures runtime events as redacted canonical diagnostic evidence
     ok 1 - captures runtime events as redacted canonical diagnostic evidence
       ---
-      duration_ms: 25.8712
+      duration_ms: 27.5357
       type: 'test'
       ...
     1..1
-ok 64 - observability privacy runtime integration
+ok 66 - observability privacy runtime integration
   ---
-  duration_ms: 27.2576
+  duration_ms: 28.9255
   type: 'suite'
   ...
 # Subtest: provider tool intent preflight integration
     # Subtest: repairs normalized provider tool-call paths before governed execution
     ok 1 - repairs normalized provider tool-call paths before governed execution
       ---
-      duration_ms: 4.9487
+      duration_ms: 4.4595
       type: 'test'
       ...
     1..1
-ok 65 - provider tool intent preflight integration
+ok 67 - provider tool intent preflight integration
   ---
-  duration_ms: 6.1301
+  duration_ms: 6.7751
   type: 'suite'
   ...
 # Subtest: runtime integration pipeline
     # Subtest: records bus, session, and observability state for a kernel-backed turn
     ok 1 - records bus, session, and observability state for a kernel-backed turn
       ---
-      duration_ms: 27.9053
+      duration_ms: 28.6717
       type: 'test'
       ...
     # Subtest: connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
     ok 2 - connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
       ---
-      duration_ms: 10.4926
+      duration_ms: 9.8239
       type: 'test'
       ...
     # Subtest: streams scheduler timeout events through kernel.execute and closes workflow once
     ok 3 - streams scheduler timeout events through kernel.execute and closes workflow once
       ---
-      duration_ms: 16.1008
+      duration_ms: 16.0658
       type: 'test'
       ...
     1..3
-ok 66 - runtime integration pipeline
+ok 68 - runtime integration pipeline
   ---
-  duration_ms: 56.3523
+  duration_ms: 56.4212
   type: 'suite'
   ...
 # Subtest: secret sandbox policy runtime integration
     # Subtest: rewrites raw secret input before scheduler execution
     ok 1 - rewrites raw secret input before scheduler execution
       ---
-      duration_ms: 24.399
+      duration_ms: 22.1745
       type: 'test'
       ...
     # Subtest: denies read-only filesystem writes before scheduler execution
     ok 2 - denies read-only filesystem writes before scheduler execution
       ---
-      duration_ms: 12.8705
+      duration_ms: 16.99
       type: 'test'
       ...
     # Subtest: passes process test metadata through policy, scheduler, sandbox, bus, and session events
     ok 3 - passes process test metadata through policy, scheduler, sandbox, bus, and session events
       ---
-      duration_ms: 13.966
+      duration_ms: 13.984
       type: 'test'
       ...
     1..3
-ok 67 - secret sandbox policy runtime integration
+ok 69 - secret sandbox policy runtime integration
   ---
-  duration_ms: 52.9448
+  duration_ms: 55.4739
   type: 'suite'
   ...
 # Subtest: session resume and fork runtime integration
     # Subtest: appends resumed turns to the selected session id
     ok 1 - appends resumed turns to the selected session id
       ---
-      duration_ms: 28.653
+      duration_ms: 23.2506
       type: 'test'
       ...
     # Subtest: executes forked child sessions through the governed kernel path
     ok 2 - executes forked child sessions through the governed kernel path
       ---
-      duration_ms: 17.4072
+      duration_ms: 20.2303
       type: 'test'
       ...
     1..2
-ok 68 - session resume and fork runtime integration
+ok 70 - session resume and fork runtime integration
   ---
-  duration_ms: 48.0766
+  duration_ms: 45.3841
   type: 'suite'
   ...
 # Subtest: skill context projection integration
     # Subtest: feeds trusted skill context nodes into the context engine
     ok 1 - feeds trusted skill context nodes into the context engine
       ---
-      duration_ms: 14.5569
+      duration_ms: 7.3176
       type: 'test'
       ...
     1..1
-ok 69 - skill context projection integration
+ok 71 - skill context projection integration
   ---
-  duration_ms: 15.8187
+  duration_ms: 8.6568
   type: 'suite'
   ...
 # Subtest: DeepSeek live agent loop smoke
     # Subtest: runs the runtime-owned agent loop only when explicitly enabled
     ok 1 - runs the runtime-owned agent loop only when explicitly enabled # SKIP Set DEEPSEEK_LIVE_AGENT_LOOP_TESTS=1 to run live DeepSeek agent-loop smoke.
       ---
-      duration_ms: 1.1383
+      duration_ms: 1.1268
       type: 'test'
       ...
     1..1
-ok 70 - DeepSeek live agent loop smoke
+ok 72 - DeepSeek live agent loop smoke
   ---
-  duration_ms: 2.5163
+  duration_ms: 2.4662
   type: 'suite'
   ...
 # Subtest: DeepSeek live agent tool-loop smoke
     # Subtest: runs a live DeepSeek tool turn only when explicitly enabled
     ok 1 - runs a live DeepSeek tool turn only when explicitly enabled # SKIP Set DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 to run live DeepSeek agent-tool smoke.
       ---
-      duration_ms: 1.0261
+      duration_ms: 2.4833
       type: 'test'
       ...
     1..1
-ok 71 - DeepSeek live agent tool-loop smoke
+ok 73 - DeepSeek live agent tool-loop smoke
   ---
-  duration_ms: 3.3892
+  duration_ms: 3.7652
   type: 'suite'
   ...
 # Subtest: DeepSeek auth live verification
     # Subtest: verifies live connectivity only when explicitly enabled
     ok 1 - verifies live connectivity only when explicitly enabled # SKIP Set DEEPSEEK_LIVE_AUTH_TESTS=1 to run live auth verification.
       ---
-      duration_ms: 1.4192
+      duration_ms: 1.0595
       type: 'test'
       ...
     1..1
-ok 72 - DeepSeek auth live verification
+ok 74 - DeepSeek auth live verification
   ---
-  duration_ms: 5.0681
+  duration_ms: 2.3812
   type: 'suite'
   ...
 # Subtest: DeepSeek live provider smoke
     # Subtest: streams a real response only when explicitly enabled
     ok 1 - streams a real response only when explicitly enabled # SKIP Set DEEPSEEK_LIVE_TESTS=1 to run live DeepSeek provider smoke.
       ---
-      duration_ms: 1.2227
+      duration_ms: 1.0914
       type: 'test'
       ...
     1..1
-ok 73 - DeepSeek live provider smoke
+ok 75 - DeepSeek live provider smoke
   ---
-  duration_ms: 2.5526
+  duration_ms: 2.4306
   type: 'suite'
   ...
 # Subtest: checkpoint undo platform matrix
     # Subtest: rejects stale restores consistently across writable fake platforms
     ok 1 - rejects stale restores consistently across writable fake platforms
       ---
-      duration_ms: 9.1695
+      duration_ms: 6.4691
       type: 'test'
       ...
     1..1
-ok 74 - checkpoint undo platform matrix
+ok 76 - checkpoint undo platform matrix
   ---
-  duration_ms: 10.6175
+  duration_ms: 7.6209
   type: 'suite'
   ...
 # Subtest: code intelligence platform matrix
     # Subtest: indexes supported files without live IDE dependencies across fake platforms
     ok 1 - indexes supported files without live IDE dependencies across fake platforms
       ---
-      duration_ms: 8.7192
+      duration_ms: 8.6131
       type: 'test'
       ...
     1..1
-ok 75 - code intelligence platform matrix
+ok 77 - code intelligence platform matrix
   ---
-  duration_ms: 10.121
+  duration_ms: 9.9577
   type: 'suite'
   ...
 # Subtest: context projection matrix
     # Subtest: covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
     ok 1 - covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
       ---
-      duration_ms: 6.5869
+      duration_ms: 6.3809
       type: 'test'
       ...
     1..1
-ok 76 - context projection matrix
+ok 78 - context projection matrix
   ---
-  duration_ms: 7.9713
+  duration_ms: 7.6396
   type: 'suite'
   ...
 # Subtest: fake platform matrix
     # Subtest: covers macOS, Windows, Linux, WSL, CI, and remote host modes
     ok 1 - covers macOS, Windows, Linux, WSL, CI, and remote host modes
       ---
-      duration_ms: 5.2134
+      duration_ms: 4.3329
       type: 'test'
       ...
     # Subtest: covers config paths, workspace metadata paths, and atomic write behavior
     ok 2 - covers config paths, workspace metadata paths, and atomic write behavior
       ---
-      duration_ms: 3.3583
+      duration_ms: 2.2829
       type: 'test'
       ...
     # Subtest: covers path rejection, WSL translation, search fallback, and unavailable providers
     ok 3 - covers path rejection, WSL translation, search fallback, and unavailable providers
       ---
-      duration_ms: 1.1277
+      duration_ms: 0.7682
       type: 'test'
       ...
     # Subtest: covers core tool path, search, process, and output bounding behavior across the fake matrix
     ok 4 - covers core tool path, search, process, and output bounding behavior across the fake matrix
       ---
-      duration_ms: 22.2808
+      duration_ms: 24.1242
       type: 'test'
       ...
     1..4
-ok 77 - fake platform matrix
+ok 79 - fake platform matrix
   ---
-  duration_ms: 33.6501
+  duration_ms: 32.8319
   type: 'suite'
   ...
 # Subtest: hook system matrix
     # Subtest: covers trust, disabled, malformed, ordering, timeout, and failure policies
     ok 1 - covers trust, disabled, malformed, ordering, timeout, and failure policies
       ---
-      duration_ms: 9.943
+      duration_ms: 9.8278
       type: 'test'
       ...
     1..1
-ok 78 - hook system matrix
+ok 80 - hook system matrix
   ---
-  duration_ms: 11.3691
+  duration_ms: 11.2978
   type: 'suite'
   ...
 # Subtest: live-agent-tool-execution preflight matrix
     # Subtest: rejects parent traversal on every platform
     ok 1 - rejects parent traversal on every platform
       ---
-      duration_ms: 2.102
+      duration_ms: 2.0821
       type: 'test'
       ...
     # Subtest: rejects null bytes on every platform
     ok 2 - rejects null bytes on every platform
       ---
-      duration_ms: 0.5074
+      duration_ms: 0.4107
       type: 'test'
       ...
     # Subtest: rejects absolute paths on every platform
     ok 3 - rejects absolute paths on every platform
       ---
-      duration_ms: 0.5073
+      duration_ms: 0.3821
       type: 'test'
       ...
     # Subtest: normalises mixed separators into the platform-native shape without rejecting
     ok 4 - normalises mixed separators into the platform-native shape without rejecting
       ---
-      duration_ms: 1.5868
+      duration_ms: 1.319
       type: 'test'
       ...
     1..4
-ok 79 - live-agent-tool-execution preflight matrix
+ok 81 - live-agent-tool-execution preflight matrix
   ---
-  duration_ms: 6.1767
+  duration_ms: 5.663
   type: 'suite'
   ...
 # Subtest: MCP gateway matrix
     # Subtest: covers trust, disabled, malformed, transport, target, timeout, and redaction modes
     ok 1 - covers trust, disabled, malformed, transport, target, timeout, and redaction modes
       ---
-      duration_ms: 24.4685
+      duration_ms: 27.5738
       type: 'test'
       ...
     1..1
-ok 80 - MCP gateway matrix
+ok 82 - MCP gateway matrix
   ---
-  duration_ms: 25.9634
+  duration_ms: 29.0192
   type: 'suite'
   ...
 # Subtest: observability privacy matrix
     # Subtest: covers deterministic privacy modes
     ok 1 - covers deterministic privacy modes
       ---
-      duration_ms: 5.1756
+      duration_ms: 4.8378
       type: 'test'
       ...
     1..1
-ok 81 - observability privacy matrix
+ok 83 - observability privacy matrix
   ---
-  duration_ms: 6.4123
+  duration_ms: 6.0356
   type: 'suite'
   ...
 # Subtest: secret sandbox platform matrix
     # Subtest: covers deterministic sandbox decisions across fake platform modes
     ok 1 - covers deterministic sandbox decisions across fake platform modes
       ---
-      duration_ms: 4.574
+      duration_ms: 4.4687
       type: 'test'
       ...
     1..1
-ok 82 - secret sandbox platform matrix
+ok 84 - secret sandbox platform matrix
   ---
-  duration_ms: 5.4135
+  duration_ms: 5.3142
   type: 'suite'
   ...
 # Subtest: skill system matrix
     # Subtest: covers trust, disabled, malformed, summary, activation, and projection modes
     ok 1 - covers trust, disabled, malformed, summary, activation, and projection modes
       ---
-      duration_ms: 3.8435
+      duration_ms: 3.1491
       type: 'test'
       ...
     1..1
-ok 83 - skill system matrix
+ok 85 - skill system matrix
   ---
-  duration_ms: 4.8697
+  duration_ms: 4.1393
   type: 'suite'
   ...
 # Subtest: versioning checks
     # Subtest: requires schemaVersion on persisted subjects
     ok 1 - requires schemaVersion on persisted subjects
       ---
-      duration_ms: 1.3224
+      duration_ms: 1.3166
       type: 'test'
       ...
     # Subtest: requires schemaVersion on session resume and fork artifacts
     ok 2 - requires schemaVersion on session resume and fork artifacts
       ---
-      duration_ms: 0.1582
+      duration_ms: 0.1538
       type: 'test'
       ...
     # Subtest: requires schemaVersion on projection request and result artifacts
     ok 3 - requires schemaVersion on projection request and result artifacts
       ---
-      duration_ms: 2.3454
+      duration_ms: 2.3209
       type: 'test'
       ...
     # Subtest: requires schemaVersion on observability records and diagnostic bundles
     ok 4 - requires schemaVersion on observability records and diagnostic bundles
       ---
-      duration_ms: 1.2202
+      duration_ms: 1.2336
       type: 'test'
       ...
     # Subtest: requires schemaVersion on skill manifests, activation results, summaries, and context segments
     ok 5 - requires schemaVersion on skill manifests, activation results, summaries, and context segments
       ---
-      duration_ms: 1.6519
+      duration_ms: 1.6452
       type: 'test'
       ...
     # Subtest: requires schemaVersion on hook manifests, summaries, invocation results, and output records
     ok 6 - requires schemaVersion on hook manifests, summaries, invocation results, and output records
       ---
-      duration_ms: 1.7661
+      duration_ms: 1.9448
       type: 'test'
       ...
     # Subtest: requires schemaVersion on MCP manifests, summaries, calls, and resource reads
     ok 7 - requires schemaVersion on MCP manifests, summaries, calls, and resource reads
       ---
-      duration_ms: 3.0527
+      duration_ms: 2.9905
       type: 'test'
       ...
     1..7
-ok 84 - versioning checks
+ok 86 - versioning checks
   ---
-  duration_ms: 12.7214
+  duration_ms: 12.8215
   type: 'suite'
   ...
-1..84
-# tests 238
-# suites 84
-# pass 234
+1..86
+# tests 247
+# suites 86
+# pass 243
 # fail 0
 # cancelled 0
 # skipped 4
 # todo 0
-# duration_ms 9885.2426
+# duration_ms 10159.7243

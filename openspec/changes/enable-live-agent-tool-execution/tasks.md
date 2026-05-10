@@ -1,8 +1,8 @@
 ## 1. Contracts And Provider Normalization / 契约与 Provider 归一化
 
-- [ ] 1.1 Define provider-neutral live tool intent, partial intent diagnostic, tool-call finish, tool result feedback, continuation policy, and terminal failure DTOs with schema versions and redaction metadata.
-- [ ] 1.2 Extend DeepSeek/OpenAI SDK stream normalization to assemble partial tool-call chunks, parse arguments deterministically, and emit malformed-intent diagnostics without executing tools.
-- [ ] 1.3 Add provider-compatible tool schema and optional tool choice formatting for gated live smoke requests while keeping runtime as execution owner.
+- [x] 1.1 Define provider-neutral live tool intent, partial intent diagnostic, tool-call finish, tool result feedback, continuation policy, and terminal failure DTOs with schema versions and redaction metadata.
+- [x] 1.2 Extend DeepSeek/OpenAI SDK stream normalization to assemble partial tool-call chunks, parse arguments deterministically, and emit malformed-intent diagnostics without executing tools.
+- [x] 1.3 Add provider-compatible tool schema and optional tool choice formatting for gated live smoke requests while keeping runtime as execution owner.
 - [x] 1.4 Add bounded tool result feedback formatting for successful, repaired, rejected, denied, timed-out, cancelled, and failed tool outcomes.
 - [x] 1.5 Add provider boundary lint or tests that reject model-gateway imports/calls into kernel, scheduler, policy, sandbox, command, skill, hook, MCP, plugin, or session mutation packages.
 
@@ -32,10 +32,10 @@
 
 ## 5. Tests, Replay, And Acceptance / 测试、回放与验收
 
-- [ ] 5.1 Add unit tests for DeepSeek tool-call chunks, partial arguments, malformed JSON, tool choice formatting, feedback formatting, and provider redaction.
+- [x] 5.1 Add unit tests for DeepSeek tool-call chunks, partial arguments, malformed JSON, tool choice formatting, feedback formatting, and provider redaction.
 - [x] 5.2 Add runtime tests for one-tool success, multi-tool success, repair success, repair rejection, policy denial, timeout, cancellation, provider failure, loop-limit stop, and repeated unsafe calls.
 - [x] 5.3 Add integration tests proving model -> tool intent -> preflight -> kernel execution -> tool feedback -> model continuation -> terminal result.
-- [ ] 5.4 Add golden replay fixtures for live tool event ordering, schema versions, trace correlation, redaction metadata, and terminal statuses.
+- [x] 5.4 Add golden replay fixtures for live tool event ordering, schema versions, trace correlation, redaction metadata, and terminal statuses.
 - [x] 5.5 Add e2e tests for CLI deterministic tool-loop smoke in text and JSONL modes without live provider access.
 - [x] 5.6 Add live-gated DeepSeek tool-loop smoke that asserts structure, reachability, redaction, event order, and terminal status without snapshotting exact generated prose.
 - [x] 5.7 Regenerate acceptance evidence for contracts, integration, golden, matrix, e2e, smoke, live-gated status, lint, typecheck, boundary checks, and OpenSpec validation.
