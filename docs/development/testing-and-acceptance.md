@@ -269,3 +269,42 @@ Chat slash commands / 聊天斜杠命令:
   deterministic runtime 跑每个命令；
   `tests/integration/chat-sigint-cancel.test.ts` 触发
   `process.emit("SIGINT")` 并校验取消事件。
+
+Real MCP transport / 真实 MCP 通道:
+
+- 默认行为不变：未 opt-in 时，stdio/HTTP/WebSocket/IDE 传输一律返回
+  `MCP_TRANSPORT_UNAVAILABLE`，契约测试继续按现有 fail-closed 语义
+  通过。Default behavior is unchanged: without opt-in, stdio/HTTP/
+  WebSocket/IDE transports still return `MCP_TRANSPORT_UNAVAILABLE`;
+  the existing fail-closed contract tests continue to pass.
+- Opt-in 方式两种：环境变量 `MCP_REAL_TRANSPORT=1`，或 CLI flag
+  `--enable-real-mcp`。可以对等使用；CLI flag 优先级高。
+  Opt-in is via `MCP_REAL_TRANSPORT=1` or the CLI `--enable-real-mcp`
+  flag (the flag wins when both are set).
+- 新增 `deepseek mcp test <manifest.json>` 子命令：读取本地 manifest，
+  按 opt-in 状态决定是否注册 stdio 真实 transport，随后 `connect` →
+  `listTools` →（可选）`callTool`，按 text/JSON 输出。
+  The new `deepseek mcp test <manifest.json>` subcommand reads a
+  local manifest, optionally registers the real transport, connects,
+  lists tools, optionally calls a tool, and prints text or JSON.
+- 测试 fixture：`scripts/mcp-echo-server.mjs` 是一个 ~80 行手写 JSON-RPC
+  echo server，提供 `initialize / tools/list / tools/call (echo)
+  / shutdown`。`tests/contracts/mcp-stdio-client.test.ts` 直接用
+  `child_process.spawn` 启动它跑协议；
+  `tests/integration/mcp-real-transport-opt-in.test.ts` 走 CLI 路径
+  比较 opt-in 前后行为。Test fixture `scripts/mcp-echo-server.mjs` is
+  a tiny hand-rolled JSON-RPC echo server; the contract test drives
+  `StdioMcpClient` directly, while the integration test drives the
+  CLI subcommand in both off and on modes.
+- 连接生产 MCP server（filesystem、git、brave-search、github 等）：
+  把 manifest 的 `transport.command` 设为 `npx`、`transport.metadata.args`
+  设为 `["-y", "@modelcontextprotocol/server-filesystem", "/path"]` 之
+  类即可。To connect an ecosystem server, point
+  `transport.command` at `npx` and `transport.metadata.args` at
+  `["-y", "@modelcontextprotocol/server-<name>", ...]`.
+- 安全模型：子进程参数走数组（无 shell expansion）；每次请求超时继承
+  manifest `timeoutMs`；gateway `disposeAll()` 发 JSON-RPC `shutdown`
+  通知 → `SIGTERM` → 2s 后 `SIGKILL`。Subprocess args are passed as an
+  array (no shell expansion); per-request timeout follows manifest
+  `timeoutMs`; `gateway.disposeAll()` sends the JSON-RPC `shutdown`
+  notification, then `SIGTERM`, then `SIGKILL` after 2 s.

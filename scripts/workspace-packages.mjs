@@ -123,7 +123,8 @@ export const appDependencies = {
     "credential-auth-management",
     "platform-abstraction",
     "model-gateway",
-    "session-store"
+    "session-store",
+    "mcp-gateway"
   ],
   "vscode-extension": ["platform-contracts", "communication-protocol", "runtime"]
 };

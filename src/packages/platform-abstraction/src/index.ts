@@ -458,6 +458,26 @@ export class NodePlatformRuntime implements PlatformRuntime {
       degradedReasons: descriptor.degradedReasons
     };
   }
+
+  spawnMcpServer(command: string, args: readonly string[]): {
+    readonly stdin: import("node:stream").Writable;
+    readonly stdout: import("node:stream").Readable;
+    readonly stderr?: import("node:stream").Readable;
+    readonly kill: (signal?: "SIGTERM" | "SIGKILL") => void;
+    readonly exit: Promise<number>;
+  } {
+    const child = spawn(command, [...args], { stdio: ["pipe", "pipe", "pipe"], shell: false });
+    const exit = new Promise<number>((resolvePromise) => {
+      child.once("exit", (code) => resolvePromise(code ?? 0));
+    });
+    return {
+      stdin: child.stdin,
+      stdout: child.stdout,
+      stderr: child.stderr,
+      kill: (signal?: "SIGTERM" | "SIGKILL") => { child.kill(signal ?? "SIGTERM"); },
+      exit
+    };
+  }
 }
 
 export class FakePlatformRuntime extends NodePlatformRuntime {

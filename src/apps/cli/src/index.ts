@@ -29,6 +29,8 @@ import { coreToolIds } from "@deepseek/core-coding-tools";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
+import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
+import type { McpServerManifest } from "@deepseek/platform-contracts";
 import { PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { createDeterministicRuntimeDependencies, createLiveCliDependencies, registerDeterministicCoreTools } from "@deepseek/testing-regression";
 
@@ -37,7 +39,7 @@ export interface CliTerminalFlags {
   readonly stdoutIsTTY: boolean;
 }
 
-export type CliCommand = "run" | "chat" | "readiness" | "tools-smoke" | "help" | "session";
+export type CliCommand = "run" | "chat" | "readiness" | "tools-smoke" | "help" | "session" | "mcp";
 
 export interface CliOptions {
   readonly command: CliCommand;
@@ -50,6 +52,11 @@ export interface CliOptions {
   readonly sessionAction?: "resume" | "fork";
   readonly sessionId?: SessionId;
   readonly parentSessionId?: SessionId;
+  readonly mcpAction?: "test";
+  readonly mcpManifestPath?: string;
+  readonly mcpCallTool?: string;
+  readonly mcpCallInput?: string;
+  readonly enableRealMcp?: boolean;
 }
 
 export type CliWrite = (line: string) => void | Promise<void>;
@@ -104,6 +111,22 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
     if (action === "resume" && sessionId) return { ...base, sessionId };
     return base;
   }
+  if (first === "mcp") {
+    const manifestPath = args[2] && !args[2].startsWith("-") ? args[2] : undefined;
+    const callTool = readFlagValue(args, "--call");
+    const callInput = readFlagValue(args, "--input");
+    return {
+      command: "mcp",
+      prompt: "",
+      output,
+      live,
+      mcpAction: "test",
+      ...(manifestPath ? { mcpManifestPath: manifestPath } : {}),
+      ...(callTool ? { mcpCallTool: callTool } : {}),
+      ...(callInput ? { mcpCallInput: callInput } : {}),
+      enableRealMcp: args.includes("--enable-real-mcp")
+    };
+  }
   if (isReadinessCommand(first)) {
     return { command: "readiness", readinessCommand: first, prompt: "", output, live, readinessInput: parseReadinessInput(first, args) };
   }
@@ -118,6 +141,7 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek chat [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
+    "  deepseek mcp test <manifest.json> [--enable-real-mcp] [--call <tool> --input <json>] [--output text|json]",
     "  deepseek tools-smoke [--output text|jsonl]",
     "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]"
   ];
@@ -148,6 +172,10 @@ export async function runCli(
   }
   if (options.command === "session") {
     await runSessionCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "mcp") {
+    await runMcpCommand(options, writer);
     return;
   }
   if (options.command === "chat") {
@@ -543,6 +571,79 @@ async function createCliSessionDependencies(workspaceRoot = process.cwd()): Prom
   }
 }
 
+async function runMcpCommand(options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
+  const manifestPath = options.mcpManifestPath;
+  if (!manifestPath) {
+    const error = { code: "MCP_MANIFEST_PATH_REQUIRED", message: "deepseek mcp test requires a manifest path" };
+    if (options.output === "text") await write(`[mcp failed] ${error.message}`);
+    else await write(JSON.stringify({ ok: false, error }));
+    return;
+  }
+  const platform = new NodePlatformRuntime();
+  let manifest: McpServerManifest;
+  try {
+    const raw = await platform.readFile(manifestPath);
+    manifest = JSON.parse(raw) as McpServerManifest;
+  } catch (error) {
+    const err = { code: "MCP_MANIFEST_READ_FAILED", message: error instanceof Error ? error.message : String(error) };
+    if (options.output === "text") await write(`[mcp failed] ${err.message}`);
+    else await write(JSON.stringify({ ok: false, error: err }));
+    return;
+  }
+  const gateway = new InMemoryMcpGateway();
+  const enableReal = options.enableRealMcp === true || realTransportEnvEnabled();
+  if (enableReal && manifest.transport?.kind === "stdio") {
+    gateway.registerRealTransport("stdio", async (m) => createRealMcpAdapter(m, (command, args) => platform.spawnMcpServer(command, args)));
+  }
+  try {
+    const summary = await gateway.connectServer(manifest);
+    if (summary.health !== "connected") {
+      const payload = {
+        ok: false,
+        status: summary.health,
+        error: { code: "MCP_TRANSPORT_UNAVAILABLE", message: `MCP server is ${summary.health} (enable --enable-real-mcp?)` },
+        summary
+      };
+      if (options.output === "text") await write(`[mcp ${summary.health}] ${payload.error.message}`);
+      else await write(JSON.stringify(payload));
+      return;
+    }
+    const tools = await gateway.listTools({ schemaVersion: "1.0.0", namespace: manifest.namespace });
+    let callResult: unknown;
+    if (options.mcpCallTool) {
+      const input: JsonObject = options.mcpCallInput ? JSON.parse(options.mcpCallInput) as JsonObject : {};
+      callResult = await gateway.callTool({
+        schemaVersion: "1.0.0",
+        serverId: summary.id,
+        name: options.mcpCallTool,
+        input,
+        caller: "command"
+      });
+    }
+    const payload = {
+      ok: true,
+      status: "completed" as const,
+      summary,
+      tools,
+      ...(callResult ? { call: callResult } : {})
+    };
+    if (options.output === "text") {
+      await write(`[mcp connected] ${summary.id} health=${summary.health} tools=${tools.length}`);
+      for (const tool of tools) await write(`  - ${String(tool.qualifiedName ?? tool.name ?? "")}`);
+      if (callResult) await write(`  call: ${JSON.stringify(callResult)}`);
+    } else {
+      await write(JSON.stringify(payload));
+    }
+  } finally {
+    await gateway.disposeAll().catch(() => undefined);
+  }
+}
+
+function realTransportEnvEnabled(): boolean {
+  const proc = globalThis as unknown as { process?: { env?: { MCP_REAL_TRANSPORT?: string } } };
+  return proc.process?.env?.MCP_REAL_TRANSPORT === "1";
+}
+
 function cliSessionError(code: string, message: string): JsonObject {
   return { code, message, retryable: false, redaction: { class: "public" } };
 }
@@ -745,6 +846,13 @@ function parsePositiveNumberFlag(args: readonly string[], name: string): number 
   if (index < 0) return undefined;
   const value = Number(args[index + 1]);
   return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readFlagValue(args: readonly string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  return typeof value === "string" && !value.startsWith("-") ? value : undefined;
 }
 
 function promptFromArgs(args: readonly string[]): string {

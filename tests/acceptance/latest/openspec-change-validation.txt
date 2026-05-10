@@ -1,1 +1,1 @@
-Change 'consolidate-placeholder-packages' is valid
+Change 'mcp-client-against-real-servers' is valid

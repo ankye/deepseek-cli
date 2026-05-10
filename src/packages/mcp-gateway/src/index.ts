@@ -26,14 +26,37 @@ import { MCP_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 
 interface StoredServer {
   readonly manifest: McpServerManifest;
-  readonly adapter: McpServerAdapter | undefined;
+  adapter: McpServerAdapter | undefined;
   readonly diagnostics: readonly RedactedError[];
   health: McpHealthStatus;
+  disposer?: () => Promise<void>;
 }
+
+export type McpTransportKind = McpTransportDeclaration["kind"];
+
+export type RealTransportFactory = (manifest: McpServerManifest) => Promise<{ readonly adapter: McpServerAdapter; readonly dispose: () => Promise<void> }>;
 
 export class InMemoryMcpGateway implements McpGateway {
   private readonly servers = new Map<string, StoredServer>();
   private readonly namespaces = new Map<string, string>();
+  private readonly realTransports = new Map<McpTransportKind, RealTransportFactory>();
+
+  registerRealTransport(kind: McpTransportKind, factory: RealTransportFactory): void {
+    this.realTransports.set(kind, factory);
+  }
+
+  hasRealTransport(kind: McpTransportKind): boolean {
+    return this.realTransports.has(kind);
+  }
+
+  async disposeAll(): Promise<void> {
+    const errors: unknown[] = [];
+    for (const stored of this.servers.values()) {
+      if (!stored.disposer) continue;
+      try { await stored.disposer(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length > 0) throw errors[0];
+  }
 
   async validateManifest(manifest: McpServerManifest): Promise<McpValidationResult> {
     const diagnostics: RedactedError[] = [];
@@ -94,17 +117,28 @@ export class InMemoryMcpGateway implements McpGateway {
       throw new Error(`MCP_NAMESPACE_COLLISION: ${validation.normalized.namespace}`);
     }
 
-    const health = initialHealth(validation.normalized, adapter);
-    this.servers.set(validation.normalized.id, {
+    let resolvedAdapter = adapter;
+    let resolvedDisposer: (() => Promise<void>) | undefined;
+    if (!resolvedAdapter) {
+      const factory = this.realTransports.get(validation.normalized.transport.kind);
+      if (factory) {
+        const handle = await factory(validation.normalized);
+        resolvedAdapter = handle.adapter;
+        resolvedDisposer = handle.dispose;
+      }
+    }
+
+    const health = initialHealth(validation.normalized, resolvedAdapter);
+    const stored: StoredServer = {
       manifest: deepFreeze(cloneJson(validation.normalized)),
-      adapter,
-      diagnostics: validation.diagnostics.concat(transportDiagnostic(validation.normalized, adapter)),
-      health
-    });
+      adapter: resolvedAdapter,
+      diagnostics: validation.diagnostics.concat(transportDiagnostic(validation.normalized, resolvedAdapter)),
+      health,
+      ...(resolvedDisposer ? { disposer: resolvedDisposer } : {})
+    };
+    this.servers.set(validation.normalized.id, stored);
     this.namespaces.set(validation.normalized.namespace, validation.normalized.id);
 
-    const stored = this.servers.get(validation.normalized.id);
-    if (!stored) throw new Error("MCP_SERVER_REGISTRATION_FAILED");
     return summaryFor(stored);
   }
 
@@ -619,3 +653,8 @@ function deepFreeze<T>(value: T): T {
   }
   return value;
 }
+
+export { StdioMcpClient } from "./stdio-client.js";
+export type { StdioMcpClientOptions } from "./stdio-client.js";
+export { createRealMcpAdapter } from "./real-adapter.js";
+export type { McpProcessRunner, McpSubprocess, RealMcpAdapterHandle } from "./real-adapter.js";
