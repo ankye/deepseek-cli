@@ -223,21 +223,27 @@ model gateway 必须暴露 provider-neutral tool-call intents 与 runtime repair
 
 ### Requirement: Agent Loop Model Request Shape / Agent Loop 模型请求形态
 
-The model gateway SHALL accept agent-loop model requests containing projected context, visible tool schemas, tool result messages, reasoning options, model profile metadata, credential references, timeout metadata, and trace context.
+The model gateway SHALL accept a `ModelRequest` whose `messages` carry role, content, optional tool calls, optional tool call id for tool messages, optional reasoning content for assistant messages in thinking-mode providers, and serialize the request body to the provider's chat-completions schema with `role`, `content`, `reasoning_content` when present, `tool_calls`, and `tool_choice` when present.
 
-model gateway 必须接受 agent-loop model requests，包含 projected context、visible tool schemas、tool result messages、reasoning options、model profile metadata、credential references、timeout metadata 和 trace context。
+model gateway 必须接受 `ModelRequest`，其 `messages` 携带 role、content、可选 tool calls、tool message 的可选 tool call id、thinking-mode provider 场景下 assistant message 的可选 reasoning content；请求 body 必须按 provider chat-completions schema 序列化，顺序为 `role`、`content`、存在时的 `reasoning_content`、`tool_calls`、存在时的 `tool_choice`。
 
-#### Scenario: Tool result is sent provider-neutrally / 工具结果以 provider-neutral 方式发送
+#### Scenario: Assistant reasoning is serialized when present / assistant reasoning 存在时被序列化
 
-- **WHEN** runtime feeds a tool result back to the model
-- **THEN** the gateway converts provider-neutral tool result messages into the selected provider protocol without exposing provider wire types to runtime callers
-- **中文** 当 runtime 把工具结果回传模型时，gateway 必须把 provider-neutral tool result messages 转换为所选 provider protocol，且不得向 runtime callers 暴露 provider wire types。
+- **WHEN** a `ModelChatMessage` for role `assistant` carries a non-empty `reasoningContent`
+- **THEN** the outgoing chat-completions body contains `reasoning_content` on that message alongside `role` and `content`, preserving the reasoning bytes verbatim
+- **中文** 当某个 `ModelChatMessage`（role 为 `assistant`）携带非空 `reasoningContent` 时，出站 chat-completions body 必须在该消息上与 `role`、`content` 并列出现 `reasoning_content`，并按字节原样携带 reasoning。
 
-#### Scenario: Unsupported provider feature fails before network / 不支持的 provider feature 在网络前失败
+#### Scenario: Reasoning field is omitted when absent / reasoning 缺失时字段省略
 
-- **WHEN** an agent loop request requires tools, reasoning, streaming, or context features unsupported by the configured model profile
-- **THEN** the gateway returns a typed unsupported-capability error before sending a provider request
-- **中文** 当 agent loop request 要求 tools、reasoning、streaming 或 context features，而配置的 model profile 不支持时，gateway 必须在发送 provider request 前返回 typed unsupported-capability error。
+- **WHEN** a `ModelChatMessage` has no `reasoningContent`
+- **THEN** the outgoing chat-completions body for that message must not include a `reasoning_content` key, a blank string, or a null value
+- **中文** 当某个 `ModelChatMessage` 没有 `reasoningContent` 时，出站 chat-completions body 不得包含 `reasoning_content` 键、空字符串或 null 值。
+
+#### Scenario: Thinking-mode continuation satisfies provider contract / Thinking-mode 继续满足 provider 契约
+
+- **WHEN** a live DeepSeek thinking-mode turn emits reasoning plus a tool call and the runtime issues a continuation request
+- **THEN** the continuation body carries `reasoning_content` on the assistant message that recorded the tool call, satisfying the DeepSeek thinking-mode requirement that reasoning be passed back
+- **中文** 当 live DeepSeek thinking-mode turn 发出 reasoning 与 tool call，runtime 再发起 continuation 请求时，continuation body 必须在记录该 tool call 的 assistant message 上携带 `reasoning_content`，满足 DeepSeek thinking-mode 的回传要求。
 
 ### Requirement: Live Agent Loop Smoke Version Contract / Live Agent Loop Smoke 版本契约
 
