@@ -13,10 +13,11 @@ import type {
 import { redactSecretTextForRuntime } from "./errors.js";
 
 export function modelToolSchema(manifest: CapabilityManifest): JsonObject {
+  const safeName = toSafeToolName(String(manifest.id));
   return {
     type: "function",
     function: {
-      name: String(manifest.id),
+      name: safeName,
       description: manifest.description ?? manifest.name,
       parameters: manifest.inputSchema
     },
@@ -29,6 +30,22 @@ export function modelToolSchema(manifest: CapabilityManifest): JsonObject {
       replayPolicy: manifest.replayPolicy ?? {}
     }
   };
+}
+
+const TOOL_NAME_SAFE_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+export function toSafeToolName(capabilityId: string): string {
+  if (TOOL_NAME_SAFE_PATTERN.test(capabilityId)) return capabilityId;
+  return capabilityId.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function resolveCapabilityId(providerToolName: string, manifests: readonly CapabilityManifest[]): string {
+  for (const manifest of manifests) {
+    const id = String(manifest.id);
+    if (id === providerToolName) return id;
+    if (toSafeToolName(id) === providerToolName) return id;
+  }
+  return providerToolName;
 }
 
 export function providerMetadata(request: AgentLoopRequest): ModelProviderEventMetadata {

@@ -48,5 +48,5 @@
 - [x] 6.4 Run `node scripts/check-boundaries.mjs`.
 - [x] 6.5 Run `npm run test:contracts`, `npm run test:integration`, `npm run test:golden`, `npm run test:matrix`, and `npm run test:e2e`.
 - [x] 6.6 Run `npm run build:cli` and local CLI smoke checks for deterministic tool-loop commands.
-- [ ] 6.7 Run gated live checks manually when credentials are available: `DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 npm run smoke:live:agent-tools`.
+- [x] 6.7 Run gated live checks manually when credentials are available: `DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 npm run smoke:live:agent-tools`.
 - [x] 6.8 Validate OpenSpec with `openspec validate enable-live-agent-tool-execution --strict` and `openspec validate --specs --strict`.

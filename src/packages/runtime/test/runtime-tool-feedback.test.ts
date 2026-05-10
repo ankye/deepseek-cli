@@ -186,6 +186,52 @@ describe("agent loop typed tool feedback", () => {
     assert.equal(events.at(-1)?.kind, "agent.loop.completed");
     await kernel.shutdown();
   });
+
+  it("projects tool manifest names through the OpenAI-safe pattern while keeping capability ids on kernel events", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "safe names\n");
+    const recorder = new ToolSchemaRecordingGateway();
+    const loopDeps = { ...deps, models: recorder };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "observe tool schema",
+      caller: "runtime.safe-name.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      live: true,
+      limits: { maxModelIterations: 1 }
+    }));
+
+    for (const name of recorder.observedToolNames) {
+      assert.match(name, /^[A-Za-z0-9_-]+$/, `tool name ${name} must match OpenAI pattern`);
+    }
+    assert.equal(recorder.observedToolNames.includes("core_file_read"), true);
+    assert.equal(recorder.observedToolNames.includes("core.file.read"), false);
+    await kernel.shutdown();
+  });
+
+  it("resolves a sanitized tool-call name returned by the provider back to the real capability id", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "resolve back\n");
+    const loopDeps = { ...deps, models: new SingleToolCallModelGateway("core_file_read", { path: "README.md" }) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "sanitized name",
+      caller: "runtime.safe-name.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const intent = events.find((event) => event.kind === "model.tool.intent");
+    assert.equal((intent?.data as JsonObject).name, "core.file.read");
+    const feedback = readFeedback(events);
+    assert.equal(feedback?.status, "success");
+    await kernel.shutdown();
+  });
 });
 
 function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {
@@ -260,9 +306,12 @@ class DenyAllPolicyEngine implements PolicyEngine {
 
 class ToolSchemaRecordingGateway implements ModelGateway {
   readonly observedSideEffects: string[] = [];
+  readonly observedToolNames: string[] = [];
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     for (const tool of request.tools ?? []) {
+      const fn = (tool as JsonObject).function as JsonObject | undefined;
+      if (fn && typeof fn.name === "string") this.observedToolNames.push(fn.name);
       const metadata = (tool as JsonObject).metadata as JsonObject | undefined;
       const sideEffect = metadata && typeof metadata.sideEffect === "string" ? metadata.sideEffect : undefined;
       if (sideEffect) this.observedSideEffects.push(sideEffect);

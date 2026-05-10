@@ -22,7 +22,8 @@ import {
   buildToolResultFeedback,
   modelToolResultText,
   modelToolSchema,
-  providerMetadata
+  providerMetadata,
+  resolveCapabilityId
 } from "./model-tooling.js";
 import { runtimeTrace, stableHash } from "./trace.js";
 
@@ -146,12 +147,13 @@ export async function* runAgentLoop(
       if (modelEvent.kind === "tool-call") {
         requestedTool = true;
         const toolCallId = modelEvent.id ?? "";
+        const toolName = resolveCapabilityId(modelEvent.name, visibleCapabilities);
         if (toolCalls >= limits.maxToolCalls) {
           const error = kernelError("KERNEL_QUEUE_BACKPRESSURE", "Agent loop tool-call limit exceeded", { maxToolCalls: limits.maxToolCalls });
           diagnostics.push(error);
           const limitFeedback = buildToolResultFeedback({
             toolCallId,
-            toolName: modelEvent.name,
+            toolName,
             status: "rejected",
             text: error.message,
             diagnostics: [error],
@@ -162,7 +164,7 @@ export async function* runAgentLoop(
           const rejected = agentLoopEvent("model.tool.rejected", sessionId, turnId, trace, {
             reason: "tool-call-limit",
             maxToolCalls: limits.maxToolCalls,
-            toolName: modelEvent.name,
+            toolName,
             feedback: limitFeedback
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, rejected);
@@ -177,7 +179,7 @@ export async function* runAgentLoop(
         toolCalls += 1;
         const intentEvent = agentLoopEvent("model.tool.intent", sessionId, turnId, trace, {
           toolCallId,
-          name: modelEvent.name,
+          name: toolName,
           input: modelEvent.input,
           provider: modelEvent.provider ?? providerMetadata(request),
           iteration: iterations
@@ -189,7 +191,7 @@ export async function* runAgentLoop(
           content: "",
           toolCalls: [{
             id: modelEvent.id ?? `tool-${iterations}-${toolCalls}`,
-            name: modelEvent.name,
+            name: toolName,
             input: modelEvent.input
           }]
         });
@@ -198,7 +200,7 @@ export async function* runAgentLoop(
         const preflight = await deps.toolIntentPreflight.check({
           intent: {
             ...(modelEvent.id ? { toolCallId: modelEvent.id } : {}),
-            name: modelEvent.name,
+            name: toolName,
             input: modelEvent.input,
             source: "model"
           },
@@ -223,7 +225,7 @@ export async function* runAgentLoop(
           diagnostics.push(error);
           const preflightFeedback = buildToolResultFeedback({
             toolCallId,
-            toolName: modelEvent.name,
+            toolName,
             ...(preflight.capabilityId ? { capabilityId: String(preflight.capabilityId) } : {}),
             status: "rejected",
             text: `Tool request rejected: ${error.message}`,
@@ -234,14 +236,14 @@ export async function* runAgentLoop(
           });
           const preflightResultEvent = agentLoopEvent("model.tool.result", sessionId, turnId, trace, {
             toolCallId,
-            toolName: modelEvent.name,
+            toolName,
             result: preflightFeedback.preview.text,
             terminalKind: "preflight.rejected",
             feedback: preflightFeedback
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, preflightResultEvent);
           yield preflightResultEvent;
-          messages.push({ role: "tool", content: preflightFeedback.preview.text, toolCallId, toolName: modelEvent.name });
+          messages.push({ role: "tool", content: preflightFeedback.preview.text, toolCallId, toolName });
           continue;
         }
 
@@ -264,10 +266,10 @@ export async function* runAgentLoop(
         }
         const terminal = lastRuntimeEvent(toolEvents, (event) => event.kind === "capability.completed" || event.kind === "capability.failed" || event.kind === "capability.cancelled" || event.kind === "execution.rejected");
         const toolResultText = modelToolResultText(terminal);
-        messages.push({ role: "tool", content: toolResultText, toolCallId, toolName: modelEvent.name });
+        messages.push({ role: "tool", content: toolResultText, toolCallId, toolName });
         const executionFeedback = buildToolResultFeedback({
           toolCallId,
-          toolName: modelEvent.name,
+          toolName,
           capabilityId: String(preflight.capabilityId),
           status: executionFeedbackStatus(terminal),
           text: toolResultText,
@@ -277,7 +279,7 @@ export async function* runAgentLoop(
         });
         const resultEvent = agentLoopEvent("model.tool.result", sessionId, turnId, trace, {
           toolCallId,
-          toolName: modelEvent.name,
+          toolName,
           result: boundedModelText(toolResultText, limits.maxOutputBytes),
           terminalKind: terminal?.kind ?? "unknown",
           feedback: executionFeedback
