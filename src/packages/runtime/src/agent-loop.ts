@@ -84,7 +84,7 @@ export async function* runAgentLoop(
 
   while (iterations < limits.maxModelIterations) {
     iterations += 1;
-    const visibleCapabilities = await deps.capabilities.listModelVisible();
+    const visibleCapabilities = projectToolSet(await deps.capabilities.listModelVisible(), request);
     const modelRequested = agentLoopEvent("model.requested", sessionId, turnId, trace, {
       iteration: iterations,
       model: request.profile.model,
@@ -391,4 +391,16 @@ function executionFeedbackStatus(terminal: RuntimeEvent | undefined): ToolFeedba
   }
   if (terminal.error?.code === "KERNEL_SCHEDULER_TIMEOUT") return "timeout";
   return "failed";
+}
+
+function projectToolSet(
+  capabilities: readonly import("@deepseek/platform-contracts").CapabilityManifest[],
+  request: AgentLoopRequest
+): readonly import("@deepseek/platform-contracts").CapabilityManifest[] {
+  const policy = request.toolProjection ?? (request.live ? "read-only" : "all");
+  if (policy === "all") return capabilities;
+  if (policy === "read-write") {
+    return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read" || manifest.sideEffect === "write");
+  }
+  return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read");
 }

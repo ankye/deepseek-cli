@@ -47,12 +47,13 @@ describe("tool intent preflight", () => {
     assert.equal(result.repairs.some((repair) => repair.kind === "path-separator-normalized"), true);
   });
 
-  it("rejects unsafe absolute paths, parent traversal, home paths, and ambiguous drive-relative paths", () => {
+  it("rejects unsafe absolute paths, parent traversal, home paths, null bytes, and ambiguous drive-relative paths", () => {
     const unsafe = [
       ["/etc/passwd", "TOOL_INTENT_ABSOLUTE_PATH_REJECTED"],
       ["../secret.txt", "TOOL_INTENT_PARENT_TRAVERSAL_REJECTED"],
       ["~/secret.txt", "TOOL_INTENT_HOME_PATH_REJECTED"],
-      ["C:secret.txt", "TOOL_INTENT_AMBIGUOUS_PLATFORM_PATH"]
+      ["C:secret.txt", "TOOL_INTENT_AMBIGUOUS_PLATFORM_PATH"],
+      ["file\x00.txt", "TOOL_INTENT_NULL_BYTE_REJECTED"]
     ] as const;
 
     for (const [path, code] of unsafe) {

@@ -116,6 +116,54 @@ describe("agent loop typed tool feedback", () => {
     assert.equal(events.at(-1)?.kind, "agent.loop.failed");
     await kernel.shutdown();
   });
+
+  it("projects only read-only tools to the model when live=true is set", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "projection\n");
+    const recorder = new ToolSchemaRecordingGateway();
+    const loopDeps = { ...deps, models: recorder };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "tell me a file",
+      caller: "runtime.projection.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      live: true,
+      limits: { maxModelIterations: 1 }
+    }));
+
+    const sideEffects = new Set(recorder.observedSideEffects);
+    assert.equal(sideEffects.has("read"), true);
+    assert.equal(sideEffects.has("write"), false);
+    assert.equal(sideEffects.has("process"), false);
+    assert.equal(sideEffects.has("network"), false);
+    await kernel.shutdown();
+  });
+
+  it("projects all tools when toolProjection is explicitly set to all", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const recorder = new ToolSchemaRecordingGateway();
+    const loopDeps = { ...deps, models: recorder };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "anything",
+      caller: "runtime.projection.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      live: true,
+      toolProjection: "all",
+      limits: { maxModelIterations: 1 }
+    }));
+
+    const sideEffects = new Set(recorder.observedSideEffects);
+    assert.equal(sideEffects.has("write"), true);
+    assert.equal(sideEffects.has("process"), true);
+    await kernel.shutdown();
+  });
 });
 
 function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {
@@ -165,5 +213,24 @@ class DenyAllPolicyEngine implements PolicyEngine {
       reason: "Denied by runtime feedback test policy",
       audit: { policy: "deny-all-feedback-test" }
     };
+  }
+}
+
+class ToolSchemaRecordingGateway implements ModelGateway {
+  readonly observedSideEffects: string[] = [];
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    for (const tool of request.tools ?? []) {
+      const metadata = (tool as JsonObject).metadata as JsonObject | undefined;
+      const sideEffect = metadata && typeof metadata.sideEffect === "string" ? metadata.sideEffect : undefined;
+      if (sideEffect) this.observedSideEffects.push(sideEffect);
+    }
+    yield { kind: "delta", text: "noop" };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
   }
 }

@@ -215,6 +215,8 @@ export interface AgentLoopLimits extends JsonObject {
   readonly maxRetries: number;
 }
 
+export type AgentLoopToolProjection = "read-only" | "read-write" | "all";
+
 export interface AgentLoopRequest extends JsonObject {
   readonly prompt: string;
   readonly sessionId?: SessionId;
@@ -228,6 +230,7 @@ export interface AgentLoopRequest extends JsonObject {
   readonly timeoutMs?: number;
   readonly limits?: Partial<AgentLoopLimits>;
   readonly live?: boolean;
+  readonly toolProjection?: AgentLoopToolProjection;
   readonly trace?: TraceContext;
 }
 
