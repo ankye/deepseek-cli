@@ -1,7 +1,7 @@
 import { appDependencies, apps, packageDependencies, packages } from "../workspace-packages.mjs";
 
 function packageNameForWorkspace(workspaceName) {
-  if (workspaceName === "cli") return "deekseek-cli";
+  if (workspaceName === "cli") return "deepseek-agent-cli";
   return `@deepseek/${workspaceName}`;
 }
 
@@ -41,7 +41,7 @@ export const lintConventions = {
     [
       "cli",
       {
-        packageName: "deekseek-cli",
+        packageName: "deepseek-agent-cli",
         binName: "deepseek",
         files: new Set(["dist", "README.md"])
       }
@@ -49,7 +49,7 @@ export const lintConventions = {
   ]),
   appPackages: new Map([
     ["cli", new Set(["@deepseek/vscode-extension"])],
-    ["vscode-extension", new Set(["@deepseek/cli", "deekseek-cli"])]
+    ["vscode-extension", new Set(["@deepseek/cli", "deepseek-agent-cli"])]
   ]),
   packageRules: {
     "platform-contracts": {

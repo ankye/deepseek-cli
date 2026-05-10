@@ -65,19 +65,19 @@ Acceptance evidence lives under `tests/acceptance/`.
 
 ## npm Publishing
 
-- Published CLI package name: `deekseek-cli`.
+- Published CLI package name: `deepseek-agent-cli`.
 - CLI package path: `src/apps/cli`.
 - Build before publishing:
 
 ```bash
 npm run build:cli
-npm publish --workspace deekseek-cli --access public
+npm publish --workspace deepseek-agent-cli --access public
 ```
 
 - Verify dry-run output before publishing:
 
 ```bash
-npm publish --dry-run --workspace deekseek-cli --access public
+npm publish --dry-run --workspace deepseek-agent-cli --access public
 ```
 
 The npm tarball should contain only `README.md`, `dist/index.js`, and package metadata for the CLI package.

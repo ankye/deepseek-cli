@@ -1,9 +1,9 @@
-# deekseek-cli
+# deepseek-agent-cli
 
 Future-ready DeepSeek coding-agent CLI framework preview.
 
 ```bash
-npm install -g deekseek-cli
+npm install -g deepseek-agent-cli
 deepseek run "smoke"
 deepseek run "smoke" --output jsonl
 deepseek chat --output jsonl

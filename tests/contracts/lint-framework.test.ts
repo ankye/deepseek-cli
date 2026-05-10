@@ -31,7 +31,7 @@ const conventions = {
         ["runtime", "@deepseek/runtime"],
         ["model-gateway", "@deepseek/model-gateway"],
         ["credential-auth-management", "@deepseek/credential-auth-management"],
-        ["cli", "deekseek-cli"],
+        ["cli", "deepseek-agent-cli"],
         ["vscode-extension", "@deepseek/vscode-extension"]
       ]),
       packageDependencyPolicy: new Map([
@@ -45,11 +45,11 @@ const conventions = {
     ["vscode-extension", new Set(["@deepseek/platform-contracts"])]
   ]),
   publishableApps: new Map([
-    ["cli", { packageName: "deekseek-cli", binName: "deepseek", files: new Set(["dist", "README.md"]) }]
+    ["cli", { packageName: "deepseek-agent-cli", binName: "deepseek", files: new Set(["dist", "README.md"]) }]
   ]),
   appPackages: new Map([
     ["cli", new Set(["@deepseek/vscode-extension"])],
-    ["vscode-extension", new Set(["deekseek-cli"])]
+    ["vscode-extension", new Set(["deepseek-agent-cli"])]
   ]),
   packageRules: {
     "platform-contracts": {

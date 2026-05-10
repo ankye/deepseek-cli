@@ -1,12 +1,12 @@
 
 > deepseek-cli-platform@0.1.0 build:cli
-> npm run build --workspace deekseek-cli
+> npm run build --workspace deepseek-ai
 
 
-> deekseek-cli@0.1.0 build
+> deepseek-ai@0.1.3 build
 > esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js
 
 
-  dist\index.js  57.4kb
+  dist\index.js  617.7kb
 
-Done in 12ms
+Done in 38ms

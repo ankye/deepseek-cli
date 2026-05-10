@@ -39,7 +39,7 @@ for (const name of apps) {
   const extra =
     name === "cli"
       ? {
-          name: "deekseek-cli",
+          name: "deepseek-agent-cli",
           private: false,
           exports: {
             ".": "./dist/index.js"

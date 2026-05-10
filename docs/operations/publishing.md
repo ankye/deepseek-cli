@@ -5,7 +5,7 @@ Published CLI package name:
 已发布 CLI 包名：
 
 ```text
-deekseek-cli
+deepseek-agent-cli
 ```
 
 CLI package path:
@@ -25,7 +25,7 @@ npm run build:cli
 ## Dry Run / 干跑
 
 ```bash
-npm publish --dry-run --workspace deekseek-cli --access public
+npm publish --dry-run --workspace deepseek-agent-cli --access public
 ```
 
 The tarball should contain only CLI package metadata, README, and built `dist/index.js`.
@@ -35,7 +35,7 @@ tarball 应只包含 CLI package metadata、README 和构建后的 `dist/index.j
 ## Publish / 发布
 
 ```bash
-npm publish --workspace deekseek-cli --access public
+npm publish --workspace deepseek-agent-cli --access public
 ```
 
 ## Release Hygiene / 发布卫生

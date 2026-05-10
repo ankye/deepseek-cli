@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "scaffold": "node scripts/scaffold-workspace.mjs",
-    "build:cli": "npm run build --workspace deekseek-cli",
+    "build:cli": "npm run build --workspace deepseek-agent-cli",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node scripts/lint.mjs",
     "test": "tsx --test \"src/**/*.test.ts\" \"tests/**/*.test.ts\"",
