@@ -181,6 +181,24 @@ Thinking-mode continuation / Thinking 模式继续:
   `model.reasoning.persisted` typed event，字段为 iteration、byte
   length 和 redaction tag，不含 reasoning 原文。
 
+Text-mode streaming contract / text 模式流式契约:
+
+- In text output mode the CLI coalesces streaming events into
+  per-iteration lines: consecutive `model.delta` chunks form one
+  inline growing line, and consecutive `model.reasoning` chunks
+  share a single `[reasoning]` indicator line (the prefix is
+  emitted with a trailing space at runtime). Any non-streaming
+  event (`model.tool.intent`, `capability.completed`, etc.) closes
+  the open streaming line with a newline before rendering its own
+  status. JSON and JSONL modes keep one-event-per-line semantics,
+  byte-identical to before. / text 输出模式下 CLI 把流式事件合并
+  为每 iteration 一行：连续 `model.delta` chunk 拼成一条 inline
+  递增行，连续 `model.reasoning` chunk 共用一个 `[reasoning]` 指示
+  行（运行时在该前缀后带一个空格）。任何非流式事件
+  （`model.tool.intent`、`capability.completed` 等）在渲染自身状态
+  前先用一次换行关闭打开的流式行。JSON 与 JSONL 模式保持一事件
+  一行语义，与之前字节一致。
+
 Troubleshooting / 排障:
 
 - `skipped`: gate env var missing, or no credentials in `.env` / 环境

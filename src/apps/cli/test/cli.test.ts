@@ -150,6 +150,77 @@ describe("cli host adapter", () => {
     assert.equal(fork.ok, false);
     assert.equal(fork.error?.code, "SESSION_NOT_FOUND");
   });
+
+  it("coalesces streaming model deltas into one inline line in text mode", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const streamingDeps = { ...deps, models: new StreamingDeltaModelGateway() };
+    await registerRuntimeCoreTools(streamingDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(streamingDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "hello", "--output", "text"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: streamingDeps, kernel })
+      }
+    );
+    const combined = lines.join("\n");
+    assert.equal(combined.includes("hi there friend"), true, combined);
+    // each delta chunk must not be a standalone line
+    assert.equal(lines.includes("hi "), false);
+    assert.equal(lines.includes("there "), false);
+    assert.equal(lines.includes("friend"), false);
+  });
+
+  it("emits a single [reasoning] indicator per iteration in text mode", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const reasoningDeps = { ...deps, models: new ReasoningStreamModelGateway() };
+    await registerRuntimeCoreTools(reasoningDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(reasoningDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "think", "--output", "text"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: reasoningDeps, kernel })
+      }
+    );
+    const reasoningCount = lines.filter((line) => line.startsWith("[reasoning] ")).length;
+    assert.equal(reasoningCount, 1, `expected one reasoning prefix, got: ${JSON.stringify(lines)}`);
+    const combined = lines.join("\n");
+    assert.equal(combined.includes("plan first step."), true, combined);
+  });
+
+  it("leaves JSONL mode byte-identical to today (no streaming coalescence)", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const streamingDeps = { ...deps, models: new StreamingDeltaModelGateway() };
+    await registerRuntimeCoreTools(streamingDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(streamingDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "hello", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: streamingDeps, kernel })
+      }
+    );
+    const deltaEvents = lines
+      .map((line) => JSON.parse(line) as { kind: string; data?: { text?: string } })
+      .filter((event) => event.kind === "model.delta");
+    assert.equal(deltaEvents.length, 3, "JSONL mode must still produce one event per delta chunk");
+  });
 });
 
 class ToolCallingModelGateway implements ModelGateway {
@@ -162,6 +233,35 @@ class ToolCallingModelGateway implements ModelGateway {
     }
     yield { kind: "tool-call", id: "call-readme", name: "core.file.read", input: { path: "./README.md" } };
     yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class StreamingDeltaModelGateway implements ModelGateway {
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield { kind: "delta", text: "hi " };
+    yield { kind: "delta", text: "there " };
+    yield { kind: "delta", text: "friend" };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class ReasoningStreamModelGateway implements ModelGateway {
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield { kind: "reasoning", text: "plan ", redaction: { class: "internal" } };
+    yield { kind: "reasoning", text: "first ", redaction: { class: "internal" } };
+    yield { kind: "reasoning", text: "step.", redaction: { class: "internal" } };
+    yield { kind: "delta", text: "ok" };
+    yield { kind: "finish", reason: "stop" };
     yield { kind: "done" };
   }
 

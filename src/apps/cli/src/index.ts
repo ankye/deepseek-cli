@@ -131,6 +131,8 @@ export async function runCli(
 ): Promise<void> {
   const options = parseCliArgs(args, terminal);
   const writer = (line: string) => Promise.resolve(write(line));
+  const inlineWriter = createInlineWriter(write, terminal);
+  const bufferedInline = shouldBufferInline(write, terminal);
   if (options.command === "help") {
     for (const line of cliUsageLines()) await writer(line);
     return;
@@ -148,13 +150,27 @@ export async function runCli(
     return;
   }
   if (options.command === "chat") {
-    await runChatCommand(options, writer, input, runOptions);
+    await runChatCommand(options, writer, inlineWriter, bufferedInline, input, runOptions);
     return;
   }
-  await runOneShotCommand(options, writer, runOptions);
+  await runOneShotCommand(options, writer, inlineWriter, bufferedInline, runOptions);
 }
 
-async function runOneShotCommand(options: CliOptions, write: (line: string) => Promise<void>, runOptions: CliRunOptions): Promise<void> {
+function createInlineWriter(write: CliWrite, terminal: CliTerminalFlags): (chunk: string) => Promise<void> {
+  if (write === console.log && terminal.stdoutIsTTY) {
+    return (chunk: string) => {
+      process.stdout.write(chunk);
+      return Promise.resolve();
+    };
+  }
+  return (chunk: string) => Promise.resolve(write(chunk));
+}
+
+function shouldBufferInline(write: CliWrite, terminal: CliTerminalFlags): boolean {
+  return !(write === console.log && terminal.stdoutIsTTY);
+}
+
+async function runOneShotCommand(options: CliOptions, write: (line: string) => Promise<void>, writeInline: (chunk: string) => Promise<void>, bufferedInline: boolean, runOptions: CliRunOptions): Promise<void> {
   const workspaceRoot = process.cwd();
   const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
   try {
@@ -166,14 +182,14 @@ async function runOneShotCommand(options: CliOptions, write: (line: string) => P
       profile: defaultDeepSeekProfile,
       live: options.live,
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
-    }, write);
+    }, write, writeInline, bufferedInline);
     await renderFinalJsonIfNeeded(options.output, events, write);
   } finally {
     await runtime.kernel.shutdown("cli-run-completed");
   }
 }
 
-async function runChatCommand(options: CliOptions, write: (line: string) => Promise<void>, input: CliInputStream, runOptions: CliRunOptions): Promise<void> {
+async function runChatCommand(options: CliOptions, write: (line: string) => Promise<void>, writeInline: (chunk: string) => Promise<void>, bufferedInline: boolean, input: CliInputStream, runOptions: CliRunOptions): Promise<void> {
   const workspaceRoot = process.cwd();
   const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
   let sessionId: SessionId | undefined;
@@ -197,7 +213,7 @@ async function runChatCommand(options: CliOptions, write: (line: string) => Prom
         profile: defaultDeepSeekProfile,
         live: options.live,
         ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
-      }, write);
+      }, write, writeInline);
       const terminal = finalAgentLoopEvent(events);
       sessionId = terminal?.sessionId ?? sessionId;
       await renderFinalJsonIfNeeded(options.output, events, write);
@@ -214,9 +230,29 @@ async function emitAgentLoop(
   deps: RuntimeDependencies,
   kernel: RuntimeKernel,
   request: Parameters<typeof runAgentLoop>[2],
-  write: (line: string) => Promise<void>
+  write: (line: string) => Promise<void>,
+  writeInline: (chunk: string) => Promise<void> = write,
+  bufferedInline = false
 ): Promise<readonly RuntimeEvent[]> {
   const events: RuntimeEvent[] = [];
+  const stream: TextStreamState = { deltaOpen: false, reasoningOpen: false, inlineBuffer: "" };
+  const inline = async (chunk: string): Promise<void> => {
+    if (bufferedInline) {
+      stream.inlineBuffer += chunk;
+      return;
+    }
+    await writeInline(chunk);
+  };
+  const flushInline = async (): Promise<void> => {
+    if (bufferedInline && stream.inlineBuffer.length > 0) {
+      await write(stream.inlineBuffer);
+      stream.inlineBuffer = "";
+      return;
+    }
+    if (!bufferedInline) {
+      await write("");
+    }
+  };
   for await (const event of runAgentLoop(deps, kernel, request)) {
     events.push(event);
     if (request.outputMode === "jsonl") {
@@ -224,11 +260,62 @@ async function emitAgentLoop(
       continue;
     }
     if (request.outputMode === "text") {
-      const line = renderText(event);
-      if (line) await write(line);
+      await renderTextEvent(event, stream, write, inline, flushInline);
     }
   }
+  await closeOpenTextStreams(stream, flushInline);
   return events;
+}
+
+interface TextStreamState {
+  deltaOpen: boolean;
+  reasoningOpen: boolean;
+  inlineBuffer: string;
+}
+
+async function renderTextEvent(
+  event: RuntimeEvent,
+  stream: TextStreamState,
+  write: (line: string) => Promise<void>,
+  writeInline: (chunk: string) => Promise<void>,
+  flushInline: () => Promise<void>
+): Promise<void> {
+  if (event.kind === "model.delta") {
+    if (stream.reasoningOpen) {
+      await flushInline();
+      stream.reasoningOpen = false;
+    }
+    stream.deltaOpen = true;
+    await writeInline(String(event.data.text ?? ""));
+    return;
+  }
+  if (event.kind === "model.reasoning") {
+    if (stream.deltaOpen) {
+      await flushInline();
+      stream.deltaOpen = false;
+    }
+    if (!stream.reasoningOpen) {
+      await writeInline("[reasoning] ");
+      stream.reasoningOpen = true;
+    }
+    await writeInline(String(event.data.text ?? ""));
+    return;
+  }
+  if (event.kind === "model.requested") {
+    await closeOpenTextStreams(stream, flushInline);
+    return;
+  }
+  await closeOpenTextStreams(stream, flushInline);
+  const line = renderText(event);
+  if (line) await write(line);
+}
+
+async function closeOpenTextStreams(stream: TextStreamState, flushInline: () => Promise<void>): Promise<void> {
+  if (stream.deltaOpen || stream.reasoningOpen) {
+    await flushInline();
+    stream.deltaOpen = false;
+    stream.reasoningOpen = false;
+  }
 }
 
 async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, runOptions: CliRunOptions): Promise<{ readonly deps: RuntimeDependencies; readonly kernel: RuntimeKernel }> {
@@ -246,8 +333,6 @@ async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, runOptio
 }
 
 function renderText(event: RuntimeEvent): string {
-  if (event.kind === "model.delta") return String(event.data.text ?? "");
-  if (event.kind === "model.reasoning") return "[reasoning]";
   if (event.kind === "model.requested") return `[model] request iteration=${String(event.data.iteration ?? "")}`;
   if (event.kind === "model.tool.intent") return `[tool] ${String(event.data.name ?? "")}`;
   if (event.kind === "model.tool.repaired") return "[tool repaired]";
