@@ -1,5 +1,5 @@
-# fail 0
+# fail 1
 # cancelled 0
 # skipped 4
 # todo 0
-# duration_ms 11679.5092
+# duration_ms 12107.9552

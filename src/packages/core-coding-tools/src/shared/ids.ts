@@ -16,5 +16,7 @@ export const coreToolIds = {
   webFetch: asId<"capability">("core.web.fetch"),
   webSearch: asId<"capability">("core.web.search"),
   agentSpawn: asId<"capability">("core.agent.spawn"),
-  hookList: asId<"capability">("core.hook.list")
+  hookList: asId<"capability">("core.hook.list"),
+  skillList: asId<"capability">("core.skill.list"),
+  skillActivate: asId<"capability">("core.skill.activate")
 } as const;

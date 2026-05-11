@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { HookHandler, HookManifest, JsonObject, RuntimeEvent } from "@deepseek/platform-contracts";
+import type { HookHandler, HookManifest, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, RuntimeEvent } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
@@ -26,9 +26,9 @@ function baseManifest(overrides: Partial<HookManifest>): HookManifest {
   } as HookManifest;
 }
 
-class SingleToolThenFinishModelGateway {
+class SingleToolThenFinishModelGateway implements ModelGateway {
   constructor(private readonly toolName: string, private readonly input: JsonObject) {}
-  async *stream(request: { messages?: readonly { role: string }[] }): AsyncIterable<JsonObject> {
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     if (request.messages?.some((message) => message.role === "tool")) {
       yield { kind: "delta", text: "done" };
       yield { kind: "finish", reason: "stop" };

@@ -83,6 +83,6 @@ export async function registerRuntimeBuiltins(deps: Pick<RuntimeDependencies, "c
   });
 }
 
-export async function registerRuntimeCoreTools(deps: Pick<RuntimeDependencies, "capabilities" | "platform" | "workspaceState" | "webFetch" | "webSearch" | "backgroundTasks" | "agentSpawner" | "hooks">, workspaceRoot: string): Promise<void> {
+export async function registerRuntimeCoreTools(deps: Pick<RuntimeDependencies, "capabilities" | "platform" | "workspaceState" | "webFetch" | "webSearch" | "backgroundTasks" | "agentSpawner" | "hooks" | "skills">, workspaceRoot: string): Promise<void> {
   await registerCoreCodingToolsForRuntime(deps, workspaceRoot);
 }

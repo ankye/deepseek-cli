@@ -31,7 +31,9 @@ describe("core coding tool contracts", () => {
       "core.web.fetch",
       "core.web.search",
       "core.agent.spawn",
-      "core.hook.list"
+      "core.hook.list",
+      "core.skill.list",
+      "core.skill.activate"
     ]);
     for (const manifest of manifests) {
       assert.equal(manifest.enabled, true);

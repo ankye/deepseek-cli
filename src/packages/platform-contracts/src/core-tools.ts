@@ -18,7 +18,9 @@ export type CoreCodingToolName =
   | "web.fetch"
   | "web.search"
   | "agent.spawn"
-  | "hook.list";
+  | "hook.list"
+  | "skill.list"
+  | "skill.activate";
 
 export type CoreCodingToolStatus = "completed" | "failed" | "rejected";
 export type PlanItemStatus = "pending" | "in_progress" | "completed" | "blocked";
