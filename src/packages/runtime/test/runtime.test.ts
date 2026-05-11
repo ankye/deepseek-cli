@@ -72,13 +72,16 @@ describe("headless runtime", () => {
     assert.deepEqual(events.map((event) => event.kind), [
       "agent.loop.started",
       "turn.started",
+      "hooks.invoked",
       "context.projection.started",
       "context.projection.completed",
+      "hooks.invoked",
       "model.requested",
       "model.delta",
       "usage.updated",
       "model.finished",
       "model.done",
+      "hooks.invoked",
       "turn.completed",
       "agent.loop.completed"
     ]);

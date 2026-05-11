@@ -1,1 +1,1 @@
-Change 'align-builtin-tools-with-claude-cli' is valid
+Change 'wire-hook-invocations-into-runtime' is valid

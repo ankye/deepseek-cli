@@ -17,7 +17,8 @@ export type CoreCodingToolName =
   | "todo.plan"
   | "web.fetch"
   | "web.search"
-  | "agent.spawn";
+  | "agent.spawn"
+  | "hook.list";
 
 export type CoreCodingToolStatus = "completed" | "failed" | "rejected";
 export type PlanItemStatus = "pending" | "in_progress" | "completed" | "blocked";

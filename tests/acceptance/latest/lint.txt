@@ -1,5 +1,5 @@
 > deepseek-cli-platform@0.1.0 lint
 > node scripts/lint.mjs
 
-ast lint passed (238 files, 16 rules)
+ast lint passed (242 files, 16 rules)
 lint passed

@@ -1,4 +1,4 @@
-import type { AgentSpawner, BackgroundTaskManager, CapabilityManifest, CapabilityRegistry, PlatformRuntime, RuntimeDependencies, WebFetchProvider, WebSearchProvider, WorkspaceStateManager } from "@deepseek/platform-contracts";
+import type { AgentSpawner, BackgroundTaskManager, CapabilityManifest, CapabilityRegistry, HookSystem, PlatformRuntime, RuntimeDependencies, WebFetchProvider, WebSearchProvider, WorkspaceStateManager } from "@deepseek/platform-contracts";
 import type { CoreCodingToolsDependencies } from "./shared/workspace.js";
 import type { ToolDefinition } from "./shared/tool-kit.js";
 import { defineFileReadTool } from "./tools/file-read/index.js";
@@ -16,6 +16,7 @@ import { defineTodoPlanTool } from "./tools/todo-plan/index.js";
 import { defineWebFetchTool } from "./tools/web-fetch/index.js";
 import { defineWebSearchTool } from "./tools/web-search/index.js";
 import { defineAgentSpawnTool } from "./tools/agent-spawn/index.js";
+import { defineHookListTool } from "./tools/hook-list/index.js";
 
 export { coreToolIds } from "./shared/ids.js";
 export type { CoreCodingToolsDependencies } from "./shared/workspace.js";
@@ -26,6 +27,7 @@ export interface ExtendedCoreCodingToolsDependencies extends CoreCodingToolsDepe
   readonly webSearch?: WebSearchProvider;
   readonly backgroundTasks?: BackgroundTaskManager;
   readonly agentSpawner?: AgentSpawner;
+  readonly hooks?: HookSystem;
 }
 
 export async function registerCoreCodingTools(registry: CapabilityRegistry, deps: ExtendedCoreCodingToolsDependencies): Promise<void> {
@@ -43,6 +45,7 @@ export async function registerCoreCodingToolsForRuntime(deps: {
   readonly webSearch?: RuntimeDependencies["webSearch"];
   readonly backgroundTasks?: RuntimeDependencies["backgroundTasks"];
   readonly agentSpawner?: RuntimeDependencies["agentSpawner"];
+  readonly hooks?: RuntimeDependencies["hooks"];
 }, workspaceRoot: string): Promise<void> {
   await registerCoreCodingTools(deps.capabilities, {
     platform: deps.platform,
@@ -51,7 +54,8 @@ export async function registerCoreCodingToolsForRuntime(deps: {
     ...(deps.webFetch ? { webFetch: deps.webFetch } : {}),
     ...(deps.webSearch ? { webSearch: deps.webSearch } : {}),
     ...(deps.backgroundTasks ? { backgroundTasks: deps.backgroundTasks } : {}),
-    ...(deps.agentSpawner ? { agentSpawner: deps.agentSpawner } : {})
+    ...(deps.agentSpawner ? { agentSpawner: deps.agentSpawner } : {}),
+    ...(deps.hooks ? { hooks: deps.hooks } : {})
   });
 }
 
@@ -75,6 +79,7 @@ function coreToolDefinitions(deps: ExtendedCoreCodingToolsDependencies | undefin
     defineTodoPlanTool(),
     defineWebFetchTool(deps),
     defineWebSearchTool(deps),
-    defineAgentSpawnTool(deps)
+    defineAgentSpawnTool(deps),
+    defineHookListTool(deps)
   ];
 }

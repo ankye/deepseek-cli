@@ -8,3 +8,4 @@ export type { ProjectedRuntimeTurnRequest } from "./headless.js";
 export { runAgentLoop } from "./agent-loop.js";
 export { collectRuntimeEvents } from "./events.js";
 export { createAgentSpawner } from "./agent-spawner.js";
+export { loadUserHooks } from "./user-hooks.js";

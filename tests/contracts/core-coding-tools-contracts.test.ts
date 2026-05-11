@@ -30,7 +30,8 @@ describe("core coding tool contracts", () => {
       "core.todo.plan",
       "core.web.fetch",
       "core.web.search",
-      "core.agent.spawn"
+      "core.agent.spawn",
+      "core.hook.list"
     ]);
     for (const manifest of manifests) {
       assert.equal(manifest.enabled, true);

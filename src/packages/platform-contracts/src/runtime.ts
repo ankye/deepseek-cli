@@ -75,8 +75,10 @@ export type RuntimeEventKind =
   | "model.tool.result"
   | "model.finished"
   | "model.done"
+  | "model.blocked"
   | "usage.updated"
   | "turn.completed"
+  | "hooks.invoked"
   | "runtime.error"
   | "runtime.disposed";
 

@@ -1,4 +1,5 @@
-
-> deepseek-cli-platform@0.1.0 typecheck
-> tsc -p tsconfig.json --noEmit
-
+      Type 'IteratorResult<JsonObject, any>' is not assignable to type 'IteratorResult<ModelStreamEvent, any>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+        Type 'IteratorYieldResult<JsonObject>' is not assignable to type 'IteratorResult<ModelStreamEvent, any>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+          Type 'IteratorYieldResult<JsonObject>' is not assignable to type 'IteratorYieldResult<ModelStreamEvent>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+            Type 'JsonObject' is not assignable to type 'ModelStreamEvent'.
+              Type 'JsonObject' is missing the following properties from type '{ readonly kind: "tool-call"; readonly id?: string; readonly name: string; readonly input: JsonObject; readonly provider?: ModelProviderEventMetadata; }': kind, name, input

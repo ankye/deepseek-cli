@@ -3,6 +3,9 @@ import type {
   AgentLoopLimits,
   AgentLoopRequest,
   AgentLoopSummary,
+  HookInvocationResult,
+  HookLifecyclePoint,
+  JsonObject,
   ModelChatMessage,
   RedactedError,
   RuntimeDependencies,
@@ -62,6 +65,46 @@ export async function* runAgentLoop(
     yield cancelled;
   };
 
+  const fireHooks = async function* (point: HookLifecyclePoint, input: JsonObject): AsyncGenerator<RuntimeEvent, HookInvocationResult, void> {
+    let result: HookInvocationResult;
+    try {
+      result = await deps.hooks.invokeHooks({
+        schemaVersion: "1.0.0",
+        point,
+        input,
+        sessionId,
+        trace,
+        ...(request.timeoutMs ? { timeoutMs: request.timeoutMs } : {})
+      });
+    } catch (error) {
+      result = {
+        schemaVersion: "1.0.0",
+        point,
+        status: "failed",
+        orderedHookIds: [],
+        executions: [],
+        diagnostics: [{
+          code: "HOOK_SYSTEM_FAILED",
+          message: error instanceof Error ? error.message : "hook system threw",
+          retryable: false,
+          redaction: { class: "internal" }
+        }],
+        redaction: { class: "internal" },
+        compatibility: { schemaVersion: "1.0.0" },
+        replayFingerprint: "hook-invoke-error"
+      };
+    }
+    const event = agentLoopEvent("hooks.invoked", sessionId, turnId, trace, {
+      point,
+      status: result.status,
+      hookCount: result.orderedHookIds.length,
+      diagnostics: result.diagnostics
+    }, request.agentId);
+    await recordRuntimeAdapterEvent(deps, event);
+    yield event;
+    return result;
+  };
+
   const started = agentLoopEvent("agent.loop.started", sessionId, turnId, trace, {
     schemaVersion: "1.0.0",
     caller: request.caller,
@@ -85,6 +128,21 @@ export async function* runAgentLoop(
   await recordRuntimeAdapterEvent(deps, turnStarted);
   yield turnStarted;
 
+  const userInputResult = yield* fireHooks("user-input.before", {
+    promptHash: stableHash(request.prompt),
+    caller: request.caller,
+    workspaceRoot: request.workspaceRoot
+  });
+  if (userInputResult.status === "blocked") {
+    diagnostics.push({ code: "HOOK_BLOCKED", message: "user-input.before hook blocked this turn", retryable: false, redaction: { class: "internal" } });
+    const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics), reason: "blocked-by-hook" };
+    const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
+    await recordRuntimeAdapterEvent(deps, failed);
+    yield failed;
+    terminalEmitted = true;
+    return;
+  }
+
   for await (const projectionEvent of projectAgentLoopContext(deps, request, sessionId, turnId, trace)) {
     yield projectionEvent;
     if (projectionEvent.kind === "context.projection.rejected") {
@@ -107,6 +165,27 @@ export async function* runAgentLoop(
     iterations += 1;
     let iterationReasoning = "";
     const visibleCapabilities = projectToolSet(await deps.capabilities.listModelVisible(), request);
+    const modelBeforeResult = yield* fireHooks("model-call.before", {
+      iteration: iterations,
+      model: request.profile.model,
+      messageCount: messages.length,
+      visibleToolCount: visibleCapabilities.length
+    });
+    if (modelBeforeResult.status === "blocked") {
+      diagnostics.push({ code: "HOOK_BLOCKED", message: "model-call.before hook blocked this iteration", retryable: false, redaction: { class: "internal" } });
+      const blockedEvent = agentLoopEvent("model.blocked", sessionId, turnId, trace, {
+        iteration: iterations,
+        reason: "blocked-by-hook"
+      }, request.agentId);
+      await recordRuntimeAdapterEvent(deps, blockedEvent);
+      yield blockedEvent;
+      const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics), reason: "blocked-by-hook" };
+      const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
+      await recordRuntimeAdapterEvent(deps, failed);
+      yield failed;
+      terminalEmitted = true;
+      return;
+    }
     const modelRequested = agentLoopEvent("model.requested", sessionId, turnId, trace, {
       iteration: iterations,
       model: request.profile.model,
@@ -288,6 +367,43 @@ export async function* runAgentLoop(
         }
 
         const toolInput = preflight.repaired?.input ?? modelEvent.input;
+        const toolBeforeResult = yield* fireHooks("tool-execution.before", {
+          toolName,
+          capabilityId: String(preflight.capabilityId),
+          toolCallId,
+          input: toolInput
+        });
+        if (toolBeforeResult.status === "blocked") {
+          const blockError: RedactedError = {
+            code: "HOOK_TOOL_BLOCKED",
+            message: `tool-execution.before hook blocked ${toolName}`,
+            retryable: false,
+            redaction: { class: "internal" }
+          };
+          diagnostics.push(blockError);
+          const deniedFeedback = buildToolResultFeedback({
+            toolCallId,
+            toolName,
+            capabilityId: String(preflight.capabilityId),
+            status: "denied",
+            text: blockError.message,
+            diagnostics: [blockError],
+            trace,
+            limitBytes: limits.maxOutputBytes,
+            continuation: "continue"
+          });
+          const deniedEvent = agentLoopEvent("model.tool.result", sessionId, turnId, trace, {
+            toolCallId,
+            toolName,
+            result: deniedFeedback.preview.text,
+            terminalKind: "hook.blocked",
+            feedback: deniedFeedback
+          }, request.agentId, blockError);
+          await recordRuntimeAdapterEvent(deps, deniedEvent);
+          yield deniedEvent;
+          messages.push({ role: "tool", content: deniedFeedback.preview.text, toolCallId, toolName });
+          continue;
+        }
         const kernelRequest: RuntimeKernelRequest = {
           capabilityId: preflight.capabilityId,
           caller: request.caller,
@@ -326,6 +442,13 @@ export async function* runAgentLoop(
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
+        yield* fireHooks("tool-execution.after", {
+          toolName,
+          capabilityId: String(preflight.capabilityId),
+          toolCallId,
+          terminalKind: terminal?.kind ?? "unknown",
+          feedbackStatus: executionFeedback.status
+        });
         if (terminal?.error) {
           diagnostics.push(terminal.error);
           if (executionFeedback.continuation === "continue") {
@@ -377,6 +500,11 @@ export async function* runAgentLoop(
         return;
       }
     }
+    yield* fireHooks("model-call.after", {
+      iteration: iterations,
+      toolRequested: requestedTool,
+      messageCount: messages.length
+    });
     if (!requestedTool) {
       const summary = summarizeAgentLoop("completed", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
       const completed = agentLoopEvent("turn.completed", sessionId, turnId, trace, summary, request.agentId);

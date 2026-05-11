@@ -28,7 +28,7 @@ import {
 import { coreToolIds } from "@deepseek/core-coding-tools";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
-import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
+import { collectRuntimeEvents, createDefaultRuntimeKernel, loadUserHooks, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
 import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
 import type { McpServerManifest } from "@deepseek/platform-contracts";
 import { PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
@@ -472,6 +472,9 @@ async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, runOptio
         timeoutMs: 90_000
       })
     : createDeterministicRuntimeDependencies();
+  await loadUserHooks(options.workspaceRoot, deps, new NodePlatformRuntime()).catch((error: unknown) => {
+    console.warn(`deepseek: user hook loading failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
   await registerRuntimeCoreTools(deps, options.workspaceRoot);
   return { deps, kernel: await createDefaultRuntimeKernel(deps) };
 }

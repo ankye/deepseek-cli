@@ -317,6 +317,14 @@ Built-in tools / 内建工具集:
   `tests/contracts/background-shell.test.ts`、
   `tests/contracts/agent-spawn.test.ts`。
 
+Hooks / 钩子:
+
+- runtime 在每个 turn 真实触发五个 hook 点:`user-input.before`(turn 开始前一次)、`model-call.before` / `model-call.after`(每次 model iteration 各一次)、`tool-execution.before` / `tool-execution.after`(每次 tool call 各一次)。每次 invocation 发一条 `hooks.invoked` 事件,字段含 `{point, status, hookCount}`,便于审计还原。/ runtime fires hooks at five canonical lifecycle points per turn and emits a `hooks.invoked` event after each invocation.
+- Block 语义按 point 不同:`user-input.before` block → `agent.loop.failed` + `reason: "blocked-by-hook"`,整 turn 不派发 model;`model-call.before` block → emit `model.blocked` 再 `agent.loop.failed`,该 iteration 不调 model;`tool-execution.before` block → 合成 `model.tool.result` 带 `status: "denied"`,让 agent 看到被拒绝后继续迭代。失败策略为 `continue`(默认)的 hook 失败不影响 turn。/ Block semantics differ per point: user-input aborts the turn, model-call blocks one iteration, tool-execution denies that tool call while keeping the turn alive.
+- CLI 自动读 `<workspace>/.deepseek/hooks.json` 注册 user hook。每个条目最少字段:`{id, name, point, command, args?, timeoutMs?, failurePolicy?}`;handler 以子进程启动、stdin 一行 JSON 收 input、stdout 一行 JSON 返回 `SerializableResult<HookOutputRecord[]>`。读取失败 / 解析失败 / 注册失败静默降级,不影响 CLI 启动。/ CLI auto-loads user hooks from `.deepseek/hooks.json`; each hook runs as a subprocess that exchanges one JSON line over stdio.
+- `core.hook.list` tool(read-only)让 agent 查当前启用的 hook 列表和 ordering,不能写入。写入只能通过用户手工编辑 `.deepseek/hooks.json`。
+- 测试入口:`tests/contracts/hook-wiring.test.ts`(5 case:observation + 三种 block 语义 + continue policy 失败);`tests/integration/hook-user-file-loading.test.ts`(2 case:`.deepseek/hooks.json` 注册 + 缺失静默降级)。Stub hook server 位于 `scripts/hook-stub.mjs`。
+
 Real MCP transport / 真实 MCP 通道:
 
 - 默认行为不变：未 opt-in 时，stdio/HTTP/WebSocket/IDE 传输一律返回
