@@ -36,6 +36,24 @@ describe("observability privacy contracts", () => {
     assert.equal(bundle.privacyDecision.exportAllowed, false);
     assert.equal(bundle.records.length, 0);
   });
+
+  it("supports CLI diagnostics bundle projection without leaking support secrets", async () => {
+    const { collectCliDiagnostics, renderDiagnosticsResult } = await import("../../src/apps/cli/src/diagnostics/index.js");
+    const result = await collectCliDiagnostics("bundle", {
+      command: "diagnostics",
+      prompt: "",
+      output: "json",
+      live: false,
+      diagnosticsCommand: "bundle",
+      diagnosticsInput: { fakeSecret: true }
+    });
+    const rendered = renderDiagnosticsResult(result, "json").join("\n");
+
+    assert.equal(result.kind, "diagnostics.bundle");
+    assert.equal(result.externalExportDecision?.action, "deny-export");
+    assert.equal(result.referencePitFixtureIds.includes("pit.diagnostic-redaction.support-bundle"), true);
+    assert.equal(rendered.includes("sk-diagnostics-secret-123456"), false);
+  });
 });
 
 function assertRecord(record: ObservabilityRecord | undefined): asserts record is ObservabilityRecord {

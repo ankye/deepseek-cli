@@ -1,11 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { PolicyRequest, SandboxCapabilityMatrix } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, asId, type ApprovalId, type ApprovalRequest, type PolicyRequest, type SandboxCapabilityMatrix } from "@deepseek/platform-contracts";
+import { getReferencePitFixture } from "@deepseek/testing-regression";
 import {
   analyzeResourceScope,
   classifySecretText,
   createSandboxRequirement,
   createSecretRedactionDecision,
+  DefaultPolicyEngine,
+  HeadlessApprovalBroker,
   redactJsonSecrets,
   redactSecretText,
   selectSandboxDecision
@@ -109,4 +112,180 @@ describe("secret and sandbox policy helpers", () => {
     assert.equal(decision.action, "rewrite");
     assert.equal(decision.reasonCodes.includes("secret.raw-exposure"), true);
   });
+
+  it("keeps hard safety active when bypass metadata is present", async () => {
+    const fixture = getReferencePitFixture("pit.permission-bypass.hard-safety");
+    assert.equal(fixture?.evidenceIds.includes("policy:bypass-hard-safety"), true);
+    const policy = new DefaultPolicyEngine();
+    const resourceScope = analyzeResourceScope({ path: "../escape.txt", workspaceRoot: "/workspace" }, "write");
+    const decision = await policy.decide({
+      subject: "unit",
+      action: "execute:file.write",
+      resource: "core.file.write",
+      metadata: {
+        permissionMode: "bypass",
+        breakGlass: true,
+        sideEffect: "write",
+        prompt: "sk-live-1234567890"
+      },
+      secret: createSecretRedactionDecision({ prompt: "sk-live-1234567890" }),
+      resourceScope,
+      sandbox: createSandboxRequirement({ sideEffect: "write", resourceScope, timeoutMs: 30_000, permissions: ["workspace:write"] })
+    });
+
+    assert.notEqual(decision.action, "allow");
+    assert.equal(decision.action, "rewrite");
+    assert.equal(decision.sandbox?.reasonCodes.includes("filesystem.path-scope.rejected"), true);
+    assert.equal(decision.approval?.kind, "approval.denied");
+    assert.equal(decision.approvalSummary?.referencePitFixtureIds.includes("pit.permission-bypass.hard-safety"), true);
+    assert.equal(decision.approvalSummary?.referencePitFixtureIds.includes("pit.path-canonicalization.unsafe-syntax"), true);
+    assert.equal(decision.approvalRequest?.auditReference.reasonCodes.includes("secret.api-key"), true);
+    assert.equal(JSON.stringify(decision).includes("sk-live-1234567890"), false);
+  });
+
+  it("adds renderable approval evidence for policy ask decisions", async () => {
+    const policy = new DefaultPolicyEngine();
+    const resourceScope = analyzeResourceScope({ query: "delete cached context" }, "read");
+    const decision = await policy.decide({
+      subject: "unit",
+      action: "inspect:delete-cache",
+      resource: "runtime.cache",
+      metadata: {
+        sideEffect: "read",
+        timeoutMs: 30_000
+      },
+      secret: createSecretRedactionDecision(""),
+      resourceScope,
+      sandbox: createSandboxRequirement({ sideEffect: "read", resourceScope, timeoutMs: 30_000, permissions: [] })
+    });
+
+    assert.equal(decision.action, "ask");
+    assert.equal(decision.approval?.kind, "approval.required");
+    assert.equal(decision.approvalRequest?.decisionOptions.includes("allow"), true);
+    assert.equal(decision.approvalSummary?.allowedDecisions.includes("cancel"), true);
+    assert.equal(decision.approvalSummary?.referencePitFixtureIds.includes("pit.headless-trust.fail-closed"), true);
+  });
+
+  it("denies headless approval by default", async () => {
+    const fixture = getReferencePitFixture("pit.headless-trust.fail-closed");
+    assert.equal(fixture?.evidenceIds.includes("policy:headless-fail-closed"), true);
+    const broker = new HeadlessApprovalBroker(false);
+    const approval = buildApprovalRequest("Write workspace file?");
+    const decision = await broker.requestApproval(approval);
+
+    assert.equal(decision.approved, false);
+    assert.equal(decision.schemaVersion, APPROVAL_SCHEMA_VERSION);
+    assert.equal(decision.approvalId, approval.approvalId);
+    assert.equal(decision.reasonCode, "headless.fail_closed");
+    assert.equal((decision.metadata.referencePitFixtureIds as readonly string[]).includes("pit.headless-trust.fail-closed"), true);
+    assert.match(decision.reason, /Denied by headless default/);
+  });
+
+  it("classifies shell parser fallback risks as manually reviewable or sandbox-required", () => {
+    const fixture = getReferencePitFixture("pit.shell-parser.fallback-risk");
+    assert.equal(fixture?.evidenceIds.includes("policy:shell-fallback-risk"), true);
+    const resourceScope = analyzeResourceScope({
+      command: "bash",
+      args: ["-lc", "cd /tmp && npm test | tee out.log"],
+      cwd: "/workspace"
+    }, "process");
+    const decision = selectSandboxDecision({
+      subject: "unit",
+      action: "execute:shell",
+      resource: "core.shell.run",
+      metadata: {
+        sideEffect: "process",
+        shellProfile: "bash",
+        shellAnalysisStatus: "manually-reviewable",
+        timeoutMs: 30_000
+      },
+      resourceScope,
+      sandbox: createSandboxRequirement({
+        sideEffect: "process",
+        resourceScope,
+        timeoutMs: 30_000,
+        permissions: ["process:test", "shell-execute"],
+        requireEnforcement: true
+      })
+    });
+
+    assert.equal(decision.action, "require-sandbox");
+    assert.equal(decision.requirements.requireEnforcement, true);
+  });
+
+  it("exposes shell fallback evidence for policy decisions", async () => {
+    const policy = new DefaultPolicyEngine();
+    const resourceScope = analyzeResourceScope({
+      command: "bash",
+      args: ["-lc", "cd /tmp && npm test | tee out.log"],
+      cwd: "/workspace"
+    }, "process");
+    const decision = await policy.decide({
+      subject: "unit",
+      action: "execute:shell",
+      resource: "core.shell.run",
+      metadata: {
+        sideEffect: "process",
+        shellProfile: "bash",
+        shellAnalysisStatus: "manually-reviewable",
+        timeoutMs: 30_000
+      },
+      resourceScope,
+      sandbox: createSandboxRequirement({
+        sideEffect: "process",
+        resourceScope,
+        timeoutMs: 30_000,
+        permissions: ["process:test", "shell-execute"],
+        requireEnforcement: true
+      })
+    });
+
+    assert.equal(decision.action, "require-sandbox");
+    assert.equal(decision.approval?.kind, "approval.denied");
+    assert.equal(decision.approvalSummary?.referencePitFixtureIds.includes("pit.shell-parser.fallback-risk"), true);
+    assert.equal(decision.approvalSummary?.riskSummaries.some((summary) => summary.kind === "shell"), true);
+  });
 });
+
+function buildApprovalRequest(prompt: string): ApprovalRequest {
+  const trace = {
+    traceId: asId<"trace">("trace-approval-test"),
+    spanId: asId<"span">("span-approval-test"),
+    correlationId: asId<"correlation">("correlation-approval-test")
+  };
+  const auditReference: ApprovalRequest["auditReference"] = {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    traceId: trace.traceId,
+    correlationId: trace.correlationId,
+    policyDecision: "ask",
+    reasonCodes: ["policy.side-effect.ask"],
+    redaction: { class: "internal" as const }
+  };
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    approvalId: "approval:test" as ApprovalId,
+    subject: "unit",
+    action: "execute:file.write",
+    resource: "core.file.write",
+    metadata: { sideEffect: "write" },
+    prompt,
+    decisionOptions: ["allow", "deny", "cancel"],
+    summary: {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      title: "Approval required",
+      subject: "unit",
+      action: "execute:file.write",
+      resource: "core.file.write",
+      targetKind: "capability",
+      targetLabel: "core.file.write",
+      riskSummaries: [],
+      allowedDecisions: ["allow", "deny", "cancel"],
+      referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+      redaction: { class: "internal", fields: ["resource", "targetLabel"] },
+      metadata: {}
+    },
+    auditReference,
+    trace,
+    compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+  };
+}

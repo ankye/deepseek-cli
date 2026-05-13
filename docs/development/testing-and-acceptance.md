@@ -24,6 +24,7 @@ For OpenSpec archive, release, or acceptance work:
 OpenSpec 归档、发布或验收工作需要运行：
 
 ```bash
+deepseek diagnostics refresh --output json
 openspec validate <change-id> --type change --strict
 openspec validate --specs --strict
 npm run test:contracts
@@ -34,6 +35,7 @@ npm run test:matrix
 npm run test:e2e
 npm run build:cli
 npm run smoke:headless
+deepseek diagnostics verify --output json
 ```
 
 ## Test Layers / 测试层
@@ -81,6 +83,28 @@ Acceptance evidence should record:
 - Result summary. / 结果摘要。
 - Relevant test count or validation count. / 相关测试数量或校验数量。
 - Security or boundary evidence when applicable. / 适用时记录安全或边界证据。
+
+CLI release evidence should be refreshed through the product surface with `deepseek diagnostics refresh --output json` before `deepseek diagnostics verify --output json`. Use `--dry-run` to inspect the allowlisted plan and `--full` for the heavier deterministic suites.
+
+CLI release evidence 应通过产品面 `deepseek diagnostics refresh --output json` 刷新，再运行 `deepseek diagnostics verify --output json`。使用 `--dry-run` 查看 allowlisted plan，使用 `--full` 运行更重的确定性 suites。
+
+Task-completion comparisons against Claude Code, Codex, or other agents must use DeepSeek-owned evaluation evidence, not only public benchmark references:
+
+与 Claude Code、Codex 或其他 agent 的任务完成能力对比必须使用 DeepSeek-owned evaluation evidence，不能只引用公开 benchmark：
+
+```bash
+deepseek diagnostics evaluate --dry-run --output json
+deepseek diagnostics evaluate --baseline claude-code --dry-run --output json
+deepseek diagnostics evaluate --baseline codex --allow-external-baseline --baseline-command codex --baseline-arg --version --dry-run --output json
+```
+
+External baselines are opt-in and default to deferred/unavailable until a maintainer configures the local adapter, executable, credentials, and allowed scope.
+
+外部 baseline 是 opt-in，默认 deferred/unavailable；只有维护者配置本地 adapter、executable、credentials 与 allowed scope 后才会执行。
+
+The first external baseline slice is probe-only. It records command fingerprint, probe exit code, and bounded output preview; it does not send task prompts, edit files, run checks through the external CLI, or mutate workspaces.
+
+第一条 external baseline 切片只做 probe。它记录 command fingerprint、probe exit code 与 bounded output preview；不会发送 task prompts、编辑文件、通过外部 CLI 运行 checks 或修改 workspace。
 
 ## Live Tests / Live 测试
 
@@ -324,6 +348,40 @@ Hooks / 钩子:
 - CLI 自动读 `<workspace>/.deepseek/hooks.json` 注册 user hook。每个条目最少字段:`{id, name, point, command, args?, timeoutMs?, failurePolicy?}`;handler 以子进程启动、stdin 一行 JSON 收 input、stdout 一行 JSON 返回 `SerializableResult<HookOutputRecord[]>`。读取失败 / 解析失败 / 注册失败静默降级,不影响 CLI 启动。/ CLI auto-loads user hooks from `.deepseek/hooks.json`; each hook runs as a subprocess that exchanges one JSON line over stdio.
 - `core.hook.list` tool(read-only)让 agent 查当前启用的 hook 列表和 ordering,不能写入。写入只能通过用户手工编辑 `.deepseek/hooks.json`。
 - 测试入口:`tests/contracts/hook-wiring.test.ts`(5 case:observation + 三种 block 语义 + continue policy 失败);`tests/integration/hook-user-file-loading.test.ts`(2 case:`.deepseek/hooks.json` 注册 + 缺失静默降级)。Stub hook server 位于 `scripts/hook-stub.mjs`。
+
+Skills / 技能:
+
+- runtime 把 `SkillSystem` 通过 `ExtendedCoreCodingToolsDependencies.skills`
+  注入核心工具层,暴露两个受治理 tool:`core.skill.list`(read-only,
+  `sideEffect: "read"`,调 `deps.skills.listSummaries()` 返回
+  `{count, skills}` metadata,不激活任何 skill)和 `core.skill.activate`
+  (`sideEffect: "none"`,纯内存激活,不启子进程/不访问 FS,调
+  `deps.skills.activateSkill({name, trigger:"explicit", context, sessionId})`
+  返回 `{status, name, segmentCount, loadingState, estimatedTokens}`,不内联
+  segment 原文)。runtime exposes the skill registry to agents via two
+  governed tools — read-only `core.skill.list` (enumerate registered
+  skills) and side-effect-free `core.skill.activate` (trigger explicit
+  activation and return a compact summary without inlining segment
+  text).
+- `InMemorySkillSystem.listSummaries()` 必须按 `manifest.name` 升序(Unicode
+  码点序)返回 readonly 数组,使枚举对 host 与 agent 确定性可重放。
+  `listSummaries()` returns a readonly array sorted by `manifest.name`
+  ascending for deterministic discovery.
+- 成功激活时 runtime 发出唯一一条 `skill.activated` runtime event,payload
+  `{name, status, segmentCount, loadingState}`,通过 agent-loop 事件流可
+  观测,并经由 session/bus/observability 适配器持久化;`not-found` /
+  `inert` / `rejected` 三种失败状态不得发射该事件,与 `hooks.invoked` 在
+  hook 调用后的发射方式对齐。Successful activation emits exactly one
+  `skill.activated` runtime event (mirrors the `hooks.invoked` pattern);
+  not-found / inert / rejected states do not emit.
+- 未注册 name 的 `core.skill.activate` 必须返回 typed `SKILL_NOT_FOUND`
+  diagnostic,不得抛错或合成假激活;未注入 `SkillSystem` 时返回 typed
+  `SKILL_SYSTEM_UNAVAILABLE`。Unknown skill → typed `SKILL_NOT_FOUND`;
+  missing `SkillSystem` dependency → typed `SKILL_SYSTEM_UNAVAILABLE`.
+- 回归用例:`tests/contracts/skill-tools.test.ts`(4 case:空注册表、排序
+  枚举、成功激活 + `skill.activated` 事件、未注册返回 SKILL_NOT_FOUND 且不
+  发射事件);`tests/contracts/core-coding-tools-contracts.test.ts` 的
+  manifest id 数组包含 `core.skill.list` 与 `core.skill.activate`。
 
 Real MCP transport / 真实 MCP 通道:
 

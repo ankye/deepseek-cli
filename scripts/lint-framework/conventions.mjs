@@ -168,5 +168,16 @@ export const lintConventions = {
     ]),
     forbiddenSandboxProperties: new Set(["sandboxProfile", "sandboxRequirements", "sandboxCapabilities"]),
     forbiddenSecretProperties: new Set(["apiKey", "token", "secret", "password", "credential"])
+  },
+  scaleGuardrails: {
+    maxCentralFileLines: 800,
+    maxPackageIndexLines: 500,
+    plannedOversizedFiles: new Set([
+      "src/packages/platform-abstraction/src/index.ts",
+      "src/packages/mcp-gateway/src/index.ts",
+      "src/packages/model-gateway/src/index.ts",
+      "src/packages/context-engine/src/index.ts",
+      "src/packages/policy-sandbox/src/index.ts"
+    ])
   }
 };

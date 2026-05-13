@@ -1,4 +1,7 @@
 import type {
+  ApprovalDecision,
+  ApprovalLifecycleRecord,
+  ApprovalRequest,
   AgentId,
   BusEnvelope,
   ExecutionEnvelope,
@@ -16,7 +19,7 @@ import type {
   TaskId,
   TraceContext
 } from "@deepseek/platform-contracts";
-import { asId } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import type { PlatformExecutionContext } from "@deepseek/platform-contracts";
 import {
   analyzeResourceScope,
@@ -44,6 +47,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       "scheduler",
       "capabilities",
       "policy",
+      "approvals",
       "sandbox",
       "sessions",
       "observability",
@@ -156,7 +160,51 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       await this.recordEvent(event);
       yield event;
     }
-    if (policyDecision.action !== "allow") {
+    if (policyDecision.action === "ask") {
+      const approvalRequest = policyDecision.approvalRequest ?? this.fallbackApprovalRequest(policyDecision, request, sessionId, trace, envelope);
+      const required = this.approvalLifecycleEvent(policyDecision.approval ?? this.requiredApprovalRecord(approvalRequest), sessionId, trace, request.agentId, workflow.taskId, envelope.invocationId);
+      await this.recordEvent(required);
+      yield required;
+
+      const approvalDecision = await this.deps.approvals.requestApproval(approvalRequest);
+      const decisionRecord = this.decisionApprovalRecord(approvalRequest, approvalDecision);
+      const decided = this.approvalLifecycleEvent(decisionRecord, sessionId, approvalDecision.trace ?? trace, request.agentId, workflow.taskId, envelope.invocationId);
+      await this.recordEvent(decided);
+      yield decided;
+      const auditLinked = this.approvalLifecycleEvent({ ...decisionRecord, kind: "approval.audit-linked" }, sessionId, approvalDecision.trace ?? trace, request.agentId, workflow.taskId, envelope.invocationId);
+      await this.recordEvent(auditLinked);
+      yield auditLinked;
+
+      if (!approvalDecision.approved || approvalDecision.decision !== "allow") {
+        const rejected = this.event(
+          "execution.rejected",
+          sessionId,
+          approvalDecision.trace ?? trace,
+          {
+            envelopeId: invocationId,
+            policy: {
+              action: policyDecision.action,
+              reason: policyDecision.reason,
+              audit: policyDecision.audit ?? {},
+              sandboxProfile: policyDecision.sandboxProfile ?? "",
+              approval: approvalDecision
+            }
+          },
+          request.agentId,
+          workflow.taskId,
+          kernelError("KERNEL_POLICY_DENIED", approvalDecision.reason, {
+            reasonCode: approvalDecision.reasonCode,
+            approvalId: approvalDecision.approvalId,
+            decision: approvalDecision.decision
+          })
+        );
+        await this.recordEvent(rejected);
+        yield rejected;
+        yield await this.closeWorkflow(workflow, "rejected", { envelopeId: invocationId, policy: policyDecision.action, approvalId: approvalDecision.approvalId });
+        return;
+      }
+    }
+    if (policyDecision.action !== "allow" && policyDecision.action !== "ask") {
       const rejected = this.event(
         "execution.rejected",
         sessionId,
@@ -327,6 +375,120 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     return [policy, sandbox];
   }
 
+  private fallbackApprovalRequest(
+    decision: PolicyDecision,
+    request: RuntimeKernelRequest,
+    sessionId: SessionId,
+    trace: TraceContext,
+    envelope: ExecutionEnvelope
+  ): ApprovalRequest {
+    const approvalId = `approval-${envelope.invocationId}` as ApprovalRequest["approvalId"];
+    const auditReference: ApprovalRequest["auditReference"] = {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      traceId: trace.traceId,
+      correlationId: trace.correlationId,
+      policyDecision: decision.action,
+      reasonCodes: ["policy.approval.required"],
+      redaction: { class: "internal", fields: ["reasonCodes"] }
+    };
+    const summary: ApprovalRequest["summary"] = {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      title: "Approval required",
+      subject: request.caller,
+      action: `execute:${String(request.capabilityId)}`,
+      resource: String(request.capabilityId),
+      capability: String(request.capabilityId),
+      targetKind: "capability",
+      targetLabel: String(request.capabilityId),
+      riskSummaries: [{
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        kind: "policy",
+        severity: "medium",
+        title: "Runtime approval required",
+        detail: decision.reason,
+        reasonCodes: ["policy.approval.required"],
+        referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+        redaction: { class: "internal", fields: ["detail"] },
+        metadata: { envelopeId: envelope.invocationId }
+      }],
+      allowedDecisions: ["allow", "deny", "cancel"],
+      referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+      redaction: { class: "internal", fields: ["targetLabel", "riskSummaries.detail"] },
+      metadata: { envelopeId: envelope.invocationId }
+    };
+    return {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      approvalId,
+      subject: request.caller,
+      action: `execute:${String(request.capabilityId)}`,
+      resource: String(request.capabilityId),
+      metadata: {
+        envelopeId: envelope.invocationId,
+        sideEffect: envelope.sideEffect
+      },
+      prompt: `Approve execute:${String(request.capabilityId)}?`,
+      decisionOptions: ["allow", "deny", "cancel"],
+      summary,
+      auditReference,
+      trace,
+      sessionId,
+      compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+    };
+  }
+
+  private requiredApprovalRecord(request: ApprovalRequest): ApprovalLifecycleRecord {
+    return {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      kind: "approval.required",
+      approvalId: request.approvalId,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      trace: request.trace,
+      summary: request.summary,
+      auditReference: request.auditReference,
+      redaction: { class: "internal", fields: ["summary.targetLabel", "summary.riskSummaries.detail"] },
+      compatibility: request.compatibility
+    };
+  }
+
+  private decisionApprovalRecord(request: ApprovalRequest, decision: ApprovalDecision): ApprovalLifecycleRecord {
+    const kind: ApprovalLifecycleRecord["kind"] = decision.decision === "allow"
+      ? "approval.decided"
+      : decision.decision === "timeout"
+        ? "approval.timeout"
+        : decision.decision === "cancel"
+          ? "approval.cancelled"
+          : "approval.denied";
+    return {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      kind,
+      approvalId: request.approvalId,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      trace: decision.trace,
+      summary: request.summary,
+      decision,
+      auditReference: decision.auditReference,
+      redaction: { class: "internal", fields: ["summary.targetLabel", "summary.riskSummaries.detail", "decision.reason"] },
+      compatibility: request.compatibility
+    };
+  }
+
+  private approvalLifecycleEvent(
+    record: ApprovalLifecycleRecord,
+    sessionId: SessionId,
+    trace: TraceContext,
+    agentId: AgentId | undefined,
+    taskId: RuntimeEvent["taskId"] | undefined,
+    envelopeId: string
+  ): RuntimeEvent {
+    return this.event(record.kind, sessionId, trace, {
+      envelopeId,
+      approval: record,
+      approvalId: record.approvalId,
+      summary: record.summary,
+      decision: record.decision ?? {}
+    }, agentId, taskId);
+  }
+
   private async platformExecutionContext(sideEffect: string, timeoutMs: number, input: JsonObject = {}): Promise<PlatformExecutionContext> {
     const descriptor = await this.deps.platform.descriptor();
     const requestedShell = typeof input.shellProfile === "string" ? input.shellProfile as Parameters<RuntimeKernelDependencies["platform"]["resolveShell"]>[0] : undefined;
@@ -389,7 +551,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
 
   private async recordEvent(event: RuntimeEvent): Promise<void> {
     try {
-      await this.appendSessionEvent(event.sessionId, event.kind, event.data);
+      await this.appendSessionEvent(event);
       await this.deps.bus.publish(this.toBusEnvelope(event));
     } catch (error) {
       throw new Error(kernelError("KERNEL_EVENT_PERSISTENCE_FAILED", error instanceof Error ? error.message : "Replayable event persistence failed", {
@@ -399,7 +561,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     try {
       await this.deps.observability.emit({
         kind: event.kind.includes("failed") || event.kind.includes("rejected") ? "audit" : "trace",
-        at: this.deps.clock.now().toISOString(),
+        at: event.createdAt,
         name: event.kind,
         fields: event.data
       });
@@ -417,19 +579,19 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
         event.taskId,
         kernelError("KERNEL_OBSERVABILITY_DEGRADED", "Observability emit failed")
       );
-      await this.appendSessionEvent(degraded.sessionId, degraded.kind, degraded.data);
+      await this.appendSessionEvent(degraded);
       await this.deps.bus.publish(this.toBusEnvelope(degraded));
     }
   }
 
-  private async appendSessionEvent(sessionId: SessionId, kind: string, payload: JsonObject): Promise<void> {
-    const events = await this.deps.sessions.events(sessionId);
+  private async appendSessionEvent(event: RuntimeEvent): Promise<void> {
+    const events = await this.deps.sessions.events(event.sessionId);
     await this.deps.sessions.append({
-      sessionId,
+      sessionId: event.sessionId,
       sequence: events.length + 1,
-      kind,
-      at: this.deps.clock.now().toISOString(),
-      payload,
+      kind: event.kind,
+      at: event.createdAt,
+      payload: event.data,
       redaction: { class: "internal" }
     });
   }
@@ -448,6 +610,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       sessionId,
       ...(taskId ? { taskId } : {}),
       ...(agentId ? { agentId } : {}),
+      createdAt: this.deps.clock.now().toISOString(),
       trace,
       data: redactJsonSecrets(data) as JsonObject,
       ...(error ? { error } : {})
@@ -460,7 +623,7 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       schemaVersion: "1.0.0",
       id: String(this.deps.ids.create("bus")),
       type: "event",
-      createdAt: this.deps.clock.now().toISOString(),
+      createdAt: event.createdAt,
       trace: event.trace,
       redaction: { class: "internal" },
       compatibility: { schemaVersion: "1.0.0" },
@@ -497,6 +660,7 @@ export function createRuntimeKernel(
     scheduler: deps.concurrency,
     capabilities: deps.capabilities,
     policy: deps.policy,
+    approvals: deps.approvals,
     sandbox: deps.sandbox,
     sessions: deps.sessions,
     observability: deps.observability,

@@ -27,6 +27,7 @@ import { DeterministicMockModelGateway } from "@deepseek/model-gateway";
 import { DeterministicToolIntentPreflight } from "@deepseek/tool-intent-preflight";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { DefaultPolicyEngine, DevelopmentSandboxRuntime, HeadlessApprovalBroker } from "@deepseek/policy-sandbox";
+import { createDefaultPromptAssembler } from "@deepseek/prompt-assembly";
 import { InMemoryRuntimeMessageBus } from "@deepseek/runtime-message-bus";
 import { InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
@@ -34,6 +35,7 @@ import { InMemoryUsageBudgetManager } from "@deepseek/usage-budget-management";
 import { SingleTurnWorkflowOrchestrator } from "@deepseek/workflow-orchestration";
 import { InMemoryWorkspaceStateManager } from "@deepseek/workspace-state-management";
 import { DeterministicRegressionHarness } from "../harness/index.js";
+export * from "./extension-auth.js";
 
 export class FakeBackgroundTaskManager implements BackgroundTaskManager {
   private readonly tasks = new Map<string, { summary: BackgroundTaskSummary; stdout: string; stderr: string; status: BackgroundTaskSummary["status"]; exitCode?: number; done: boolean }>();
@@ -113,6 +115,8 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
   });
 
   const platform = new FakePlatformRuntime();
+  const cache = new InMemoryCacheManager();
+  const codeIntelligence = new DeterministicCodeIntelligenceService(platform);
   const dependencies: RuntimeDependencies = {
     protocol: new PipelineProtocolRouter([], runtimePlaceholder),
     bus: new InMemoryRuntimeMessageBus(),
@@ -128,9 +132,9 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     mcp: new FakeMcpGateway(),
     plugins: new InMemoryPluginManager(),
     extensions: new InMemoryExtensionManager(),
-    context: new InMemoryContextEngine(),
+    context: new InMemoryContextEngine({ cache, codeIntelligence }),
     memory: new InMemoryMemoryManager(),
-    cache: new InMemoryCacheManager(),
+    cache,
     credentials: new FakeCredentialManager(),
     usage: new InMemoryUsageBudgetManager(),
     workspaceState: new InMemoryWorkspaceStateManager(platform),
@@ -140,12 +144,13 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     sessions: new InMemorySessionStore(),
     platform,
     evolution: new InMemoryEvolutionEngine(),
-    codeIntelligence: new DeterministicCodeIntelligenceService(platform),
+    codeIntelligence,
     remote: new NoopRemoteRuntimeConnectivity(),
     distribution: new StaticDistributionUpdateManager(),
     config: new InMemoryConfigStore(),
     observability: new InMemoryObservabilitySink(),
     regression: new DeterministicRegressionHarness(),
+    promptAssembler: createDefaultPromptAssembler(),
     backgroundTasks: new FakeBackgroundTaskManager()
   };
   return dependencies;

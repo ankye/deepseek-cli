@@ -34,6 +34,7 @@ describe("skill system golden replay", () => {
         {
           kind: "context.projection.completed",
           sessionId: asId<"session">("session-skill-golden"),
+          createdAt: new Date(0).toISOString(),
           trace: {
             traceId: asId<"trace">("trace-skill-golden"),
             spanId: asId<"span">("span-skill-golden"),

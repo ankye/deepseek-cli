@@ -2,10 +2,12 @@ import type { JsonObject } from "./common.js";
 import type { AuditId } from "./ids.js";
 import type { PlatformExecutionContext } from "./platform.js";
 import type { ResourceScope, SandboxAuditEvidence, SandboxDecision, SandboxRequirement, SecretRedactionDecision } from "./security.js";
+import type { ApprovalLifecycleRecord, ApprovalRenderSummary, ApprovalRequest } from "./approval.js";
+export type { ApprovalBroker, ApprovalBrokerRequest, ApprovalBrokerResult, ApprovalDecision, ApprovalRequest } from "./approval.js";
 
 export type PolicyAction = "allow" | "ask" | "deny" | "rewrite" | "require-sandbox" | "quarantine";
 
-export interface PolicyRequest {
+export interface PolicyRequest extends JsonObject {
   readonly subject: string;
   readonly action: string;
   readonly resource: string;
@@ -26,15 +28,9 @@ export interface PolicyDecision {
   readonly secret?: SecretRedactionDecision;
   readonly sandbox?: SandboxDecision;
   readonly auditEvidence?: SandboxAuditEvidence;
-}
-
-export interface ApprovalRequest extends PolicyRequest {
-  readonly prompt: string;
-}
-
-export interface ApprovalDecision {
-  readonly approved: boolean;
-  readonly reason: string;
+  readonly approval?: ApprovalLifecycleRecord;
+  readonly approvalRequest?: ApprovalRequest;
+  readonly approvalSummary?: ApprovalRenderSummary;
 }
 
 export interface AuditRecord {
@@ -58,10 +54,6 @@ export interface SandboxEvent {
 
 export interface PolicyEngine {
   decide(request: PolicyRequest): Promise<PolicyDecision>;
-}
-
-export interface ApprovalBroker {
-  requestApproval(request: ApprovalRequest): Promise<ApprovalDecision>;
 }
 
 export interface SandboxRuntime {

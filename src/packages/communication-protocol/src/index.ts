@@ -10,6 +10,12 @@ import type {
   RuntimeRequest
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
+export {
+  approvalIdFromProtocolEnvelope,
+  approvalLifecycleProtocolRecord,
+  createApprovalDecisionControlEnvelope,
+  createApprovalLifecycleEnvelope
+} from "./approval.js";
 
 const protocolVersion = "1";
 const schemaVersion = "1.0.0";

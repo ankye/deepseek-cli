@@ -159,3 +159,64 @@ credential auth management 必须通过 injected resolvers 为 model-gateway liv
 - **THEN** the credential resolver provides the raw credential only to the transport boundary and redacts it from request metadata, runtime events, diagnostics, and errors
 - **中文** 当 model-gateway 执行显式 DeepSeek live request 时，credential resolver 只能把 raw credential 提供给 transport boundary，并必须从 request metadata、runtime events、diagnostics 和 errors 中脱敏。
 
+### Requirement: Extension Credential Scope Diagnostics / 扩展凭证作用域诊断
+
+Credential auth management SHALL expose metadata-only diagnostics for provider, plugin, MCP connector, skill, and extension credential scopes without resolving raw credential values.
+
+Credential auth management 必须为 provider、plugin、MCP connector、skill 和 extension credential scopes 暴露 metadata-only diagnostics，且不解析 raw credential values。
+
+#### Scenario: Scope diagnostic is metadata-only / 作用域诊断仅含元数据
+- **WHEN** CLI extension management requests credential scope diagnostics
+- **THEN** the credential service returns reference id, scope, source class, availability, storage status, audit metadata, redaction metadata, and suggested actions without raw secret values
+- **中文** 当 CLI extension management 请求 credential scope diagnostics 时，credential service 必须返回 reference id、scope、source class、availability、storage status、audit metadata、redaction metadata 和 suggested actions，且不包含 raw secret values。
+
+#### Scenario: Connector scope denial is typed / Connector 作用域拒绝有类型
+- **WHEN** an MCP or plugin connector requests a credential reference outside its declared permissions
+- **THEN** credential diagnostics report a typed scope-denied result with audit metadata and do not call `resolve`
+- **中文** 当 MCP 或 plugin connector 请求超出声明 permissions 的 credential reference 时，credential diagnostics 必须报告 typed scope-denied result 与 audit metadata，且不调用 `resolve`。
+
+### Requirement: Extension Auth Redaction Pit Evidence / 扩展认证脱敏坑位证据
+
+Credential diagnostics used by extension management SHALL cite environment snapshot and diagnostic redaction pit fixtures when serializing credential presence or unavailable storage evidence.
+
+Extension management 使用的 credential diagnostics 在序列化 credential presence 或 unavailable storage evidence 时，必须引用 environment snapshot 与 diagnostic redaction 坑位 fixtures。
+
+#### Scenario: Env presence cites immutable snapshot pit / 环境存在性引用不可变快照坑位
+- **WHEN** credential diagnostics observe environment credential presence
+- **THEN** output records only presence metadata and cites `pit.env-snapshot.immutable-startup`
+- **中文** 当 credential diagnostics 观察到环境凭证存在性时，输出必须只记录 presence metadata，并引用 `pit.env-snapshot.immutable-startup`。
+
+#### Scenario: Credential diagnostics are safe to serialize / 凭证诊断可安全序列化
+- **WHEN** tests serialize extension auth diagnostics
+- **THEN** the result excludes raw credential values and cites `pit.diagnostic-redaction.support-bundle`
+- **中文** 当测试序列化 extension auth diagnostics 时，结果必须排除 raw credential values，并引用 `pit.diagnostic-redaction.support-bundle`。
+
+### Requirement: Extension Scoped Credential Grants / 扩展作用域凭证 Grant
+
+Credential auth management SHALL create, list, revoke, diagnose, and authorize scoped credential grants for extension owners while keeping raw credential resolution behind credential storage adapters.
+
+Credential auth management 必须为 extension owners 创建、列出、撤销、诊断并授权 scoped credential grants，同时将 raw credential resolution 保持在 credential storage adapters 之后。
+
+#### Scenario: Grant creation returns metadata only / 创建 Grant 仅返回元数据
+
+- **WHEN** a host-mediated auth flow creates a grant for an MCP server or plugin contribution
+- **THEN** credential auth management stores only the necessary reference metadata and returns a grant record with credential reference id, owner scope, operation scope, redaction metadata, audit metadata, and replay fingerprint
+- **中文** 当 host-mediated auth flow 为 MCP server 或 plugin contribution 创建 grant 时，credential auth management 必须只存储必要 reference metadata，并返回 grant record，包含 credential reference id、owner scope、operation scope、redaction metadata、audit metadata 与 replay fingerprint。
+
+#### Scenario: Revoke grant prevents later authorization / 撤销 Grant 阻止后续授权
+
+- **WHEN** a scoped grant is revoked
+- **THEN** later authorization requests using that grant return typed revoked diagnostics and do not resolve raw credentials
+- **中文** 当 scoped grant 被撤销时，后续使用该 grant 的 authorization requests 必须返回 typed revoked diagnostics，且不解析 raw credentials。
+
+### Requirement: Extension Auth Diagnostics Remain Metadata-Only / 扩展认证诊断仅保留元数据
+
+Credential auth diagnostics for MCP/plugin extension workflows SHALL report readiness, missing grants, denied scopes, storage availability, and suggested actions without resolving raw credential values.
+
+MCP/plugin extension workflows 的 credential auth diagnostics 必须报告 readiness、missing grants、denied scopes、storage availability 与 suggested actions，且不解析 raw credential values。
+
+#### Scenario: Diagnostic does not call resolve / 诊断不调用 Resolve
+
+- **WHEN** CLI or a host requests extension auth readiness for a plugin or MCP manifest
+- **THEN** credential auth management returns metadata-only diagnostics and does not call raw credential resolution
+- **中文** 当 CLI 或 host 请求 plugin 或 MCP manifest 的 extension auth readiness 时，credential auth management 必须返回 metadata-only diagnostics，且不调用 raw credential resolution。

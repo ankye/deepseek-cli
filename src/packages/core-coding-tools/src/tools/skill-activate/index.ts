@@ -24,7 +24,7 @@ export function defineSkillActivateTool(deps: SkillActivateToolDeps | undefined)
     "skill.activate",
     coreToolIds.skillActivate,
     "Skill Activate",
-    "process",
+    "none",
     ["skill:activate"],
     objectSchema(["name"], { name: { type: "string" }, context: { type: "object" } }),
     objectSchema(["evidence"], { evidence: { type: "object" } }),

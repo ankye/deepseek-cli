@@ -37,6 +37,7 @@ describe("hook system golden replay", () => {
         {
           kind: "workflow.step",
           sessionId: asId<"session">("session-hook-golden"),
+          createdAt: new Date(0).toISOString(),
           trace: {
             traceId: asId<"trace">("trace-hook-golden"),
             spanId: asId<"span">("span-hook-golden"),

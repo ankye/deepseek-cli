@@ -150,3 +150,75 @@ MCP gateway 必须暴露 `registerRealTransport(kind, factory)`，让 runtime、
 - **THEN** the gateway returns a rejected `McpToolCallResult` with a typed diagnostic code (`MCP_TOOL_TIMEOUT`, `MCP_TOOL_REAL_FAILED`, or `MCP_SERVER_EXITED`) and does not propagate raw subprocess output beyond the adapter's redaction boundary
 - **中文** 当真实 stdio MCP tool call 超时、server 返回 JSON-RPC error 或子进程异常退出时，gateway 必须返回 rejected `McpToolCallResult`，带 typed diagnostic（`MCP_TOOL_TIMEOUT`、`MCP_TOOL_REAL_FAILED` 或 `MCP_SERVER_EXITED`），且不得越过 adapter 的 redaction 边界传递原始子进程输出。
 
+### Requirement: MCP Test Evidence For Extension Management / 面向扩展管理的 MCP 测试证据
+
+MCP gateway test flows SHALL produce governed, deterministic evidence that can be rendered by CLI extension management without giving MCP servers direct execution authority.
+
+MCP gateway test flows 必须产生受治理且确定性的 evidence，供 CLI extension management 渲染，同时不赋予 MCP servers 直接执行权。
+
+#### Scenario: Extension MCP test uses gateway results / Extension MCP 测试使用 Gateway 结果
+- **WHEN** CLI extension management tests an MCP manifest
+- **THEN** it uses `McpGateway` validation, connection, list, tool call, or resource read results and renders schema version, health, diagnostics, redaction, audit, and replay fingerprint fields
+- **中文** 当 CLI extension management 测试 MCP manifest 时，必须使用 `McpGateway` validation、connection、list、tool call 或 resource read results，并渲染 schema version、health、diagnostics、redaction、audit 和 replay fingerprint fields。
+
+#### Scenario: Real transport remains explicit / 真实传输保持显式
+- **WHEN** an MCP manifest uses stdio, HTTP, WebSocket, or IDE transport without explicit opt-in
+- **THEN** extension management output reports typed fail-closed diagnostics and does not spawn processes, use network, or call host APIs
+- **中文** 当 MCP manifest 使用 stdio、HTTP、WebSocket 或 IDE transport 且没有显式 opt-in 时，extension management output 必须报告 typed fail-closed diagnostics，且不启动进程、不使用网络、不调用 host APIs。
+
+### Requirement: MCP Plugin Precedence Pit Evidence / MCP 插件优先级坑位证据
+
+MCP and plugin contribution summaries SHALL preserve source, trust, namespace, and policy precedence evidence so future managed policy can deny enterprise-conflicting contributions without ambiguity.
+
+MCP 与 plugin contribution summaries 必须保留 source、trust、namespace 和 policy precedence evidence，使未来 managed policy 能无歧义地拒绝与 enterprise 冲突的 contributions。
+
+#### Scenario: Precedence evidence is recorded / 优先级证据被记录
+- **WHEN** extension management lists MCP and plugin contributions that could overlap by namespace or command id
+- **THEN** the record includes source and trust ordering metadata and cites `pit.mcp-plugin-precedence.enterprise-deny`
+- **中文** 当 extension management 列出可能按 namespace 或 command id 重叠的 MCP 与 plugin contributions 时，record 必须包含 source 和 trust ordering metadata，并引用 `pit.mcp-plugin-precedence.enterprise-deny`。
+
+### Requirement: MCP Prompt And Tool Composition Projection / MCP Prompt 与 Tool 组合投影
+
+MCP prompt and tool summaries exposed to composition SHALL remain inert metadata until the MCP gateway executes a governed call or resource read.
+
+暴露给 composition 的 MCP prompt 与 tool summaries 必须保持惰性 metadata，直到 MCP gateway 执行受治理 call 或 resource read。
+
+#### Scenario: MCP prompt projection is inert / MCP Prompt 投影惰性
+- **WHEN** MCP prompts are projected into command composition
+- **THEN** records include server id, namespace, qualified name, trust, permissions, redaction, and provenance without fetching resources or invoking tools
+- **中文** 当 MCP prompts 被投影到 command composition 时，records 必须包含 server id、namespace、qualified name、trust、permissions、redaction 和 provenance，且不获取 resources 或调用 tools。
+
+#### Scenario: MCP tool is not model-visible command by default / MCP Tool 默认不是模型可见命令
+- **WHEN** an MCP tool summary is normalized into composition
+- **THEN** model-visible projection excludes it unless the capability registry or MCP gateway owner exposes a governed callable wrapper
+- **中文** 当 MCP tool summary 被归一化到 composition 时，model-visible projection 必须排除它，除非 capability registry 或 MCP gateway owner 暴露受治理 callable wrapper。
+
+### Requirement: MCP Credential Scope Authorization / MCP 凭证作用域授权
+
+The MCP gateway SHALL authorize declared credential requirements before dispatching MCP tool calls, resource reads, prompt materialization, or real transport operations that require credential-backed access.
+
+MCP gateway 必须在 dispatch 需要 credential-backed access 的 MCP tool calls、resource reads、prompt materialization 或 real transport operations 前，授权 declared credential requirements。
+
+#### Scenario: Tool call with declared credential is authorized / 带声明凭证的工具调用被授权
+
+- **WHEN** an MCP tool declares a credential requirement and a caller invokes that tool
+- **THEN** the gateway checks the matching scoped grant before handler or transport dispatch and includes authorization evidence in the `McpToolCallResult`
+- **中文** 当 MCP tool 声明 credential requirement 且 caller 调用该 tool 时，gateway 必须在 handler 或 transport dispatch 前检查匹配的 scoped grant，并在 `McpToolCallResult` 中包含 authorization evidence。
+
+#### Scenario: Missing MCP grant fails closed / 缺少 MCP Grant 时安全失败
+
+- **WHEN** an MCP resource read or tool call requires a credential but no matching grant exists
+- **THEN** the gateway returns a rejected result with typed auth diagnostics, redaction metadata, audit fingerprint, and no handler, adapter, process, network, or credential resolver invocation
+- **中文** 当 MCP resource read 或 tool call 需要 credential 但不存在匹配 grant 时，gateway 必须返回 rejected result，包含 typed auth diagnostics、redaction metadata、audit fingerprint，且不得调用 handler、adapter、process、network 或 credential resolver。
+
+### Requirement: MCP Auth Evidence Preserves Pit Coverage / MCP 认证证据保留坑位覆盖
+
+MCP auth diagnostics SHALL cite relevant reference pit fixtures for plugin/MCP precedence, credential scope denial, real transport opt-in, environment snapshotting, and diagnostic redaction when those risks are exercised.
+
+MCP auth diagnostics 在触发 plugin/MCP precedence、credential scope denial、real transport opt-in、environment snapshotting 与 diagnostic redaction 风险时，必须引用相关 reference pit fixtures。
+
+#### Scenario: Scope denial cites credential pit / 作用域拒绝引用凭证坑位
+
+- **WHEN** an MCP server requests a credential outside its declared scope
+- **THEN** the gateway diagnostic cites a credential-scope pit fixture id and records the denial without exposing raw secret, raw environment, or raw transport output
+- **中文** 当 MCP server 请求超出 declared scope 的 credential 时，gateway diagnostic 必须引用 credential-scope pit fixture id，并记录 denial，且不暴露 raw secret、raw environment 或 raw transport output。

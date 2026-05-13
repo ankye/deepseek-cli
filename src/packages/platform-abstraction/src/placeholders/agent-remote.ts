@@ -2,6 +2,7 @@ import type { RemoteBinding, RemoteRuntimeConnectivity } from "@deepseek/platfor
 
 export class NoopRemoteRuntimeConnectivity implements RemoteRuntimeConnectivity {
   private readonly bindings = new Map<string, RemoteBinding>();
+  private readonly cancellations: { readonly id: string; readonly reason: string }[] = [];
 
   async bind(binding: RemoteBinding): Promise<void> {
     this.bindings.set(binding.id, binding);
@@ -11,5 +12,11 @@ export class NoopRemoteRuntimeConnectivity implements RemoteRuntimeConnectivity 
     return this.bindings.get(id);
   }
 
-  async cancelRemote(_id: string, _reason: string): Promise<void> {}
+  async cancelRemote(id: string, reason: string): Promise<void> {
+    this.cancellations.push({ id, reason });
+  }
+
+  cancellationHistory(): readonly { readonly id: string; readonly reason: string }[] {
+    return [...this.cancellations];
+  }
 }

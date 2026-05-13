@@ -1,8 +1,10 @@
 import type { Clock, JsonObject, RedactedError, TraceContext } from "./common.js";
 import type { AgentId, CapabilityId, CredentialRef, IdFactory, ModelProviderId, ModelProfileId, SessionId, TaskId, TurnId, WorkflowId } from "./ids.js";
+import type { CliReferenceKind, CliTargetRef } from "./cli-composition.js";
 import type { AgentManager } from "./agent.js";
 import type { CapabilityRegistry } from "./capability.js";
 import type { CacheManager, MemoryManager } from "./memory.js";
+import type { MemoryScope } from "./memory.js";
 import type { CodeIntelligenceService } from "./code-intelligence.js";
 import type { CommandSystem } from "./command.js";
 import type { ConcurrencyOrchestrator } from "./concurrency.js";
@@ -15,11 +17,13 @@ import type { ExtensionManager } from "./extension.js";
 import type { HookSystem } from "./hook.js";
 import type { McpGateway } from "./mcp.js";
 import type { ModelGateway, ModelProfile, ModelReasoningOptions } from "./model.js";
-import type { ToolIntentPreflightService } from "./tool-intent.js";
+import type { PromptAssembler } from "./prompt-assembly.js";
+import type { ToolFeedbackStatus, ToolIntentPreflightService } from "./tool-intent.js";
 import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
 import type { PluginManager } from "./plugin.js";
-import type { ApprovalBroker, PolicyEngine, SandboxRuntime } from "./policy.js";
+import type { ApprovalBroker } from "./approval.js";
+import type { PolicyEngine, SandboxRuntime } from "./policy.js";
 import type { ResourceScope, SandboxAuditEvidence, SandboxRequirement, SecretRedactionDecision } from "./security.js";
 import type { ProtocolRouter } from "./protocol.js";
 import type { RemoteRuntimeConnectivity } from "./remote.js";
@@ -39,6 +43,12 @@ export type RuntimeEventKind =
   | "workflow.opened"
   | "workflow.closed"
   | "policy.decided"
+  | "approval.required"
+  | "approval.decided"
+  | "approval.denied"
+  | "approval.timeout"
+  | "approval.cancelled"
+  | "approval.audit-linked"
   | "sandbox.selected"
   | "scheduler.queued"
   | "scheduler.started"
@@ -58,12 +68,15 @@ export type RuntimeEventKind =
   | "agent.loop.completed"
   | "agent.loop.failed"
   | "agent.loop.cancelled"
+  | "prompt.assembled"
   | "model.requested"
   | "context.projection.started"
   | "context.projection.cache-hit"
   | "context.projection.degraded"
   | "context.projection.rejected"
   | "context.projection.completed"
+  | "context.memory.collected"
+  | "context.compact.boundary"
   | "workflow.step"
   | "bus.recorded"
   | "model.delta"
@@ -79,6 +92,7 @@ export type RuntimeEventKind =
   | "usage.updated"
   | "turn.completed"
   | "hooks.invoked"
+  | "skill.activated"
   | "runtime.error"
   | "runtime.disposed";
 
@@ -126,6 +140,7 @@ export interface ExecutionEnvelope extends JsonObject {
   readonly caller: string;
   readonly parentInvocationId?: string;
   readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
   readonly workflowId?: WorkflowId;
   readonly taskId?: TaskId;
   readonly agentId?: AgentId;
@@ -160,6 +175,7 @@ export interface RuntimeKernelRequest {
   readonly input: JsonObject;
   readonly caller: string;
   readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
   readonly agentId?: AgentId;
   readonly parentInvocationId?: string;
   readonly timeoutMs?: number;
@@ -184,6 +200,7 @@ export interface RuntimeKernelDependencies {
   readonly scheduler: ConcurrencyOrchestrator;
   readonly capabilities: CapabilityRegistry;
   readonly policy: PolicyEngine;
+  readonly approvals: ApprovalBroker;
   readonly sandbox: SandboxRuntime;
   readonly sessions: SessionStore;
   readonly observability: ObservabilitySink;
@@ -221,6 +238,40 @@ export interface AgentLoopLimits extends JsonObject {
 
 export type AgentLoopToolProjection = "read-only" | "read-write" | "all";
 
+export interface AgentLoopReferenceContextItem extends JsonObject {
+  readonly id: string;
+  readonly kind: CliReferenceKind;
+  readonly target: CliTargetRef;
+  readonly label: string;
+  readonly provenance: JsonObject;
+  readonly order: number;
+  readonly budget?: {
+    readonly estimatedTokens?: number;
+    readonly bytes?: number;
+  };
+  readonly redaction: JsonObject;
+}
+
+export interface AgentLoopReferenceContextSet extends JsonObject {
+  readonly id: string;
+  readonly label: string;
+  readonly activeItemId?: string;
+  readonly items: readonly AgentLoopReferenceContextItem[];
+  readonly provenance: JsonObject;
+  readonly redaction: JsonObject;
+}
+
+export interface AgentLoopReferenceContext extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly source: "cli.palette.references";
+  readonly activeSetId?: string;
+  readonly activeItemId?: string;
+  readonly setCount: number;
+  readonly itemCount: number;
+  readonly sets: readonly AgentLoopReferenceContextSet[];
+  readonly redaction: JsonObject;
+}
+
 export interface AgentLoopRequest extends JsonObject {
   readonly prompt: string;
   readonly sessionId?: SessionId;
@@ -235,6 +286,7 @@ export interface AgentLoopRequest extends JsonObject {
   readonly limits?: Partial<AgentLoopLimits>;
   readonly live?: boolean;
   readonly toolProjection?: AgentLoopToolProjection;
+  readonly referenceContext?: AgentLoopReferenceContext;
   readonly trace?: TraceContext;
 }
 
@@ -257,12 +309,54 @@ export interface AgentLoopSummary extends JsonObject {
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
 }
 
+export interface RuntimeMemoryCollectionEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly status: "completed" | "degraded";
+  readonly scopes: readonly MemoryScope[];
+  readonly scopeCounts: JsonObject;
+  readonly candidateCount: number;
+  readonly degradedScopes: readonly MemoryScope[];
+  readonly diagnostics: readonly RedactedError[];
+  readonly replayFingerprint: string;
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
+export interface RuntimeCompactBoundaryEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly fingerprint: string;
+  readonly projectionFingerprint: string;
+  readonly pressure: "soft" | "hard";
+  readonly selectedNodeCount: number;
+  readonly excludedNodeCount: number;
+  readonly selectedTokens: number;
+  readonly excludedTokens: number;
+  readonly hardLimitTokens: number;
+  readonly softLimitTokens?: number;
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
+export interface RuntimeToolResultEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly capabilityId?: string;
+  readonly status: ToolFeedbackStatus;
+  readonly terminalKind: string;
+  readonly previewHash: string;
+  readonly previewBytes: number;
+  readonly previewTruncated: boolean;
+  readonly diagnosticCount: number;
+  readonly replayHash: string;
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
 export interface RuntimeEvent extends JsonObject {
   readonly kind: RuntimeEventKind;
   readonly sessionId: SessionId;
   readonly turnId?: TurnId;
   readonly taskId?: TaskId;
   readonly agentId?: AgentId;
+  readonly createdAt: string;
   readonly trace: TraceContext;
   readonly data: JsonObject;
   readonly error?: RedactedError;
@@ -314,6 +408,7 @@ export interface RuntimeDependencies {
   readonly config: ConfigStore;
   readonly observability: ObservabilitySink;
   readonly regression: RegressionHarness;
+  readonly promptAssembler?: PromptAssembler;
   readonly webFetch?: import("./core-tools.js").WebFetchProvider;
   readonly webSearch?: import("./core-tools.js").WebSearchProvider;
   readonly backgroundTasks?: import("./core-tools.js").BackgroundTaskManager;

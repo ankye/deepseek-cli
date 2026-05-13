@@ -83,12 +83,84 @@ describe("workspace checkpoint and undo manager", () => {
     assert.equal(restored.ok, false);
     assert.equal(restored.error?.code, "CHECKPOINT_PLATFORM_UNAVAILABLE");
   });
+
+  it("reverts checkpoints produced by a target request", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const manager = new InMemoryWorkspaceStateManager(platform);
+    const first = `${workspaceRoot}/first.ts`;
+    const second = `${workspaceRoot}/second.ts`;
+    await platform.writeFile(first, "after first");
+    await platform.writeFile(second, "after second");
+    await manager.transact(transactionFor(first, "before first", "after first", "tx-req-first", { requestId: "req-1", turnId: "turn-1" }));
+    await manager.transact(transactionFor(second, "before second", "after second", "tx-req-second", { requestId: "req-1", turnId: "turn-1" }));
+
+    const reverted = await manager.revertRequest({ target: { requestId: "req-1" } });
+
+    assert.equal(reverted.ok, true);
+    assert.equal(reverted.value?.status, "restored");
+    assert.equal(reverted.value?.eventKind, "workspace.request.reverted");
+    assert.equal(reverted.value?.contextProjection.reverted, true);
+    assert.equal(reverted.value?.contextProjection.targetRequestId, "req-1");
+    assert.deepEqual(reverted.value?.restoredPaths, [first, second]);
+    assert.equal(await platform.readFile(first), "before first");
+    assert.equal(await platform.readFile(second), "before second");
+    assert.equal(JSON.stringify(reverted.value).includes("before first"), false);
+  });
+
+  it("previews request revert without mutating files", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const manager = new InMemoryWorkspaceStateManager(platform);
+    const path = `${workspaceRoot}/preview.ts`;
+    await platform.writeFile(path, "after");
+    await manager.transact(transactionFor(path, "before", "after", "tx-preview", { requestId: "req-preview" }));
+
+    const preview = await manager.revertRequest({ target: { requestId: "req-preview" }, dryRun: true });
+
+    assert.equal(preview.ok, true);
+    assert.equal(preview.value?.status, "preview");
+    assert.equal(await platform.readFile(path), "after");
+    assert.deepEqual(preview.value?.affectedPaths, [path]);
+  });
+
+  it("reports partial stale request revert without overwriting newer content", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const manager = new InMemoryWorkspaceStateManager(platform);
+    const first = `${workspaceRoot}/partial-first.ts`;
+    const second = `${workspaceRoot}/partial-second.ts`;
+    await platform.writeFile(first, "after first");
+    await platform.writeFile(second, "after second");
+    await manager.transact(transactionFor(first, "before first", "after first", "tx-partial-first", { turnId: "turn-partial" }));
+    await manager.transact(transactionFor(second, "before second", "after second", "tx-partial-second", { turnId: "turn-partial" }));
+    await platform.writeFile(second, "user edit");
+
+    const reverted = await manager.revertRequest({ target: { turnId: "turn-partial" as never } });
+
+    assert.equal(reverted.ok, true);
+    assert.equal(reverted.value?.status, "partial");
+    assert.deepEqual(reverted.value?.restoredPaths, [first]);
+    assert.deepEqual(reverted.value?.stalePaths, [second]);
+    assert.equal(await platform.readFile(first), "before first");
+    assert.equal(await platform.readFile(second), "user edit");
+  });
+
+  it("rejects empty request revert targets", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const manager = new InMemoryWorkspaceStateManager(platform);
+
+    const reverted = await manager.revertRequest({ target: { requestId: "missing" } });
+
+    assert.equal(reverted.ok, false);
+    assert.equal(reverted.error?.code, "CHECKPOINT_REVERT_EMPTY");
+    assert.equal(reverted.value?.status, "rejected");
+  });
 });
 
-function transactionFor(path: string, before: string, after: string, id: string) {
+function transactionFor(path: string, before: string, after: string, id: string, metadata: { requestId?: string; turnId?: string } = {}) {
   return {
     id,
     sessionId,
+    ...(metadata.turnId ? { turnId: asId<"turn">(metadata.turnId) } : {}),
+    ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
     edits: [{
       path,
       precondition: "exact-match",

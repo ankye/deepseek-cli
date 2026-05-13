@@ -161,10 +161,31 @@ export class DeterministicCodeIntelligenceService implements CodeIntelligenceSer
     return [...this.cache.values()].flatMap((entry) => entry.references).filter((reference) => reference.name === symbol);
   }
 
+  /**
+   * Produce context graph nodes (diagnostics + symbols) for the given root.
+   *
+   * Safe-fallback semantics: when the underlying index fails because the root
+   * does not exist on the platform file system, this method returns
+   * `{ ok: true, value: { nodes: [], ... } }` rather than throwing or
+   * returning `ok: false`. This lets runtime consumers (e.g. the context
+   * engine auto-enrichment path) call `contextNodes` unconditionally without
+   * risking projection failure for uninitialized workspaces.
+   */
   async contextNodes(request: CodeIntelligenceContextRequest): Promise<SerializableResult<CodeIntelligenceContextResult>> {
     const indexed = await this.index(request.root);
     if (!indexed.ok || !indexed.value) {
-      return indexed.error ? { ok: false, error: indexed.error } : { ok: false, error: diagnostic("CODE_INTELLIGENCE_INDEX_FAILED", "Code intelligence index failed.") };
+      const provider = await this.status(request.root);
+      const metadata = indexMetadata(request.root, [], [...this.invalidatedPaths].sort(), provider);
+      return {
+        ok: true,
+        value: {
+          schemaVersion: CODE_INTELLIGENCE_SCHEMA_VERSION,
+          sessionId: request.sessionId,
+          nodes: [],
+          metadata,
+          redaction: { class: "internal", fields: ["nodes.content", "metadata.indexedPaths"] }
+        }
+      };
     }
     const nodes = [
       ...(request.includeDiagnostics ?? true ? indexed.value.diagnostics.map((entry) => diagnosticNode(request, entry)) : []),
@@ -182,6 +203,16 @@ export class DeterministicCodeIntelligenceService implements CodeIntelligenceSer
     };
   }
 
+  /**
+   * Mark a path as invalidated so the next `index`/`diagnostics`/`symbols`
+   * call re-reads it from the platform file system.
+   *
+   * Idempotent: calling `invalidate` with an unknown path (not currently
+   * tracked in any `CachedIndex`) produces no side effects beyond adding the
+   * path to the invalidation set, and never throws. Callers can invoke it
+   * freely from write-path tool post-execution hooks without first checking
+   * whether the path has been indexed.
+   */
   async invalidate(path: string): Promise<void> {
     this.invalidatedPaths.add(path);
   }

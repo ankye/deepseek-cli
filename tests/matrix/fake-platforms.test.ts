@@ -5,7 +5,7 @@ import { coreToolIds, registerCoreCodingTools } from "@deepseek/core-coding-tool
 import { asId } from "@deepseek/platform-contracts";
 import type { CapabilityExecutionContext, ExecutionEnvelope, TraceContext } from "@deepseek/platform-contracts";
 import { analyzeResourceScope, createSandboxAuditEvidence, createSandboxRequirement, createSecretRedactionDecision } from "@deepseek/policy-sandbox";
-import { createFakePlatformMatrix } from "@deepseek/testing-regression";
+import { createFakePlatformMatrix, getReferencePitFixture } from "@deepseek/testing-regression";
 import { InMemoryWorkspaceStateManager } from "@deepseek/workspace-state-management";
 
 describe("fake platform matrix", () => {
@@ -68,6 +68,36 @@ describe("fake platform matrix", () => {
     assert.equal((await remote.runProcess("echo", ["ok"])).exitCode, 126);
     assert.equal((await ci.secureStorageCapability()).status, "unavailable");
     assert.equal((await ci.probeNativeCapability("clipboard")).status, "unavailable");
+  });
+
+  it("rejects reference pit path canonicalization bypass syntaxes", () => {
+    const fixture = getReferencePitFixture("pit.path-canonicalization.unsafe-syntax");
+    assert.equal(fixture?.evidenceIds.includes("platform:path-unsafe-syntax"), true);
+    const platform = createFakePlatformMatrix().find((candidate) => candidate.os === "windows");
+    assert.ok(platform);
+
+    const unsafePaths = [
+      "~/.deepseek/config.json",
+      "C:relative.txt",
+      "\\\\server\\share\\repo\\file.txt",
+      "../escape.txt",
+      "dir/trailing. /file.txt",
+      "dir/trailing-space /file.txt",
+      "$(pwd)/file.txt",
+      "src/*.ts",
+      "src/[secret].ts",
+      "null\0byte.txt"
+    ];
+
+    for (const path of unsafePaths) {
+      const resolved = platform.resolveWorkspacePath("C:/workspace/windows", path);
+      assert.equal(resolved.ok, false, `${path} should be rejected`);
+      assert.equal(resolved.error?.code === "PLATFORM_PATH_REJECTED" || resolved.error?.code === "PLATFORM_PATH_OUTSIDE_ROOT", true);
+    }
+
+    const safe = platform.resolveWorkspacePath("C:/workspace/windows", "src/index.ts");
+    assert.equal(safe.ok, true);
+    assert.equal(safe.value?.relativePath.replace(/\\/g, "/"), "src/index.ts");
   });
 
   it("covers core tool path, search, process, and output bounding behavior across the fake matrix", async () => {

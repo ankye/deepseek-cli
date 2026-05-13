@@ -4,3 +4,5 @@ export * from "./normalizers/index.js";
 export * from "./versioning/index.js";
 export * from "./redaction/index.js";
 export * from "./matrix/index.js";
+export * from "./reference-pits/index.js";
+export * from "./approval/index.js";

@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createConfigDocument, PersistentConfigService, validateConfigDocument } from "../src/index.js";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
+import { getReferencePitFixture } from "@deepseek/testing-regression";
 
 describe("persistent config service", () => {
   it("resolves values by defaults, user, workspace, environment, then CLI precedence", async () => {
@@ -69,5 +70,24 @@ describe("persistent config service", () => {
 
     assert.equal(document?.schemaVersion, "999.0.0");
     assert.equal(diagnostics.some((diagnostic) => diagnostic.code === "CONFIG_SCHEMA_VERSION_UNSUPPORTED"), true);
+  });
+
+  it("snapshots constructor environment and CLI values", async () => {
+    const fixture = getReferencePitFixture("pit.env-snapshot.immutable-startup");
+    assert.equal(fixture?.evidenceIds.includes("config:immutable-env-snapshot"), true);
+    const platform = new FakePlatformRuntime("linux");
+    const environment = { model: "env-model", output: "json" };
+    const cli = { profile: "cli-profile" };
+    const defaults = { telemetry: "disabled" };
+    const service = new PersistentConfigService({ platform, workspaceRoot: "/repo", defaults, environment, cli });
+
+    environment.model = "mutated-env-model";
+    cli.profile = "mutated-cli-profile";
+    defaults.telemetry = "enabled";
+    const resolved = await service.resolve();
+
+    assert.equal(resolved.values.find((value) => value.key === "model")?.value, "env-model");
+    assert.equal(resolved.values.find((value) => value.key === "profile")?.value, "cli-profile");
+    assert.equal(resolved.values.find((value) => value.key === "telemetry")?.value, "disabled");
   });
 });

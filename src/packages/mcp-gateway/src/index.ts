@@ -1,5 +1,6 @@
 import type {
   JsonObject,
+  ExtensionCredentialAuthorizationEvidence,
   McpGateway,
   McpHealthStatus,
   McpListRequest,
@@ -23,6 +24,7 @@ import type {
   TrustStatus
 } from "@deepseek/platform-contracts";
 import { MCP_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+import { authDiagnostics, authorizeMcpRequirements, mergeMcpRequirements, type McpCredentialAuthorizer } from "./auth.js";
 
 interface StoredServer {
   readonly manifest: McpServerManifest;
@@ -36,10 +38,16 @@ export type McpTransportKind = McpTransportDeclaration["kind"];
 
 export type RealTransportFactory = (manifest: McpServerManifest) => Promise<{ readonly adapter: McpServerAdapter; readonly dispose: () => Promise<void> }>;
 
+export interface InMemoryMcpGatewayOptions {
+  readonly authorizeCredential?: McpCredentialAuthorizer;
+}
+
 export class InMemoryMcpGateway implements McpGateway {
   private readonly servers = new Map<string, StoredServer>();
   private readonly namespaces = new Map<string, string>();
   private readonly realTransports = new Map<McpTransportKind, RealTransportFactory>();
+
+  constructor(private readonly options: InMemoryMcpGatewayOptions = {}) {}
 
   registerRealTransport(kind: McpTransportKind, factory: RealTransportFactory): void {
     this.realTransports.set(kind, factory);
@@ -188,6 +196,19 @@ export class InMemoryMcpGateway implements McpGateway {
     if (!tool || preflight.length > 0) {
       return toolCallResult(request, stored, tool, preflightStatus(stored), startedAt, undefined, preflight);
     }
+    const auth = await authorizeMcpRequirements(this.options.authorizeCredential, {
+      manifest: stored.manifest,
+      requirements: mergeMcpRequirements(stored.manifest, tool.credentialRequirements),
+      operation: "use-tool",
+      caller: request.caller,
+      targetKind: "tool",
+      targetName: tool.name,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      ...(request.metadata ? { metadata: request.metadata } : {})
+    });
+    if (auth?.status === "denied") {
+      return toolCallResult(request, stored, tool, "rejected", startedAt, undefined, authDiagnostics(auth), auth);
+    }
     const handler = stored.adapter?.toolHandlers?.[tool.name];
     if (!handler) {
       return toolCallResult(request, stored, tool, "unavailable", startedAt, undefined, [diagnostic("MCP_TOOL_HANDLER_UNAVAILABLE", `MCP tool handler unavailable: ${tool.name}`)]);
@@ -199,7 +220,7 @@ export class InMemoryMcpGateway implements McpGateway {
       if (!result.ok) {
         return toolCallResult(request, stored, tool, result.error?.code === "MCP_TOOL_TIMEOUT" ? "timed-out" : "failed", startedAt, undefined, [result.error ?? diagnostic("MCP_TOOL_FAILED", `MCP tool failed: ${tool.name}`)]);
       }
-      return toolCallResult(request, stored, tool, "completed", startedAt, redactMcpMetadata(result.value ?? {}), stored.diagnostics.filter((item) => item.code === "MCP_TRANSPORT_UNAVAILABLE"));
+      return toolCallResult(request, stored, tool, "completed", startedAt, redactMcpMetadata(result.value ?? {}), stored.diagnostics.filter((item) => item.code === "MCP_TRANSPORT_UNAVAILABLE"), auth);
     } catch (error) {
       const code = error instanceof Error && error.message === "MCP_TOOL_TIMEOUT" ? "MCP_TOOL_TIMEOUT" : "MCP_TOOL_FAILED";
       return toolCallResult(request, stored, tool, code === "MCP_TOOL_TIMEOUT" ? "timed-out" : "failed", startedAt, undefined, [diagnostic(code, error instanceof Error ? error.message : "MCP tool failed.")]);
@@ -218,6 +239,19 @@ export class InMemoryMcpGateway implements McpGateway {
     if (!resource || preflight.length > 0) {
       return resourceReadResult(request, stored, resource, preflightStatus(stored), startedAt, undefined, preflight);
     }
+    const auth = await authorizeMcpRequirements(this.options.authorizeCredential, {
+      manifest: stored.manifest,
+      requirements: mergeMcpRequirements(stored.manifest, resource.credentialRequirements),
+      operation: "read-resource",
+      caller: request.caller,
+      targetKind: "resource",
+      targetName: resource.uri,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      ...(request.metadata ? { metadata: request.metadata } : {})
+    });
+    if (auth?.status === "denied") {
+      return resourceReadResult(request, stored, resource, "rejected", startedAt, undefined, authDiagnostics(auth), undefined, auth);
+    }
     const handler = stored.adapter?.resourceHandlers?.[resource.uri];
     if (!handler) {
       return resourceReadResult(request, stored, resource, "unavailable", startedAt, undefined, [diagnostic("MCP_RESOURCE_HANDLER_UNAVAILABLE", `MCP resource handler unavailable: ${resource.uri}`)]);
@@ -229,7 +263,7 @@ export class InMemoryMcpGateway implements McpGateway {
       if (!result.ok) {
         return resourceReadResult(request, stored, resource, result.error?.code === "MCP_RESOURCE_TIMEOUT" ? "timed-out" : "failed", startedAt, undefined, [result.error ?? diagnostic("MCP_RESOURCE_FAILED", `MCP resource failed: ${resource.uri}`)]);
       }
-      return resourceReadResult(request, stored, resource, "completed", startedAt, result.value?.content ?? "", stored.diagnostics.filter((item) => item.code === "MCP_TRANSPORT_UNAVAILABLE"), result.value?.mimeType);
+      return resourceReadResult(request, stored, resource, "completed", startedAt, result.value?.content ?? "", stored.diagnostics.filter((item) => item.code === "MCP_TRANSPORT_UNAVAILABLE"), result.value?.mimeType, auth);
     } catch (error) {
       const code = error instanceof Error && error.message === "MCP_RESOURCE_TIMEOUT" ? "MCP_RESOURCE_TIMEOUT" : "MCP_RESOURCE_FAILED";
       return resourceReadResult(request, stored, resource, code === "MCP_RESOURCE_TIMEOUT" ? "timed-out" : "failed", startedAt, undefined, [diagnostic(code, error instanceof Error ? error.message : "MCP resource failed.")]);
@@ -404,7 +438,8 @@ function toolCallResult(
   status: McpOperationStatus,
   startedAt: string,
   output: JsonObject | undefined,
-  diagnostics: readonly RedactedError[]
+  diagnostics: readonly RedactedError[],
+  auth?: ExtensionCredentialAuthorizationEvidence
 ): McpToolCallResult {
   const manifest = stored?.manifest;
   const timeoutMs = request.timeoutMs ?? tool?.timeoutMs ?? manifest?.timeoutMs ?? 0;
@@ -431,6 +466,7 @@ function toolCallResult(
     redaction: { class: redactionClass, fields: ["output", "diagnostics"] },
     audit: { source: "mcp-gateway", serverId: request.serverId, target: request.name, caller: request.caller },
     compatibility: { schemaVersion: MCP_SCHEMA_VERSION },
+    ...(auth ? { auth } : {}),
     replayFingerprint: ""
   };
   return deepFreeze({
@@ -441,6 +477,7 @@ function toolCallResult(
       name: result.name,
       caller: result.caller,
       output: result.output,
+      auth: result.auth ? { status: result.auth.status, reason: result.auth.reason, replayFingerprint: result.auth.replayFingerprint } : undefined,
       diagnostics: result.diagnostics.map((item) => item.code)
     }))
   });
@@ -454,7 +491,8 @@ function resourceReadResult(
   startedAt: string,
   content: string | undefined,
   diagnostics: readonly RedactedError[],
-  mimeType?: string
+  mimeType?: string,
+  auth?: ExtensionCredentialAuthorizationEvidence
 ): McpResourceReadResult {
   const manifest = stored?.manifest;
   const timeoutMs = request.timeoutMs ?? manifest?.timeoutMs ?? 0;
@@ -483,6 +521,7 @@ function resourceReadResult(
     provenance: { source: "mcp-gateway", serverId: request.serverId, uri: request.uri },
     audit: { source: "mcp-gateway", serverId: request.serverId, target: request.uri, caller: request.caller },
     compatibility: { schemaVersion: MCP_SCHEMA_VERSION },
+    ...(auth ? { auth } : {}),
     replayFingerprint: ""
   };
   return deepFreeze({
@@ -493,6 +532,7 @@ function resourceReadResult(
       uri: result.uri,
       caller: result.caller,
       content: result.content,
+      auth: result.auth ? { status: result.auth.status, reason: result.auth.reason, replayFingerprint: result.auth.replayFingerprint } : undefined,
       diagnostics: result.diagnostics.map((item) => item.code)
     }))
   });

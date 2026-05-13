@@ -30,6 +30,7 @@ const conventions = {
         ["platform-contracts", "@deepseek/platform-contracts"],
         ["runtime", "@deepseek/runtime"],
         ["model-gateway", "@deepseek/model-gateway"],
+        ["prompt-assembly", "@deepseek/prompt-assembly"],
         ["credential-auth-management", "@deepseek/credential-auth-management"],
         ["cli", "deepseek-agent-cli"],
         ["vscode-extension", "@deepseek/vscode-extension"]
@@ -38,6 +39,7 @@ const conventions = {
         ["platform-contracts", new Set()],
         ["runtime", new Set(["@deepseek/platform-contracts"])],
         ["model-gateway", new Set(["@deepseek/platform-contracts"])],
+        ["prompt-assembly", new Set(["@deepseek/platform-contracts"])],
         ["credential-auth-management", new Set(["@deepseek/platform-contracts"])]
       ]),
   appDependencyPolicy: new Map([
@@ -133,6 +135,11 @@ const conventions = {
     approvedPackages: new Set(["platform-contracts", "policy-sandbox", "runtime", "credential-auth-management", "model-gateway", "platform-abstraction", "testing-regression"]),
     forbiddenSandboxProperties: new Set(["sandboxProfile", "sandboxRequirements", "sandboxCapabilities"]),
     forbiddenSecretProperties: new Set(["apiKey", "token", "secret", "password", "credential"])
+  },
+  scaleGuardrails: {
+    maxCentralFileLines: 20,
+    maxPackageIndexLines: 10,
+    plannedOversizedFiles: new Set(["src/packages/platform-abstraction/src/index.ts"])
   }
 };
 
@@ -411,10 +418,55 @@ describe("architecture lint framework", () => {
     });
   });
 
+  it("rejects prompt assembly host or implementation dependencies", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(root, "src/packages/prompt-assembly/src/index.ts", "import { runAgentLoop } from \"@deepseek/runtime\";\nimport { readFileSync } from \"node:fs\";\nexport { runAgentLoop, readFileSync };\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("prompt-assembly/host-neutral-boundary"), true);
+    });
+  });
+
   it("allows platform owners and tests to access platform primitives", async () => {
     await withFixture(async (root) => {
       await writeFixtureFile(root, "src/packages/platform-abstraction/src/index.ts", "import { spawn } from \"node:child_process\";\nexport const os = process.platform;\nexport function search() { spawn(\"rg\", [\"needle\"]); }\n");
       await writeFixtureFile(root, "src/packages/context-engine/test/platform.test.ts", "import { spawn } from \"node:child_process\";\nexport const os = process.platform;\nexport function search() { spawn(\"rg\", [\"needle\"]); }\n");
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.deepEqual(JSON.parse(result.stdout), []);
+    });
+  });
+
+  it("rejects central file and package index growth without a split plan", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/model-gateway/src/index.ts",
+        Array.from({ length: 12 }, (_, index) => `export const value${index} = ${index};`).join("\n")
+      );
+      await writeFixtureFile(
+        root,
+        "src/apps/cli/src/index.ts",
+        Array.from({ length: 85 }, (_, index) => `export const cli${index} = ${index};`).join("\n")
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("architecture/central-file-scale-guardrail"), true);
+    });
+  });
+
+  it("allows planned oversized files while the split plan is active", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/platform-abstraction/src/index.ts",
+        Array.from({ length: 30 }, (_, index) => `export const planned${index} = ${index};`).join("\n")
+      );
 
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr || result.stdout);

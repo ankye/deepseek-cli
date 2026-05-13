@@ -8,7 +8,7 @@ import type {
 import { boundedText, defineToolManifest, diag, failure, isDiagnostic, objectSchema, replay, success, undefinedError } from "../../shared/tool-kit.js";
 import { coreToolIds } from "../../shared/ids.js";
 import type { CoreCodingToolsDependencies } from "../../shared/workspace.js";
-import { countOccurrences, editTransaction, publicTransactionEvidence, requireDeps, resolveToolPath, toWorkspaceTransaction } from "../../shared/workspace.js";
+import { countOccurrences, editTransaction, invalidateCodeIntelligence, publicTransactionEvidence, requireDeps, resolveToolPath, toWorkspaceTransaction } from "../../shared/workspace.js";
 
 export function defineFileEditTool(deps: CoreCodingToolsDependencies | undefined) {
   return defineToolManifest(
@@ -39,6 +39,7 @@ async function editFileTool(input: JsonObject, context: CapabilityExecutionConte
   await deps.platform.writeFile(path.value.path, after);
   const transaction = editTransaction(context, path.value.path, "exact-match", before, after, true, []);
   const workspaceTransaction = await deps.workspaceState.transact(toWorkspaceTransaction(transaction, before));
+  invalidateCodeIntelligence(deps, path.value.path);
   return success("file.edit", [path.value.path], {
     preview: boundedText(after, parsed.limitBytes),
     metadata: { transaction: publicTransactionEvidence(transaction, workspaceTransaction), checkpoint: workspaceTransaction.checkpoints[0], changedRanges: [{ start: before.indexOf(parsed.expected), oldLength: parsed.expected.length, newLength: parsed.replacement.length }] },

@@ -4,7 +4,6 @@
 Define how DeepSeek gathers, normalizes, budgets, redacts, and projects runtime context for model requests and host/runtime evidence.
 
 定义 DeepSeek 如何为模型请求以及 host/runtime evidence 收集、规范化、预算、脱敏并投影 runtime context。
-
 ## Requirements
 ### Requirement: Context Graph Nodes
 
@@ -124,3 +123,99 @@ context engine 必须接受受治理的 skill context segments，把它们作为
 - **WHEN** an untrusted or disabled skill attempts to contribute context
 - **THEN** the projection excludes the segment and records redacted exclusion metadata
 - **中文** 当 untrusted 或 disabled skill 尝试贡献 context 时，projection 必须排除该 segment，并记录脱敏 exclusion metadata。
+
+### Requirement: Projection Cache Pluggable Via `CacheManager` / 投影缓存可通过 CacheManager 插接
+
+`InMemoryContextEngine` SHALL accept an optional constructor parameter `{ cache?: CacheManager }`. When a `cache` is injected, every `projectGraph(request, candidates)` invocation SHALL:
+(1) build a `ProjectionCacheInput` whose `requestFingerprint` is the stable hash of the request shape and whose `dependencyFingerprints` is the list of candidate dependency fingerprints;
+(2) compute the cache key via `projectionCacheKey(input)` imported from `@deepseek/memory-cache-management`;
+(3) attempt `cache.get<ContextProjectionResult>(key)` and return the cached result (with `cache.hit = true` and `replayFingerprint` suffixed by `":cache-hit"`) on hit;
+(4) on miss, compute the projection and persist it via `cache.set(createProjectionCacheEntry(input, result, now))` before returning.
+
+When no `cache` is injected, `InMemoryContextEngine` SHALL fall back to the existing process-local `Map<string, ContextProjectionResult>` using the same `projectionCacheKey(input)` as the map key, preserving zero-regression behavior relative to the pre-change implementation. The local `projectionCacheKey` function previously defined in `context-engine/src/index.ts` SHALL be removed; any remaining local namespace constant (e.g. `CONTEXT_PROJECTION_CACHE_NAMESPACE`) SHALL be re-exported as an alias of `PROJECTION_CACHE_NAMESPACE` from `@deepseek/memory-cache-management`, not as an independent literal.
+
+`InMemoryContextEngine` 必须接受可选构造参数 `{ cache?: CacheManager }`。当注入 `cache` 时,每次 `projectGraph(request, candidates)` 调用都必须:
+(1) 构造 `ProjectionCacheInput`,其 `requestFingerprint` 为 request 形状的稳定哈希,其 `dependencyFingerprints` 为 candidate 依赖指纹列表;
+(2) 通过从 `@deepseek/memory-cache-management` 导入的 `projectionCacheKey(input)` 计算缓存键;
+(3) 尝试 `cache.get<ContextProjectionResult>(key)`,命中时返回缓存结果(`cache.hit = true`,`replayFingerprint` 追加 `":cache-hit"` 后缀);
+(4) miss 时计算 projection,并在返回前通过 `cache.set(createProjectionCacheEntry(input, result, now))` 写回。
+
+当未注入 `cache` 时,`InMemoryContextEngine` 必须回退到现有的进程内 `Map<string, ContextProjectionResult>`,并以相同的 `projectionCacheKey(input)` 作为 map key,相对改动前的实现保持零回归行为。原先在 `context-engine/src/index.ts` 定义的本地 `projectionCacheKey` 函数必须移除;任何残留的本地命名空间常量(例如 `CONTEXT_PROJECTION_CACHE_NAMESPACE`)必须作为 `@deepseek/memory-cache-management` 的 `PROJECTION_CACHE_NAMESPACE` 的再导出别名,而不是独立字面量。
+
+#### Scenario: Cache-backed hit returns cached projection / cache 注入命中返回缓存
+
+- **WHEN** an `InMemoryContextEngine` is constructed with `{ cache: new InMemoryCacheManager() }` and `projectGraph(request, candidates)` is called twice with identical inputs
+- **THEN** the second call SHALL return a result whose `selectedNodes` are byte-equal to the first call's, whose `cache.hit === true`, and whose `replayFingerprint` ends with `":cache-hit"`
+- **中文** 当 `InMemoryContextEngine` 以 `{ cache: new InMemoryCacheManager() }` 构造,并以相同输入两次调用 `projectGraph(request, candidates)` 时,第二次必须返回一个 `selectedNodes` 与首次字节相同、`cache.hit === true` 且 `replayFingerprint` 以 `":cache-hit"` 结尾的结果。
+
+#### Scenario: Cache-backed miss writes back via createProjectionCacheEntry / cache miss 通过工厂写回
+
+- **WHEN** an `InMemoryContextEngine` is constructed with an injected `CacheManager` and `projectGraph` is called for a previously-unseen input
+- **THEN** after the call the injected cache SHALL contain an entry at `projectionCacheKey(input)` whose `value` matches the returned projection and whose `invalidation` was produced by `createProjectionCacheEntry`
+- **中文** 当 `InMemoryContextEngine` 以注入的 `CacheManager` 构造,并对此前未见输入调用 `projectGraph` 时,调用后被注入的 cache 必须在 `projectionCacheKey(input)` 处包含一条 entry,其 `value` 与返回的 projection 对齐,其 `invalidation` 由 `createProjectionCacheEntry` 产出。
+
+#### Scenario: No-cache fallback preserves in-memory hit behavior / 未注入 cache 走 in-memory fallback
+
+- **WHEN** an `InMemoryContextEngine` is constructed without any `cache` argument and `projectGraph` is called twice with identical inputs
+- **THEN** the second call SHALL still observe `cache.hit === true` via the private `Map` fallback, and SHALL NOT require any `CacheManager` to have been registered on `RuntimeDependencies`
+- **中文** 当 `InMemoryContextEngine` 不带任何 `cache` 参数构造,并以相同输入两次调用 `projectGraph` 时,第二次必须仍通过私有 `Map` fallback 观察到 `cache.hit === true`,且不得要求 `RuntimeDependencies` 上已注册任何 `CacheManager`。
+
+#### Scenario: Dependency fingerprint change invalidates cache / 依赖指纹变化使缓存失效
+
+- **WHEN** an `InMemoryContextEngine` is constructed with an injected `CacheManager`, `projectGraph` is called once with candidates `C1` whose dependency fingerprints are `[d1,d2]`, and then called again with candidates `C1'` whose dependency fingerprints are `[d1,d2,d3]` (same request fingerprint otherwise)
+- **THEN** the second call SHALL compute a different `projectionCacheKey`, the cache lookup SHALL miss, and the projection SHALL be recomputed and written back under the new key
+- **中文** 当 `InMemoryContextEngine` 以注入的 `CacheManager` 构造,先以依赖指纹为 `[d1,d2]` 的 candidates `C1` 调用 `projectGraph`,再以依赖指纹为 `[d1,d2,d3]` 的 candidates `C1'` 调用(其余 request 指纹相同)时,第二次必须计算出不同的 `projectionCacheKey`,缓存必须 miss,projection 必须被重算并以新 key 写回。
+
+### Requirement: Chat Reference Candidate Projection / Chat 引用候选投影
+
+The context engine SHALL project runtime-supplied chat reference candidates with the same eligibility, budget, redaction, cache, and replay rules as other context graph nodes.
+
+Context engine 必须用与其他 context graph nodes 相同的 eligibility、budget、redaction、cache 与 replay 规则投影 runtime-supplied chat reference candidates。
+
+#### Scenario: File reference candidate is selected / 文件引用候选被选中
+
+- **WHEN** runtime submits a file reference candidate whose content is within policy and budget
+- **THEN** context projection may select it as a `file` node with provenance, dependency fingerprints, redaction metadata, and deterministic ordering
+- **中文** 当 runtime 提交内容符合 policy 与 budget 的 file reference candidate 时，context projection 可以将其作为带 provenance、dependency fingerprints、redaction metadata 与 deterministic ordering 的 `file` node 选中。
+
+#### Scenario: Unsafe reference candidate is excluded / 不安全引用候选被排除
+
+- **WHEN** a chat reference candidate contains secret-like content, has unavailable redaction class, is outside scope, or exceeds budget
+- **THEN** context projection excludes it with a structured reason and without exposing raw content in externally visible events
+- **中文** 当 chat reference candidate 包含疑似 secret content、redaction class 不可用、超出 scope 或超过 budget 时，context projection 必须用 structured reason 排除它，且不得在 externally visible events 中暴露 raw content。
+
+### Requirement: Runtime Memory Candidate Projection / Runtime 记忆候选投影
+
+The context engine SHALL project runtime-supplied memory candidates with the same eligibility, ordering, budget, redaction, cache, and replay rules as other context graph nodes.
+
+Context engine 必须用与其他 context graph nodes 相同的 eligibility、ordering、budget、redaction、cache 与 replay rules 投影 runtime-supplied memory candidates。
+
+#### Scenario: Scoped memory is selected under budget / 作用域记忆在预算内被选中
+
+- **WHEN** runtime submits working, session, or project memory candidates whose redaction class and scope are eligible for the turn
+- **THEN** context projection may select them as `memory-ref` nodes with provenance, dependency fingerprints, deterministic priority, and redaction metadata
+- **中文** 当 runtime 提交 working、session 或 project memory candidates，且其 redaction class 与 scope 对当前回合 eligible 时，context projection 可以将其作为带 provenance、dependency fingerprints、deterministic priority 与 redaction metadata 的 `memory-ref` nodes 选中。
+
+#### Scenario: Memory provider degradation is structured / 记忆提供者降级结构化
+
+- **WHEN** memory retrieval is unavailable, out of scope, or redaction-ineligible
+- **THEN** context projection records structured exclusion or degradation metadata without failing model dispatch by default
+- **中文** 当 memory retrieval 不可用、超出 scope 或 redaction-ineligible 时，context projection 必须记录结构化 exclusion 或 degradation metadata，默认不得让 model dispatch 失败。
+
+### Requirement: Code References And Definitions Projection / 代码引用与定义投影
+
+The context engine SHALL accept code-intelligence reference and definition candidates as regular context evidence with bounded content, provenance, redaction metadata, and deterministic dependency fingerprints.
+
+Context engine 必须接受 code-intelligence reference 与 definition candidates，并把它们作为带 bounded content、provenance、redaction metadata 与 deterministic dependency fingerprints 的普通 context evidence。
+
+#### Scenario: References project as language-aware evidence / 引用作为语言感知证据投影
+
+- **WHEN** code intelligence provides references or definitions related to the turn
+- **THEN** projection may select them using the same budget and ordering rules as diagnostics, symbols, files, memory, and PageIndex recall
+- **中文** 当 code intelligence 为当前回合提供 references 或 definitions 时，projection 可以用与 diagnostics、symbols、files、memory 和 PageIndex recall 相同的 budget 与 ordering rules 选择它们。
+
+#### Scenario: Reference lookup fallback is non-fatal / 引用查找失败不致命
+
+- **WHEN** references or definitions cannot be resolved
+- **THEN** projection emits degraded evidence or exclusions and continues with other context candidates
+- **中文** 当 references 或 definitions 无法解析时，projection 必须发出 degraded evidence 或 exclusions，并继续处理其他 context candidates。

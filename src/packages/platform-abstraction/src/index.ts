@@ -1,4 +1,5 @@
-import { mkdir, readFile as fsReadFile, rename, rm, stat as stat_, writeFile as fsWriteFile, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile as fsReadFile, rename, rm, stat as stat_, writeFile as fsWriteFile, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import type {
@@ -192,10 +193,10 @@ export class NodePlatformRuntime implements PlatformRuntime {
   }
 
   resolveWorkspacePath(workspaceRoot: string, inputPath: string): SerializableResult<PlatformResolvedPath> {
-    if (inputPath.startsWith("~") || hasAmbiguousDriveRelativePath(inputPath) || inputPath.includes("\0")) {
+    if (isUnsupportedWorkspacePathSyntax(inputPath)) {
       return {
         ok: false,
-        error: platformError("PLATFORM_PATH_REJECTED", "Workspace path contains unsupported home, drive-relative, or null-byte syntax.", { inputPath })
+        error: platformError("PLATFORM_PATH_REJECTED", "Workspace path contains unsupported home, drive-relative, null-byte, UNC, glob, shell-expansion, or trailing dot/space syntax.", { inputPath })
       };
     }
     const root = resolve(workspaceRoot);
@@ -295,6 +296,16 @@ export class NodePlatformRuntime implements PlatformRuntime {
 
   resolvePath(...parts: readonly string[]): string {
     return resolve(...parts);
+  }
+
+  async createTempDirectory(prefix: string): Promise<string> {
+    const root = resolve(tmpdir(), "deepseek-evaluation-runs");
+    await mkdir(root, { recursive: true });
+    return mkdtemp(join(root, prefix));
+  }
+
+  async ensureDirectory(path: string): Promise<void> {
+    await mkdir(path, { recursive: true });
   }
 
   userConfigPath(appName: string): string {
@@ -434,16 +445,31 @@ export class NodePlatformRuntime implements PlatformRuntime {
         cwd: typeof options.cwd === "string" ? options.cwd : undefined,
         shell: false
       });
+      const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : undefined;
       let stdout = "";
       let stderr = "";
+      let settled = false;
+      const finish = (result: ProcessResult) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolvePromise(result);
+      };
+      const timer = timeoutMs
+        ? setTimeout(() => {
+          stderr += `${stderr ? "\n" : ""}Process timed out after ${timeoutMs}ms.`;
+          child.kill("SIGKILL");
+          finish({ exitCode: 124, stdout, stderr, metadata: providerMetadata("argv", "degraded", [], "PROCESS_TIMEOUT", [diagnostic("PROCESS_TIMEOUT", "error", `Process timed out after ${timeoutMs}ms.`)]) });
+        }, timeoutMs)
+        : undefined;
       child.stdout.on("data", (chunk) => {
         stdout += String(chunk);
       });
       child.stderr.on("data", (chunk) => {
         stderr += String(chunk);
       });
-      child.on("close", (exitCode) => resolvePromise({ exitCode: exitCode ?? 0, stdout, stderr, metadata: providerMetadata("argv", "available", [], undefined, []) }));
-      child.on("error", (error) => resolvePromise({ exitCode: 1, stdout, stderr: error.message, metadata: providerMetadata("argv", "degraded", [], "PROCESS_SPAWN_FAILED", [diagnostic("PROCESS_SPAWN_FAILED", "error", error.message)]) }));
+      child.on("close", (exitCode) => finish({ exitCode: exitCode ?? 0, stdout, stderr, metadata: providerMetadata("argv", "available", [], undefined, []) }));
+      child.on("error", (error) => finish({ exitCode: 1, stdout, stderr: error.message, metadata: providerMetadata("argv", "degraded", [], "PROCESS_SPAWN_FAILED", [diagnostic("PROCESS_SPAWN_FAILED", "error", error.message)]) }));
     });
   }
 
@@ -613,10 +639,10 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
   }
 
   override resolveWorkspacePath(workspaceRoot: string, inputPath: string): SerializableResult<PlatformResolvedPath> {
-    if (inputPath.startsWith("~") || hasAmbiguousDriveRelativePath(inputPath) || inputPath.includes("\0")) {
+    if (isUnsupportedWorkspacePathSyntax(inputPath)) {
       return {
         ok: false,
-        error: platformError("PLATFORM_PATH_REJECTED", "Workspace path contains unsupported home, drive-relative, or null-byte syntax.", { inputPath })
+        error: platformError("PLATFORM_PATH_REJECTED", "Workspace path contains unsupported home, drive-relative, null-byte, UNC, glob, shell-expansion, or trailing dot/space syntax.", { inputPath })
       };
     }
     const root = normalizeVirtualPath(isVirtualAbsolutePath(workspaceRoot) ? workspaceRoot : `${this.fakeRoot}/${workspaceRoot}`);
@@ -739,6 +765,16 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
   override async writeFile(path: string, content: string): Promise<void> {
     if (this.fakeOptions.readOnlyFilesystem) throw new Error("FILESYSTEM_READ_ONLY");
     this.files.set(normalizeVirtualPath(path), content);
+  }
+
+  override async createTempDirectory(prefix: string): Promise<string> {
+    const root = normalizeVirtualPath(`${this.fakeRoot}/tmp/deepseek-evaluation-runs`);
+    const id = `${prefix}${this.files.size}`;
+    return normalizeVirtualPath(`${root}/${id}`);
+  }
+
+  override async ensureDirectory(_path: string): Promise<void> {
+    if (this.fakeOptions.readOnlyFilesystem) throw new Error("FILESYSTEM_READ_ONLY");
   }
 
   override async findFiles(pattern: string, root: string): Promise<readonly string[]> {
@@ -974,6 +1010,27 @@ function platformError(code: string, message: string, details: JsonObject = {}):
 
 function hasAmbiguousDriveRelativePath(path: string): boolean {
   return /^[a-zA-Z]:[^/\\]/.test(path);
+}
+
+function isUnsupportedWorkspacePathSyntax(path: string): boolean {
+  const normalizedPath = path.replace(/\\/g, "/");
+  return (
+    path.startsWith("~") ||
+    path.includes("\0") ||
+    hasAmbiguousDriveRelativePath(path) ||
+    path.startsWith("\\\\") ||
+    normalizedPath.startsWith("//") ||
+    hasTrailingDotOrSpaceSegment(normalizedPath) ||
+    /[*?\[\]{}]/.test(path) ||
+    /(^|[^\\])[$`]/.test(path)
+  );
+}
+
+function hasTrailingDotOrSpaceSegment(path: string): boolean {
+  return path
+    .split("/")
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    .some((segment) => /[. ]$/.test(segment));
 }
 
 function wslToWindowsPath(path: string): string {

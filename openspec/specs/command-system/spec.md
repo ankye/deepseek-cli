@@ -316,3 +316,66 @@ CLI（以及未来任何进程内 host）必须通过单一 `createLiveCliDepend
 - **THEN** runtime construction delegates to `createLiveCliDependencies` so CLI code contains no inline live provider wiring beyond forwarding `workspaceRoot`, credential, and transport options
 - **中文** 当 `runCli` 收到 `--live` 并调用 `createCliAgentRuntime` 时，runtime 构造必须委托到 `createLiveCliDependencies`，CLI 代码除了转发 `workspaceRoot`、credential 和 transport 选项外，不得包含内联 live provider wiring。
 
+### Requirement: Extension Management Commands Are Structured / 扩展管理命令结构化
+
+The command system SHALL treat CLI extension management commands as structured command results with stable identities, side-effect metadata, host support, output schemas, and redaction metadata.
+
+Command system 必须把 CLI extension management commands 作为 structured command results，包含 stable identities、side-effect metadata、host support、output schemas 和 redaction metadata。
+
+#### Scenario: Extension command has stable identity / 扩展命令有稳定身份
+- **WHEN** a CLI extension command is registered or documented
+- **THEN** it has a stable command id, side-effect level, owner subsystem, required permissions, supported output modes, and compatibility metadata
+- **中文** 当 CLI extension command 被注册或文档化时，它必须具备 stable command id、side-effect level、owner subsystem、required permissions、supported output modes 和 compatibility metadata。
+
+#### Scenario: Side-effecting extension command routes through owner / 有副作用扩展命令路由到 Owner
+- **WHEN** an extension command installs a plugin, applies a lockfile, activates a skill, tests MCP, or diagnoses credentials
+- **THEN** it routes through the owning package contract and returns a structured result instead of mutating CLI-private state
+- **中文** 当 extension command 安装 plugin、应用 lockfile、激活 skill、测试 MCP 或诊断 credentials 时，必须通过所属 package contract 路由并返回 structured result，而不是修改 CLI-private state。
+
+### Requirement: Command Composition Metadata / 命令组合元数据
+
+Command manifests SHALL expose additive composition metadata for owner subsystem, contribution source, permissions, side-effect level, compatibility, projection visibility, and result-list target identity.
+
+Command manifests 必须暴露增量 composition metadata，包含 owner subsystem、contribution source、permissions、side-effect level、compatibility、projection visibility 和 result-list target identity。
+
+#### Scenario: Existing command remains invocable / 现有命令仍可调用
+- **WHEN** a command manifest lacks optional composition metadata
+- **THEN** command invocation remains compatible and the composition layer fills conservative defaults for projection
+- **中文** 当 command manifest 缺少可选 composition metadata 时，command invocation 必须保持兼容，composition layer 为 projection 填充保守默认值。
+
+#### Scenario: Command metadata feeds projection / 命令元数据进入投影
+- **WHEN** a command manifest declares owner, permissions, side effects, and projection visibility
+- **THEN** the composition layer projects those fields without invoking the command handler
+- **中文** 当 command manifest 声明 owner、permissions、side effects 和 projection visibility 时，composition layer 必须投影这些字段，且不调用 command handler。
+
+### Requirement: Slash Command Projection / Slash 命令投影
+
+The command system SHALL provide a structured slash command projection for chat and CLI help based on composition records.
+
+Command system 必须基于 composition records 为 chat 和 CLI help 提供 structured slash command projection。
+
+#### Scenario: Chat help uses composition records / Chat Help 使用组合记录
+- **WHEN** chat help projects slash commands
+- **THEN** it uses composition records with stable ids, aliases, side effects, host support, and redaction metadata instead of hard-coded prose-only entries
+- **中文** 当 chat help 投影 slash commands 时，必须使用带 stable ids、aliases、side effects、host support 和 redaction metadata 的 composition records，而不是硬编码纯文本 entries。
+
+#### Scenario: Model projection excludes host controls / 模型投影排除 Host 控制
+- **WHEN** model-visible command projection is requested
+- **THEN** host lifecycle controls such as `/exit`, `/clear`, and `/cancel` are excluded unless a future owner explicitly exposes a safe model command
+- **中文** 当请求 model-visible command projection 时，`/exit`、`/clear`、`/cancel` 等 host lifecycle controls 必须被排除，除非未来 owner 显式暴露安全 model command。
+
+### Requirement: Command Palette Helpers / 命令面板 Helpers
+
+The command system SHALL expose helper APIs that derive command palette entries and command result lists from command composition records without executing command owners.
+
+Command system 必须暴露 helper APIs，从 command composition records 派生 command palette entries 和 command result lists，且不执行 command owners。
+
+#### Scenario: Palette helper is deterministic / 面板 Helper 确定性
+- **WHEN** the same composition projection is passed to the palette helper
+- **THEN** it returns stable palette entry ids, categories, targets, search metadata, and diagnostics in deterministic order
+- **中文** 当同一 composition projection 传入 palette helper 时，它必须按确定性顺序返回稳定的 palette entry ids、categories、targets、search metadata 和 diagnostics。
+
+#### Scenario: Palette helper does not invoke / 面板 Helper 不执行
+- **WHEN** palette helper receives records backed by commands, skills, hooks, MCP, plugins, extensions, or workflows
+- **THEN** it produces palette metadata without invoking handlers, activations, hooks, MCP calls, plugin lifecycle actions, or workflows
+- **中文** 当 palette helper 收到由 commands、skills、hooks、MCP、plugins、extensions 或 workflows 支撑的 records 时，它必须只生成 palette metadata，不调用 handlers、activations、hooks、MCP calls、plugin lifecycle actions 或 workflows。

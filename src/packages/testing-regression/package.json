@@ -31,6 +31,7 @@
     "@deepseek/code-intelligence": "0.1.0",
     "@deepseek/policy-sandbox": "0.1.0",
     "@deepseek/platform-abstraction": "0.1.0",
+    "@deepseek/prompt-assembly": "0.1.0",
     "@deepseek/session-store": "0.1.0",
     "@deepseek/config": "0.1.0",
     "@deepseek/observability": "0.1.0"

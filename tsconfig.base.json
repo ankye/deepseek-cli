@@ -58,6 +58,9 @@
       "@deepseek/hook-system": [
         "src/packages/hook-system/src/index.ts"
       ],
+      "@deepseek/index-provider": [
+        "src/packages/index-provider/src/index.ts"
+      ],
       "@deepseek/mcp-gateway": [
         "src/packages/mcp-gateway/src/index.ts"
       ],
@@ -84,6 +87,9 @@
       ],
       "@deepseek/policy-sandbox": [
         "src/packages/policy-sandbox/src/index.ts"
+      ],
+      "@deepseek/prompt-assembly": [
+        "src/packages/prompt-assembly/src/index.ts"
       ],
       "@deepseek/remote-runtime-connectivity": [
         "src/packages/remote-runtime-connectivity/src/index.ts"

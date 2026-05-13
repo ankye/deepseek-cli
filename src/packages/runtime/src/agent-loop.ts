@@ -3,6 +3,7 @@ import type {
   AgentLoopLimits,
   AgentLoopRequest,
   AgentLoopSummary,
+  ContextProjectionResult,
   HookInvocationResult,
   HookLifecyclePoint,
   JsonObject,
@@ -14,21 +15,23 @@ import type {
   RuntimeKernelRequest,
   SessionId,
   ToolFeedbackStatus,
+  ToolResultFeedback,
   TraceContext,
   TurnId
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { projectAgentLoopContext } from "./context-projection.js";
+import { createToolResultEvidence, createToolResultEvidenceCacheEntry } from "@deepseek/memory-cache-management";
+import { projectAgentLoopContext, projectionEventData } from "./context-projection.js";
 import { kernelError, toolIntentError } from "./errors.js";
 import { agentLoopEvent, collectRuntimeEvents, lastRuntimeEvent, recordRuntimeAdapterEvent } from "./events.js";
 import {
   boundedModelText,
   buildToolResultFeedback,
   modelToolResultText,
-  modelToolSchema,
   providerMetadata,
   resolveCapabilityId
 } from "./model-tooling.js";
+import { assemblePromptForIteration, promptAssemblyEventPayload, toolProjectionPolicy } from "./prompt-assembly-integration.js";
 import { runtimeTrace, stableHash } from "./trace.js";
 
 export const defaultAgentLoopLimits: AgentLoopLimits = {
@@ -56,6 +59,7 @@ export async function* runAgentLoop(
   let toolCalls = 0;
   let terminalEmitted = false;
   const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
+  let contextProjection: ContextProjectionResult | undefined;
   const signal = control.signal;
 
   const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
@@ -111,6 +115,7 @@ export async function* runAgentLoop(
     outputMode: request.outputMode,
     workspaceRoot: request.workspaceRoot,
     model: request.profile.model,
+    ...(request.referenceContext ? { referenceContext: referenceContextSummary(request) } : {}),
     limits
   }, request.agentId);
   await recordRuntimeAdapterEvent(deps, started);
@@ -123,7 +128,8 @@ export async function* runAgentLoop(
 
   const turnStarted = agentLoopEvent("turn.started", sessionId, turnId, trace, {
     promptHash: stableHash(request.prompt),
-    caller: request.caller
+    caller: request.caller,
+    ...(request.referenceContext ? { referenceContext: request.referenceContext } : {})
   }, request.agentId);
   await recordRuntimeAdapterEvent(deps, turnStarted);
   yield turnStarted;
@@ -131,7 +137,8 @@ export async function* runAgentLoop(
   const userInputResult = yield* fireHooks("user-input.before", {
     promptHash: stableHash(request.prompt),
     caller: request.caller,
-    workspaceRoot: request.workspaceRoot
+    workspaceRoot: request.workspaceRoot,
+    ...(request.referenceContext ? { referenceContext: request.referenceContext } : {})
   });
   if (userInputResult.status === "blocked") {
     diagnostics.push({ code: "HOOK_BLOCKED", message: "user-input.before hook blocked this turn", retryable: false, redaction: { class: "internal" } });
@@ -143,7 +150,10 @@ export async function* runAgentLoop(
     return;
   }
 
-  for await (const projectionEvent of projectAgentLoopContext(deps, request, sessionId, turnId, trace)) {
+  const projectionStream = projectAgentLoopContext(deps, request, sessionId, turnId, trace);
+  let projectionStep = await projectionStream.next();
+  while (!projectionStep.done) {
+    const projectionEvent = projectionStep.value;
     yield projectionEvent;
     if (projectionEvent.kind === "context.projection.rejected") {
       diagnostics.push(projectionEvent.error ?? kernelError("KERNEL_ENVELOPE_INVALID", "Context projection rejected model dispatch"));
@@ -154,7 +164,9 @@ export async function* runAgentLoop(
       terminalEmitted = true;
       return;
     }
+    projectionStep = await projectionStream.next();
   }
+  contextProjection = projectionStep.value?.projection;
 
   while (iterations < limits.maxModelIterations) {
     if (signal?.aborted) {
@@ -164,12 +176,33 @@ export async function* runAgentLoop(
     }
     iterations += 1;
     let iterationReasoning = "";
-    const visibleCapabilities = projectToolSet(await deps.capabilities.listModelVisible(), request);
+    const availableCapabilities = await deps.capabilities.listModelVisible();
+    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits);
+    if (assembly.status === "rejected") {
+      diagnostics.push(...assembly.diagnostics);
+      const error = assembly.diagnostics[0] ?? kernelError("KERNEL_ENVELOPE_INVALID", "Prompt assembly rejected model dispatch");
+      const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, {
+        ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics),
+        reason: "prompt-assembly-rejected",
+        promptAssembly: promptAssemblyEventPayload(assembly, request)
+      }, request.agentId, error);
+      await recordRuntimeAdapterEvent(deps, failed);
+      yield failed;
+      terminalEmitted = true;
+      return;
+    }
+    const visibleCapabilities = projectToolSet(availableCapabilities, request);
     const modelBeforeResult = yield* fireHooks("model-call.before", {
       iteration: iterations,
       model: request.profile.model,
-      messageCount: messages.length,
-      visibleToolCount: visibleCapabilities.length
+      messageCount: assembly.messages.length,
+      visibleToolCount: assembly.toolPlan.visibleToolCount,
+      promptAssembly: {
+        fingerprint: assembly.fingerprint,
+        sectionCount: assembly.sections.length,
+        budgetStatus: assembly.budget.status
+      },
+      ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {})
     });
     if (modelBeforeResult.status === "blocked") {
       diagnostics.push({ code: "HOOK_BLOCKED", message: "model-call.before hook blocked this iteration", retryable: false, redaction: { class: "internal" } });
@@ -186,10 +219,21 @@ export async function* runAgentLoop(
       terminalEmitted = true;
       return;
     }
+    const promptAssembled = agentLoopEvent("prompt.assembled", sessionId, turnId, trace, promptAssemblyEventPayload(assembly, request), request.agentId);
+    await recordRuntimeAdapterEvent(deps, promptAssembled);
+    yield promptAssembled;
+
     const modelRequested = agentLoopEvent("model.requested", sessionId, turnId, trace, {
       iteration: iterations,
       model: request.profile.model,
-      visibleToolCount: visibleCapabilities.length
+      visibleToolCount: assembly.toolPlan.visibleToolCount,
+      promptAssembly: {
+        fingerprint: assembly.fingerprint,
+        sectionCount: assembly.sections.length,
+        budgetStatus: assembly.budget.status
+      },
+      ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {}),
+      ...(request.referenceContext ? { referenceContext: referenceContextSummary(request) } : {})
     }, request.agentId);
     await recordRuntimeAdapterEvent(deps, modelRequested);
     yield modelRequested;
@@ -197,9 +241,9 @@ export async function* runAgentLoop(
     let requestedTool = false;
     for await (const modelEvent of deps.models.stream({
       profile: request.profile,
-      prompt: messages.map((message) => `${message.role}: ${message.content}`).join("\n"),
-      messages,
-      tools: visibleCapabilities.map(modelToolSchema),
+      prompt: assembly.promptText,
+      messages: assembly.messages,
+      tools: assembly.toolPlan.visibleTools,
       ...(request.credentialRef ? { credentialRef: request.credentialRef } : {}),
       ...(request.reasoning ? { reasoning: request.reasoning } : {}),
       ...(signal ? { signal } : {}),
@@ -210,6 +254,13 @@ export async function* runAgentLoop(
         turnId,
         trace,
         outputMode: request.outputMode,
+        ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {}),
+        promptAssembly: {
+          fingerprint: assembly.fingerprint,
+          budget: assembly.budget,
+          replay: assembly.trace.replay
+        },
+        ...(request.referenceContext ? { referenceContext: request.referenceContext } : {}),
         live: request.live === true
       }
     })) {
@@ -272,7 +323,13 @@ export async function* runAgentLoop(
             reason: "tool-call-limit",
             maxToolCalls: limits.maxToolCalls,
             toolName,
-            feedback: limitFeedback
+            feedback: limitFeedback,
+            evidence: await recordToolResultEvidence(deps, {
+              toolCallId,
+              toolName,
+              terminalKind: "tool-call-limit",
+              feedback: limitFeedback
+            })
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, rejected);
           yield rejected;
@@ -358,7 +415,14 @@ export async function* runAgentLoop(
             toolName,
             result: preflightFeedback.preview.text,
             terminalKind: "preflight.rejected",
-            feedback: preflightFeedback
+            feedback: preflightFeedback,
+            evidence: await recordToolResultEvidence(deps, {
+              toolCallId,
+              toolName,
+              ...(preflight.capabilityId ? { capabilityId: String(preflight.capabilityId) } : {}),
+              terminalKind: "preflight.rejected",
+              feedback: preflightFeedback
+            })
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, preflightResultEvent);
           yield preflightResultEvent;
@@ -397,7 +461,14 @@ export async function* runAgentLoop(
             toolName,
             result: deniedFeedback.preview.text,
             terminalKind: "hook.blocked",
-            feedback: deniedFeedback
+            feedback: deniedFeedback,
+            evidence: await recordToolResultEvidence(deps, {
+              toolCallId,
+              toolName,
+              capabilityId: String(preflight.capabilityId),
+              terminalKind: "hook.blocked",
+              feedback: deniedFeedback
+            })
           }, request.agentId, blockError);
           await recordRuntimeAdapterEvent(deps, deniedEvent);
           yield deniedEvent;
@@ -409,6 +480,7 @@ export async function* runAgentLoop(
           caller: request.caller,
           input: toolInput,
           sessionId,
+          turnId,
           timeoutMs: limits.toolTimeoutMs,
           trace
         };
@@ -438,10 +510,30 @@ export async function* runAgentLoop(
           toolName,
           result: boundedModelText(toolResultText, limits.maxOutputBytes),
           terminalKind: terminal?.kind ?? "unknown",
-          feedback: executionFeedback
+          feedback: executionFeedback,
+          evidence: await recordToolResultEvidence(deps, {
+            toolCallId,
+            toolName,
+            capabilityId: String(preflight.capabilityId),
+            terminalKind: terminal?.kind ?? "unknown",
+            feedback: executionFeedback
+          })
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
+        if (toolName === "core.skill.activate" && terminal?.kind === "capability.completed") {
+          const metadata = extractSkillActivateMetadata(terminal);
+          if (metadata && metadata.status === "activated") {
+            const skillEvent = agentLoopEvent("skill.activated", sessionId, turnId, trace, {
+              name: metadata.name,
+              status: metadata.status,
+              segmentCount: metadata.segmentCount,
+              loadingState: metadata.loadingState
+            }, request.agentId);
+            await recordRuntimeAdapterEvent(deps, skillEvent);
+            yield skillEvent;
+          }
+        }
         yield* fireHooks("tool-execution.after", {
           toolName,
           capabilityId: String(preflight.capabilityId),
@@ -528,6 +620,27 @@ export async function* runAgentLoop(
   }
 }
 
+function referenceContextSummary(request: AgentLoopRequest): JsonObject {
+  const context = request.referenceContext;
+  if (!context) return {};
+  return {
+    schemaVersion: context.schemaVersion,
+    source: context.source,
+    activeSetId: context.activeSetId,
+    activeItemId: context.activeItemId,
+    setCount: context.setCount,
+    itemCount: context.itemCount,
+    targets: context.sets.flatMap((set) => set.items.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      targetId: item.target.id,
+      targetKind: item.target.kind,
+      order: item.order
+    }))),
+    redaction: { class: "internal", fields: ["targets.targetId"] }
+  };
+}
+
 export function summarizeAgentLoop(
   status: AgentLoopSummary["status"],
   request: AgentLoopRequest,
@@ -566,14 +679,52 @@ function executionFeedbackStatus(terminal: RuntimeEvent | undefined): ToolFeedba
   return "failed";
 }
 
+async function recordToolResultEvidence(
+  deps: RuntimeDependencies,
+  input: {
+    readonly toolCallId: string;
+    readonly toolName: string;
+    readonly capabilityId?: string;
+    readonly terminalKind: string;
+    readonly feedback: ToolResultFeedback;
+  }
+): Promise<import("@deepseek/platform-contracts").RuntimeToolResultEvidence> {
+  const evidence = createToolResultEvidence(input);
+  await deps.cache.set(createToolResultEvidenceCacheEntry(evidence));
+  return evidence;
+}
+
 function projectToolSet(
   capabilities: readonly import("@deepseek/platform-contracts").CapabilityManifest[],
   request: AgentLoopRequest
 ): readonly import("@deepseek/platform-contracts").CapabilityManifest[] {
-  const policy = request.toolProjection ?? (request.live ? "read-only" : "all");
+  const policy = toolProjectionPolicy(request);
   if (policy === "all") return capabilities;
   if (policy === "read-write") {
     return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read" || manifest.sideEffect === "write");
   }
   return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read");
+}
+
+interface SkillActivateTerminalMetadata {
+  readonly name: string;
+  readonly status: string;
+  readonly segmentCount: number;
+  readonly loadingState: string;
+}
+
+function extractSkillActivateMetadata(terminal: RuntimeEvent): SkillActivateTerminalMetadata | undefined {
+  const output = terminal.data?.output;
+  if (!output || typeof output !== "object") return undefined;
+  const evidence = (output as { evidence?: unknown }).evidence;
+  if (!evidence || typeof evidence !== "object") return undefined;
+  const metadata = (evidence as { metadata?: unknown }).metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const record = metadata as Record<string, unknown>;
+  const name = typeof record.name === "string" ? record.name : undefined;
+  const status = typeof record.status === "string" ? record.status : undefined;
+  const segmentCount = typeof record.segmentCount === "number" ? record.segmentCount : undefined;
+  const loadingState = typeof record.loadingState === "string" ? record.loadingState : undefined;
+  if (!name || !status || segmentCount === undefined || !loadingState) return undefined;
+  return { name, status, segmentCount, loadingState };
 }

@@ -4,6 +4,21 @@ This roadmap defines DeepSeek-owned product milestones for a future-ready AI eng
 
 本路线图定义 DeepSeek 自有的产品里程碑，目标是打造面向未来的 AI 工程运行时。竞品和本地研究材料可以帮助发现能力面，但路线图、架构归属和验收门禁都按 DeepSeek 自身设计。
 
+## CLI-First Product Route / CLI 优先产品路线
+
+DeepSeek remains a contract-first, multi-host platform, but product execution now follows a CLI-first route: make the terminal CLI the first polished daily-use surface, then promote proven workflows to VSCode, server, SDK, browser/native, team, and enterprise hosts through shared protocol events.
+
+DeepSeek 仍然是契约先行的多 host 平台，但产品执行改为 CLI-first 路线：先把终端 CLI 打磨成第一个成熟的日常使用界面，再通过共享协议事件把已验证的工作流推广到 VSCode、server、SDK、browser/native、team 和 enterprise hosts。
+
+CLI-first rules / CLI-first 规则:
+
+- CLI is the default near-term product surface for interaction, approvals, diagnostics, extension management, and release readiness. / CLI 是近期默认产品面，优先承载 interaction、approvals、diagnostics、extension management 和 release readiness。
+- Non-CLI hosts stay as adapter skeletons, protocol fixtures, or landing zones until the corresponding CLI workflow passes acceptance gates. / 非 CLI host 在对应 CLI workflow 通过验收前保持为 adapter skeletons、protocol fixtures 或 landing zones。
+- Promotion to another host requires CLI smoke evidence, protocol fixtures, policy/audit traces, deterministic tests, and documented CLI behavior. / 推广到其他 host 前必须具备 CLI smoke evidence、protocol fixtures、policy/audit traces、deterministic tests 和已记录的 CLI 行为。
+- CLI polish must not bypass runtime ownership: CLI UX consumes shared runtime events, command results, readiness results, and policy decisions. / CLI 打磨不得绕过 runtime ownership：CLI UX 必须消费共享 runtime events、command results、readiness results 和 policy decisions。
+- Large CLI-first changes must include a directory plan and avoid growing central files such as app entrypoints, package `index.ts` files, or one-size-fits-all tool/policy interfaces. / 大型 CLI-first 变更必须包含目录计划，并避免继续膨胀 app entrypoint、package `index.ts` 或一体化 tool/policy 接口。
+- Large CLI-facing changes that affect input, rendering, navigation, recovery, or extension UX must declare terminal capability impact, vi-inspired composition impact, request/turn revert impact, and reference pit fixture coverage before implementation. / 影响 input、rendering、navigation、recovery 或 extension UX 的大型 CLI-facing 变更，必须在实现前声明 terminal capability impact、vi-inspired composition impact、request/turn revert impact 和 reference pit fixture coverage。
+
 ## Roadmap Metadata Required For Future OpenSpecs / 后续 OpenSpec 必需路线图元数据
 
 Every future feature proposal should include the following metadata so product planning, ownership, tests, and acceptance remain aligned.
@@ -19,11 +34,22 @@ Required tests / 必需测试: unit, contract, integration, golden, e2e, matrix,
 Acceptance evidence / 验收证据: CLI smoke, VSCode smoke, trace replay, policy audit, docs
 Risk class / 风险等级: low | medium | high | critical
 Data/privacy class / 数据与隐私等级: none | local | sensitive | secret | regulated
+Primary host surface / 主产品面: cli-first | host-promotion | multi-host
 Host surfaces / Host 表面: cli | vscode | server | sdk | browser | native-host
 Protocol impact / 协议影响: none | additive | breaking | persisted-schema
 Feature flag / 功能开关: required | optional | none
 Migration/rollback / 迁移与回滚: not-needed | required | incompatible-reject
+Directory plan / 目录计划: owner packages, new folders, public exports, private modules, fixture/test locations, file-size split triggers
+Terminal capability impact / 终端能力影响: affected terminal profiles, input strategies, renderer profiles, fallback behavior, fixtures, parity evidence
+Vi-inspired composition impact / Vi 启发式组合影响: modes, actions/targets, reference sets, result lists, jump history, palette/keymaps, extension contributions
+Request/turn revert impact / 请求/回合回退影响: applicable or not, restorable effects, stale/non-reversible reporting, immutable history evidence
+Reference coverage / 参考覆盖: mapped capability areas from docs/product/cli-reference-extraction-implementation-plan.md
+Reference pit fixtures / 参考坑位 fixtures: fixture ids from @deepseek/testing-regression reference-pits catalog, status, owner evidence ids, and intentional deferrals as applicable
 ```
+
+Future CLI-facing OpenSpecs must cite concrete `pit.*` fixture ids when they touch policy, shell, paths, config precedence, MCP/plugins, remote identity, environment snapshots, diagnostics, recovery, input, rendering, navigation, or extension UX. Category names are planning hints; acceptance must point to executable fixture ids and owner evidence.
+
+后续 CLI-facing OpenSpec 只要触及 policy、shell、path、config precedence、MCP/plugins、remote identity、environment snapshots、diagnostics、recovery、input、rendering、navigation 或 extension UX，就必须引用具体 `pit.*` fixture ids。类别名只是规划提示；验收必须指向可执行 fixture id 和 owner evidence。
 
 ## Product Capability Map / 产品能力映射
 
@@ -43,9 +69,9 @@ This map shows how product capability domains land in DeepSeek architecture pack
 | Policy and sandbox / 策略与沙箱 | Policy, approvals, sandbox, path safety / 策略、审批、沙箱、路径安全 | `policy-sandbox`, `platform-abstraction`, `capability-execution-governance` |
 | Context and memory / 上下文与记忆 | Context, memory, compact, session memory / 上下文、记忆、压缩、会话记忆 | `context-engine`, `memory-cache-management`, `session-store` |
 | Subagents and tasks / 子 Agent 与任务 | Subagents, teams, task tracking / 子 Agent、团队、任务跟踪 | `agent-management`, `workflow-orchestration`, `concurrency-orchestration`, workspace state |
-| Remote/server / 远程与服务端 | Daemon, server, remote control / 守护进程、服务端、远程控制 | `remote-runtime-connectivity`, `communication-protocol`, `session-store` |
-| Terminal UX / 终端体验 | Terminal UI and product shell / 终端 UI 与产品外壳 | `apps/cli`, protocol renderers |
-| Advanced input / 高级输入 | Vim/keybindings/history search/voice / Vim、快捷键、历史搜索、语音 | future host input adapters over protocol |
+| Remote/server / 远程与服务端 | Daemon, server, remote control after CLI promotion gates / CLI 推广门禁后的守护进程、服务端、远程控制 | `remote-runtime-connectivity`, `communication-protocol`, `session-store` |
+| Terminal UX / 终端体验 | Primary first product shell: CLI interaction, approvals, diagnostics, extension UX / 第一个主产品外壳：CLI 交互、审批、诊断、扩展体验 | `apps/cli`, protocol renderers |
+| Advanced input / 高级输入 | CLI keybindings/history first, voice and other host inputs later / 先做 CLI 快捷键与历史搜索，voice 和其他 host input 后续推进 | future host input adapters over protocol |
 | Collaboration / 协作 | Team memory sync and managed settings / team memory sync 与 managed settings | `memory-cache-management`, `config`, `credential-auth-management`, enterprise service layer |
 | Distribution / 分发 | Update UX and release channels / 更新体验与发布通道 | `distribution-update-management`, `evolution-engine` |
 | Auth / 认证 | Personal auth, provider credentials, OAuth / 个人认证、provider 凭证、OAuth | `credential-auth-management`, `model-gateway`, `mcp-gateway` |
@@ -54,11 +80,28 @@ This map shows how product capability domains land in DeepSeek architecture pack
 | Onboarding / 初始化 | Project initialization and first-run readiness / 项目初始化与首次使用就绪 | `command-system`, `workspace-state-management`, `session-store` |
 | Privacy / 隐私 | Privacy controls, telemetry, analytics, tracing / 隐私控制、遥测、分析、追踪 | `runtime-message-bus`, `communication-protocol`, `testing-regression`, `policy-sandbox` |
 | Code intelligence / 代码智能 | Diagnostics, symbols, language-aware evidence / 诊断、符号、语言感知证据 | `code-intelligence`, `context-engine`, `workspace-state-management` |
-| SDK/API / SDK 与 API | Public SDK, schemas, control API / 公共 SDK、schemas、control API | `communication-protocol`, `remote-runtime-connectivity`, `platform-contracts` |
+| SDK/API / SDK 与 API | Public SDK, schemas, control API after CLI-proven protocol semantics / CLI 已验证协议语义后的公共 SDK、schemas、control API | `communication-protocol`, `remote-runtime-connectivity`, `platform-contracts` |
 | Model governance / 模型治理 | Model capability governance and migrations / 模型能力治理与迁移 | `model-gateway`, `evolution-engine`, `testing-regression` |
 | Output UX / 输出体验 | Output styles, status line, theme, tips / 输出风格、状态栏、主题、提示 | host adapters, `command-system`, `future-capability-landings` |
 
 ## Roadmap Nodes / 路线图节点
+
+CLI-first phase order / CLI-first 阶段顺序:
+
+```text
+R0 Foundation
+  -> R1 CLI MVP Agent
+  -> R2 CLI Context, Safety, and Diagnostics
+  -> R3 CLI Extensibility and Release Hardening
+  -> R4 Host Promotion: VSCode, Server, SDK
+  -> R5 CLI-Proven Multi-Agent Engineering
+  -> R6 Cross-Host UX and Collaboration
+  -> R7 Enterprise and Ecosystem
+```
+
+This order changes product priority, not architecture boundaries. Shared contracts still define runtime behavior; CLI simply becomes the first surface where workflows are made excellent and accepted.
+
+这个顺序调整的是产品优先级，不是架构边界。共享契约仍定义 runtime 行为；CLI 只是第一个把工作流打磨成熟并完成验收的 surface。
 
 ### R0 Foundation: Governed Runtime Platform / R0 基础：受治理的运行时平台
 
@@ -101,11 +144,15 @@ Implemented OpenSpecs / 已实现 OpenSpec:
 - `add-live-deepseek-provider-smoke`
 - `harden-runtime-kernel-semantics`
 
-### R1 MVP Coding Agent / R1 最小可用 Coding Agent
+### R1 CLI MVP Coding Agent / R1 CLI 最小可用 Coding Agent
 
 Product outcome: `deepseek run` and `deepseek chat` can inspect, edit, and test a local repository with safe tools.
 
 产品结果：`deepseek run` 与 `deepseek chat` 能够通过安全工具检查、编辑并测试本地仓库。
+
+CLI-first position: R1 is the first usable CLI product slice, not a multi-host launch. VSCode/server/SDK work at this stage should remain limited to adapter seams and protocol compatibility fixtures.
+
+CLI-first 定位：R1 是第一个可用 CLI 产品切片，不是多端发布。此阶段 VSCode/server/SDK 工作应限制为 adapter seams 与 protocol compatibility fixtures。
 
 Product scope / 产品范围:
 
@@ -127,6 +174,7 @@ Acceptance gate / 验收门禁:
 - Local readiness smoke covers init, config validation, credential reference setup, doctor diagnostics, privacy setting, and install/package verification without live provider access by default. / local readiness smoke 覆盖 init、config validation、credential reference setup、doctor diagnostics、privacy setting 和 install/package verification，默认不访问 live provider。
 - Golden trace covers a minimal coding turn with one read and one edit intent. / golden trace 覆盖包含一次 read 和一次 edit intent 的最小 coding turn。
 - CLI text, JSON, and JSONL outputs consume the same runtime events. / CLI text、JSON 与 JSONL 输出消费同一套 runtime events。
+- CLI run/chat behavior is documented enough that later hosts can project the same protocol events without redefining the workflow. / CLI run/chat 行为必须有足够文档，使后续 host 可以投影同一套 protocol events，而不重新定义 workflow。
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
@@ -141,15 +189,19 @@ No immediate R1 OpenSpec remains in the current roadmap. Future R1 work should b
 
 当前路线图中没有剩余的即时 R1 OpenSpec。后续 R1 工作应由 bug 或 readiness gap 驱动。
 
-### R2 Context And Safety / R2 上下文与安全
+### R2 CLI Context, Safety, And Diagnostics / R2 CLI 上下文、安全与诊断
 
 Product outcome: longer coding sessions remain accurate, safe, and budgeted.
 
 产品结果：长时间 coding session 仍能保持准确、安全，并受预算控制。
 
-Current status: active, with context projection, secret/sandbox hardening, checkpoint/undo v1, code intelligence v1, and observability/privacy v1 implemented.
+CLI-first position: R2 hardens the CLI daily-use loop: context quality, diagnostics, redaction, undo, checkpointing, request/turn-level revert, budget visibility, and safe recovery must feel reliable in terminal workflows before broader host promotion.
 
-当前状态：推进中，已实现 context projection、secret/sandbox hardening、checkpoint/undo v1、code intelligence v1 与 observability/privacy v1。
+CLI-first 定位：R2 打磨 CLI 日常使用循环：context quality、diagnostics、redaction、undo、checkpointing、request/turn 级 revert、budget visibility 和 safe recovery 必须先在终端工作流中可靠，再推广到更多 host。
+
+Current status: active, with context projection, secret/sandbox hardening, checkpoint/undo v1, code intelligence v1, observability/privacy v1, CLI permission approval UX, and CLI diagnostics/release readiness implemented; remaining R2 work is now gap-driven.
+
+当前状态：推进中，已实现 context projection、secret/sandbox hardening、checkpoint/undo v1、code intelligence v1、observability/privacy v1、CLI permission approval UX 与 CLI diagnostics/release readiness；剩余 R2 工作转为 gap-driven。
 
 Product scope / 产品范围:
 
@@ -159,8 +211,9 @@ Product scope / 产品范围:
 - Auto compact and explicit compact. / 自动 compact 与显式 compact。
 - Secret redaction. / secret 脱敏。
 - Sandbox enforcement matrix v1. / sandbox enforcement matrix v1。
+- Permission approval UX: headless fail-closed, approval evidence, protocol records, CLI text/JSONL rendering, typed approval targets, and audit-linked replay. / Permission approval UX：headless fail-closed、approval evidence、protocol records、CLI text/JSONL rendering、typed approval targets 和 audit-linked replay。
 - Usage, cost, and time budgets. / usage、cost 与 time budget。
-- File history, checkpoint, and undo. / 文件历史、checkpoint 与 undo。
+- File history, checkpoint, undo, and request/turn-level revert with immutable history evidence. / 文件历史、checkpoint、undo，以及带 immutable history evidence 的 request/turn 级 revert。
 - Code intelligence v1: diagnostics, symbols, references, language-aware context, and pre/post-edit evidence. / code intelligence v1：diagnostics、symbols、references、language-aware context 和 pre/post-edit evidence。
 - Diagnostic bundle export with redaction and privacy policy. / 带 redaction 与 privacy policy 的 diagnostic bundle export。
 
@@ -173,15 +226,17 @@ Acceptance gate / 验收门禁:
 - Golden replay verifies context projection and compaction boundaries. / golden replay 验证 context projection 与 compaction 边界。
 - Secret fixtures are blocked or redacted. / secret fixture 被阻止或脱敏。
 - Sandbox denies shell/file bypasses that policy denies. / sandbox 拒绝 policy 已拒绝的 shell/file 绕过。
-- Undo/checkpoint scenario restores workspace state. / undo/checkpoint 场景能恢复 workspace state。
+- Undo/checkpoint scenario restores workspace state, and request/turn revert evidence distinguishes restored, stale, and non-reversible effects without deleting original history. / undo/checkpoint 场景能恢复 workspace state，且 request/turn revert evidence 能区分 restored、stale 和 non-reversible effects，同时不删除原始历史。
 - Code intelligence fixtures attach diagnostics and symbol evidence without requiring a live IDE. / code intelligence fixtures 在不依赖 live IDE 的情况下附加 diagnostics 与 symbol evidence。
 - Diagnostic bundle tests prove privacy opt-out, redaction, and no raw secret persistence. / diagnostic bundle tests 证明 privacy opt-out、redaction 和无 raw secret persistence。
+- Approval tests prove policy evidence, headless fail-closed, injected decisions, protocol compatibility, CLI structured output parity, terminal fallback, diagnostic redaction, and golden replay with pit fixture coverage. / Approval tests 证明 policy evidence、headless fail-closed、injected decisions、protocol compatibility、CLI structured output parity、terminal fallback、diagnostic redaction 和带 pit fixture 覆盖的 golden replay。
+- CLI output exposes enough diagnostics, budget, and recovery information for a terminal user to understand and recover from failed turns. / CLI output 必须暴露足够的 diagnostics、budget 和 recovery 信息，使终端用户能够理解并恢复失败回合。
 
 Next OpenSpecs / 后续 OpenSpec:
 
-No immediate R2 OpenSpec remains in the current roadmap. Future R2 work should be driven by regression gaps discovered while building R3/R4.
+Future R2 work should be driven by CLI readiness gaps discovered while hardening terminal workflows, especially diagnostics/release readiness, code-intelligence evidence, and memory/cache main-path consumption. Permission approval UX now has its first accepted implementation slice.
 
-当前路线图中没有剩余的即时 R2 OpenSpec。后续 R2 工作应由推进 R3/R4 时发现的 regression gaps 驱动。
+后续 R2 工作应由打磨终端工作流时发现的 CLI readiness gaps 驱动，尤其是 diagnostics/release readiness、code-intelligence evidence 和 memory/cache 主路径消费。Permission approval UX 已具备第一条可验收实现切片。
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
@@ -190,21 +245,43 @@ Implemented OpenSpecs / 已实现 OpenSpec:
 - `implement-checkpoint-undo`
 - `implement-code-intelligence-v1`
 - `implement-observability-privacy-v1`
+- `wire-memory-cache-into-runtime` (context-engine now consumes the shared `CacheManager`; `deps.memory` / `deps.cache` are present on `RuntimeDependencies` but not yet consumed outside context projection — follow-up packs will land runtime-main-path memory consumers)
+- `harden-cli-permissions-and-approval-ux` — approval DTOs, policy evidence, headless fail-closed broker, runtime lifecycle events, protocol records/control messages, CLI rendering, typed approval actions, redaction, terminal matrix, and golden replay are implemented. / approval DTO、policy evidence、headless fail-closed broker、runtime lifecycle events、protocol records/control messages、CLI rendering、typed approval actions、redaction、terminal matrix 和 golden replay 已实现。
 
-### R3 Extensibility Platform / R3 可扩展平台
+Active OpenSpecs / 进行中 OpenSpec:
+
+- `stabilize-command-skill-hook-composition` — command, skill, hook, MCP, plugin, extension, renderer hint, and workflow contributions are being normalized into inert composition records before heavier CLI command palette or host promotion work. / 正在通过 `stabilize-command-skill-hook-composition` 将 command、skill、hook、MCP、plugin、extension、renderer hint 和 workflow contributions 归一为惰性 composition records，再推进更重的 CLI command palette 或 host promotion。
+
+`memory-cache-management` status note / `memory-cache-management` 现状说明:
+
+- Library-authoritative projection cache key (`projectionCacheKey` / `createProjectionCacheEntry`) is the only supported key; `context-engine` re-exports `CONTEXT_PROJECTION_CACHE_NAMESPACE` as a compatibility alias. / 库内统一的 projection cache key 是唯一支持路径；`context-engine` 仅再导出命名空间常量以兼容。
+- `InMemoryContextEngine` accepts an optional `cache: CacheManager`; without it the engine falls back to a process-local `Map` identical to prior behavior. / `InMemoryContextEngine` 接受可选 `cache`；未注入时回退到进程内 `Map`，行为与以往逐字节一致。
+- Runtime main path beyond context projection (agents/models/sessions) does not yet consume `deps.memory` or `deps.cache`; earlier roadmap copy over-stated this. / 除 context projection 外，runtime 主路径（agents/models/sessions）尚未消费 `deps.memory` 或 `deps.cache`；此前路线图的表述过于乐观。
+
+`code-intelligence` status note / `code-intelligence` 现状说明:
+
+- `wire-code-intelligence-into-runtime` 已把 `code-intelligence` 接入 runtime 主路径：`InMemoryContextEngine` 在构造 options bag 里接受可选 `codeIntelligence: CodeIntelligenceService`，`projectGraph` 在 selection 前调用 `contextNodes({ includeDiagnostics: true, includeSymbols: true })` 自动富化 candidate nodes（按 id 去重、调用方节点优先；富化失败静默回退、不降级 projection）。/ `wire-code-intelligence-into-runtime` wires `code-intelligence` into the runtime main path: `InMemoryContextEngine` accepts an optional `codeIntelligence: CodeIntelligenceService` in the same options bag as `cache`, and `projectGraph` auto-enriches candidates via `contextNodes` (id-dedup with caller precedence; failure falls back silently without downgrading the projection).
+- 写路径 invalidate 已挂：`core-coding-tools` 的 `file.write` / `file.edit` 在成功写入后非阻塞地调用 `deps.codeIntelligence?.invalidate(path).catch(() => undefined)`，下一次 `diagnostics`/`symbols` 查询会重新索引受影响文件。/ Write-path invalidation is wired: `core-coding-tools` `file.write` / `file.edit` call `deps.codeIntelligence?.invalidate(path).catch(() => undefined)` after a successful write so the next `diagnostics`/`symbols` query re-indexes the affected file.
+- 未接入部分：`references` / `definitions` 的自动富化与 policy-channel pre-edit evidence 仍是占位实现，留到后续 pack；此前路线图关于「v1 完整接入 runtime」的表述过于乐观，已按本条现状纠正。/ Not yet wired: automatic enrichment of `references` / `definitions` and policy-channel pre-edit evidence are still placeholders and left to follow-up packs; earlier roadmap copy overstated v1 runtime integration and has been corrected here.
+
+### R3 CLI Extensibility And Release Hardening / R3 CLI 扩展与发布打磨
 
 Product outcome: users can extend DeepSeek with skills, commands, hooks, MCP, and plugins under policy control.
 
 产品结果：用户可以在 policy 控制下通过 skills、commands、hooks、MCP 和 plugins 扩展 DeepSeek。
 
-Current status: started, with canonical skills v1, hooks v1, and MCP gateway v1 implemented as the first governed extension units.
+Current status: active, with canonical skills v1, hooks v1, MCP gateway v1, plugin lockfile v1, CLI extension/auth management implemented, and command/skill/hook composition stabilization underway before host promotion.
 
-当前状态：已启动，canonical skills v1、hooks v1 与 MCP gateway v1 已作为第一批受治理扩展单元实现。
+当前状态：推进中，canonical skills v1、hooks v1、MCP gateway v1、plugin lockfile v1 与 CLI extension/auth management 已实现，正在 host promotion 前推进 command/skill/hook composition stabilization。
+
+CLI-first position: R3 should make extension management trustworthy and usable from CLI first: list, activate, install/apply lockfile, permission diff, MCP test, credential scope diagnostics, and audit output. VSCode/server extension UX waits until the CLI semantics are accepted.
+
+CLI-first 定位：R3 应先让扩展管理在 CLI 中可信且可用：list、activate、install/apply lockfile、permission diff、MCP test、credential scope diagnostics 和 audit output。VSCode/server extension UX 等 CLI 语义验收后再推进。
 
 Product scope / 产品范围:
 
 - Skills with progressive loading. / 支持渐进加载的 skills。
-- Slash commands and workflow commands. / slash commands 与 workflow commands。
+- Slash commands, workflow commands, and shared inert composition records for commands, skills, hooks, MCP, plugins, extensions, renderer hints, and result-list targets. / slash commands、workflow commands，以及 command、skill、hook、MCP、plugin、extension、renderer hint 和 result-list targets 的共享惰性 composition records。
 - Hooks with ordering, timeout, isolation, and failure policy. / 带 ordering、timeout、isolation 和 failure policy 的 hooks。
 - MCP tools/resources/prompts behind a deterministic governed gateway. / 受 deterministic governed gateway 管控的 MCP tools/resources/prompts。
 - MCP and plugin auth flows use scoped credential references and host-mediated OAuth/device-code UI. / MCP 与 plugin auth flows 使用 scoped credential references 和 host-mediated OAuth/device-code UI。
@@ -216,36 +293,44 @@ Platform scope / 平台范围:
 
 Acceptance gate / 验收门禁:
 
-- Plugin install shows permission diff and writes lock metadata. / 插件安装展示 permission diff 并写入 lock metadata。
+- CLI plugin install/apply-lockfile shows permission diff and writes lock metadata. / CLI plugin install/apply-lockfile 展示 permission diff 并写入 lock metadata。
 - MCP fake server exposes one tool/resource and runs through policy. / MCP fake server 暴露一个 tool/resource，并通过 policy 运行。
 - Hook failure behavior is deterministic and replayed. / hook failure 行为确定且可 replay。
 - Skill projection respects context budget. / skill projection 遵守 context budget。
 - MCP/plugin credential access is denied outside declared scope and recorded in audit traces. / MCP/plugin credential access 超出声明 scope 时被拒绝，并记录到 audit traces。
+- CLI extension commands produce text and JSON/JSONL evidence suitable for later host projection. / CLI extension commands 必须产生适合后续 host 投影的 text 与 JSON/JSONL 证据。
+- Composition projection rejects duplicate names/aliases, excludes unsafe model-visible records, preserves pit fixture ids, and does not execute owners during projection. / Composition projection 必须拒绝重复 names/aliases，排除不安全的 model-visible records，保留坑位 fixture ids，且 projection 期间不执行 owner。
 
 Next OpenSpecs / 后续 OpenSpec:
 
-- `implement-plugin-lockfile-v1`
 - `implement-mcp-and-plugin-auth-boundaries`
+- `implement-command-palette-and-vi-result-actions`
 
 Implemented OpenSpecs / 已实现 OpenSpec:
 
 - `implement-skills-v1`
 - `implement-hooks-v1`
 - `implement-mcp-gateway-v1`
+- `implement-plugin-lockfile-v1` — `PluginManager` 已具备 `install` lock metadata、`snapshot`、`applyLockfile`、`verify` 四项契约；remote marketplace fetch 与 signed packages 留到后续 pack. / `PluginManager` now ships the `install` lock metadata, `snapshot`, `applyLockfile`, and `verify` contracts; remote marketplace fetch and signed packages remain deferred to follow-up packs.
+- `implement-cli-extension-auth-and-management` — CLI extension list, plugin install/apply/verify/snapshot, permission diff evidence, skill list/activate, MCP test projection, credential scope diagnostics, and extension pit fixtures are implemented. / CLI extension list、plugin install/apply/verify/snapshot、permission diff evidence、skill list/activate、MCP test projection、credential scope diagnostics 和 extension pit fixtures 已实现。
 
 ### R4 IDE And Server / R4 IDE 与 Server
 
-Product outcome: CLI, VSCode, and local server share one runtime protocol and session model.
+Product outcome: CLI-proven workflows are promoted to VSCode, local server, and SDK surfaces through the same runtime protocol and session model.
 
-产品结果：CLI、VSCode 和本地 server 共享同一套 runtime protocol 与 session model。
+产品结果：CLI 已验证的工作流通过同一套 runtime protocol 与 session model 推广到 VSCode、本地 server 和 SDK surface。
+
+CLI-first position: R4 is a host-promotion phase, not the next immediate product priority. It should start after CLI interaction, permissions, diagnostics, extension management, and release-readiness gates are accepted.
+
+CLI-first 定位：R4 是 host-promotion 阶段，不是下一个即时产品优先级。它应在 CLI interaction、permissions、diagnostics、extension management 和 release-readiness 门禁验收后启动。
 
 Product scope / 产品范围:
 
-- VSCode extension projects runtime events. / VSCode extension 投影 runtime events。
-- IDE approvals and diff views. / IDE approvals 与 diff views。
-- Local daemon/server transport. / 本地 daemon/server transport。
-- Remote runtime connectivity v1. / remote runtime connectivity v1。
-- Public runtime SDK and control API with versioned schemas. / 带版本化 schemas 的公共 runtime SDK 与 control API。
+- VSCode extension projects CLI-proven runtime events. / VSCode extension 投影 CLI 已验证 runtime events。
+- IDE approvals and diff views reuse CLI-proven policy and edit semantics. / IDE approvals 与 diff views 复用 CLI 已验证 policy 与 edit semantics。
+- Local daemon/server transport exposes behaviors already proven through CLI protocol fixtures. / 本地 daemon/server transport 暴露已通过 CLI protocol fixtures 证明的行为。
+- Remote runtime connectivity v1 remains gated by protocol, auth, session, and audit evidence. / remote runtime connectivity v1 受 protocol、auth、session 和 audit evidence 门禁控制。
+- Public runtime SDK and control API with versioned schemas follow stable CLI semantics. / 带版本化 schemas 的公共 runtime SDK 与 control API 跟随稳定 CLI 语义。
 - Protocol versioning and fail-closed version tests. / protocol versioning 与 fail-closed version tests。
 
 Platform scope / 平台范围:
@@ -254,6 +339,7 @@ Platform scope / 平台范围:
 
 Acceptance gate / 验收门禁:
 
+- Each promoted workflow cites CLI smoke, golden replay, protocol fixture, and policy/audit evidence. / 每个被推广 workflow 必须引用 CLI smoke、golden replay、protocol fixture 和 policy/audit evidence。
 - VSCode smoke runs without importing CLI rendering. / VSCode smoke 不导入 CLI rendering 即可运行。
 - Server/daemon e2e uses protocol fixtures, not stdout parsing. / server/daemon e2e 使用 protocol fixtures，而不是解析 stdout。
 - Protocol versioning test covers persisted session and event schemas. / protocol versioning test 覆盖持久化 session 与 event schemas。
@@ -266,11 +352,15 @@ Next OpenSpecs / 后续 OpenSpec:
 - `stabilize-runtime-protocol-v1`
 - `implement-public-runtime-sdk-and-control-api`
 
-### R5 Multi-Agent Engineering / R5 多 Agent 工程协作
+### R5 CLI-Proven Multi-Agent Engineering / R5 CLI 已验证多 Agent 工程协作
 
 Product outcome: DeepSeek can split engineering work into bounded tasks and merge evidence safely.
 
 产品结果：DeepSeek 能把工程工作拆成有边界的任务，并安全合并证据。
+
+CLI-first position: multi-agent work should first be visible and controllable from CLI with scoped workers, evidence summaries, conflict handling, and test aggregation before becoming IDE/server orchestration UX.
+
+CLI-first 定位：多 Agent 工作应先在 CLI 中可见、可控，具备 scoped workers、evidence summaries、conflict handling 和 test aggregation，然后再成为 IDE/server orchestration UX。
 
 Product scope / 产品范围:
 
@@ -296,18 +386,22 @@ Next OpenSpecs / 后续 OpenSpec:
 - `implement-subagent-scoped-execution`
 - `implement-worktree-overlay-execution`
 
-### R6 Product UX And Collaboration / R6 产品体验与协作
+### R6 Cross-Host Product UX And Collaboration / R6 跨端产品体验与协作
 
 Product outcome: the platform becomes a polished daily tool across terminal and collaboration surfaces.
 
 产品结果：平台成为跨终端与协作场景的成熟日常工具。
 
+CLI-first position: CLI UX needed for daily terminal use can move earlier into R2/R3. R6 is reserved for cross-host UX, collaboration, voice, browser/native, recommendations, sync, and update UI after CLI semantics are stable.
+
+CLI-first 定位：CLI 日常使用所需 UX 可以前移到 R2/R3。R6 保留给 CLI 语义稳定后的跨端 UX、协作、voice、browser/native、recommendations、sync 和 update UI。
+
 Product scope / 产品范围:
 
-- Rich TUI, virtualized transcript, banners/tips/notifications. / rich TUI、virtualized transcript、banners/tips/notifications。
-- Vim/keybindings/history search. / vim/keybindings/history search。
-- Output styles, theme picker, status line, terminal title, and command palette. / output styles、theme picker、status line、terminal title 和 command palette。
-- First-run onboarding, feature tips, and recommendation dismissal state. / first-run onboarding、feature tips 和 recommendation dismissal state。
+- Cross-host rich UX and advanced terminal polish not required by CLI-first gates. / CLI-first 门禁不必需的跨端 rich UX 和高级终端打磨。
+- Vim/keybindings/history search beyond the minimal CLI daily-use path. / 超出最小 CLI 日常使用路径的 vim/keybindings/history search。
+- Output styles, theme picker, status line, terminal title, and command palette after CLI behavior is accepted. / CLI 行为验收后的 output styles、theme picker、status line、terminal title 和 command palette。
+- First-run onboarding, feature tips, and recommendation dismissal state beyond CLI release readiness. / 超出 CLI release readiness 的 first-run onboarding、feature tips 和 recommendation dismissal state。
 - Voice input as host adapter. / 作为 host adapter 的 voice input。
 - Browser/native host adapter. / browser/native host adapter。
 - Team memory sync and settings sync. / team memory sync 与 settings sync。
@@ -369,10 +463,20 @@ Next OpenSpecs / 后续 OpenSpec:
 
 ## Immediate Recommended Sequence / 近期推荐顺序
 
-1. Add `implement-plugin-lockfile-v1`. / 增加 `implement-plugin-lockfile-v1`。
-2. Add `implement-mcp-and-plugin-auth-boundaries`. / 增加 `implement-mcp-and-plugin-auth-boundaries`。
-3. Then revisit R4 with `implement-vscode-event-projection`. / 然后回到 R4 推进 `implement-vscode-event-projection`。
+1. Add `split-cli-host-and-architecture-scale-guardrails`. / 增加 `split-cli-host-and-architecture-scale-guardrails`。
+2. Add `backfill-reference-pit-fixtures`. / 增加 `backfill-reference-pit-fixtures`。
+3. Finish and archive `harden-cli-permissions-and-approval-ux`. / 完成并归档 `harden-cli-permissions-and-approval-ux`。
+4. Finish and archive `polish-cli-diagnostics-and-release-readiness`. / 完成并归档 `polish-cli-diagnostics-and-release-readiness`。
+5. Finish and archive `implement-cli-extension-auth-and-management`. / 完成并归档 `implement-cli-extension-auth-and-management`。
+6. Add `stabilize-command-skill-hook-composition`. / 增加 `stabilize-command-skill-hook-composition`。
+7. Then promote proven workflows with `implement-vscode-event-projection` and `implement-local-runtime-server`. / 然后通过 `implement-vscode-event-projection` 和 `implement-local-runtime-server` 推广已验证 workflow。
 
-Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy. R3 has established canonical skills/hooks/MCP gateway v1 before moving to plugin packaging and extension credential boundaries.
+Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy, but the CLI should become the first polished daily-use product before IDE/server expansion. Before adding heavy CLI UX, the host entrypoint and implementation-heavy package `index.ts` files need scale guardrails, request/turn-level revert must be modeled as structured recovery rather than transcript deletion, and reference pitfalls should be converted into negative fixtures so permissions, diagnostics, extension/auth management, and release readiness do not recreate the reference CLI's central-file or security-bypass pressure.
 
-理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy。R3 已先建立 canonical skills/hooks/MCP gateway v1，然后再推进 plugin packaging 与 extension credential boundaries。
+理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy，但在 IDE/server 扩展之前，CLI 应先成为第一个打磨成熟的日常产品。在加入重型 CLI UX 前，需要先给 host entrypoint 和实现过重的 package `index.ts` 建立规模护栏，将 request/turn 级 revert 建模为结构化 recovery 而不是 transcript deletion，并把参考实现踩过的坑转成负向 fixtures，避免 permissions、diagnostics、extension/auth management 和 release readiness 重演参考 CLI 的中心文件或安全绕过压力。
+
+Near-term non-goals / 近期非目标:
+
+- Do not make VSCode a parallel product surface before CLI gates pass. / CLI 门禁通过前，不把 VSCode 作为并行产品面。
+- Do not expose local server or public SDK as stable product surfaces before CLI-proven protocol semantics exist. / CLI 已验证协议语义形成前，不把 local server 或 public SDK 暴露为稳定产品面。
+- Do not build cross-host collaboration or enterprise UX before one local CLI workflow is polished end to end. / 在一个本地 CLI workflow 端到端打磨成熟前，不做跨端协作或企业 UX。

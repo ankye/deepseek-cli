@@ -29,6 +29,7 @@
     "@deepseek/usage-budget-management": "0.1.0",
     "@deepseek/workspace-state-management": "0.1.0",
     "@deepseek/code-intelligence": "0.1.0",
+    "@deepseek/prompt-assembly": "0.1.0",
     "@deepseek/policy-sandbox": "0.1.0",
     "@deepseek/platform-abstraction": "0.1.0",
     "@deepseek/session-store": "0.1.0",

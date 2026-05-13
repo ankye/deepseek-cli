@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { MCP_SCHEMA_VERSION, asId, type McpServerManifest } from "@deepseek/platform-contracts";
+import { MCP_SCHEMA_VERSION, asId, type ExtensionCredentialAuthorizationResult, type ExtensionCredentialRequirement, type McpServerManifest } from "@deepseek/platform-contracts";
 import { InMemoryMcpGateway } from "./index.js";
 
 function manifest(overrides: Partial<McpServerManifest> = {}): McpServerManifest {
@@ -131,5 +131,59 @@ describe("MCP gateway v1", () => {
     });
     assert.equal(result.status, "timed-out");
     assert.equal(result.durationMs, 1);
+  });
+
+  it("fails closed before handler dispatch when declared credential grant is missing", async () => {
+    let handlerCalled = false;
+    const requirement: ExtensionCredentialRequirement = {
+      schemaVersion: "1.0.0",
+      requirementId: "req-mcp-tool",
+      owner: { kind: "mcp-server", id: "mcp:mcp-fake", mcpServerId: asId<"mcpServer">("mcp-fake"), trust: "trusted" },
+      operations: ["use-tool"],
+      provider: "deepseek",
+      profile: "default",
+      required: true,
+      redaction: { class: "internal", fields: ["credentialRef"] },
+      compatibility: { schemaVersion: "1.0.0" }
+    };
+    const denied: ExtensionCredentialAuthorizationResult = {
+      schemaVersion: "1.0.0",
+      status: "denied",
+      owner: requirement.owner,
+      operation: "use-tool",
+      requirementId: requirement.requirementId,
+      reason: "missing",
+      diagnostics: [{ code: "EXTENSION_CREDENTIAL_MISSING", message: "missing grant", retryable: true, redaction: { class: "public" } }],
+      referencePitFixtureIds: ["pit.extension-auth.credential-scope-denial"],
+      audit: { source: "test" },
+      redaction: { class: "secret", fields: ["credentialRef"] },
+      compatibility: { schemaVersion: "1.0.0" },
+      replayFingerprint: "authorization:test"
+    };
+    const gateway = new InMemoryMcpGateway({ authorizeCredential: () => denied });
+    await gateway.connectServer(manifest({
+      tools: [{ name: "search", inputSchema: {}, outputSchema: {}, permissions: ["mcp:tool"], timeoutMs: 20, credentialRequirements: [requirement] }]
+    }), {
+      toolHandlers: {
+        search: async () => {
+          handlerCalled = true;
+          return { ok: true, value: { leaked: "sk-should-not-run" } };
+        }
+      }
+    });
+
+    const result = await gateway.callTool({
+      schemaVersion: MCP_SCHEMA_VERSION,
+      serverId: asId<"mcpServer">("mcp-fake"),
+      name: "search",
+      caller: "runtime",
+      input: {}
+    });
+
+    assert.equal(result.status, "rejected");
+    assert.equal(handlerCalled, false);
+    assert.equal(result.auth?.status, "denied");
+    assert.equal(result.diagnostics[0]?.code, "EXTENSION_CREDENTIAL_MISSING");
+    assert.equal(JSON.stringify(result).includes("sk-should-not-run"), false);
   });
 });

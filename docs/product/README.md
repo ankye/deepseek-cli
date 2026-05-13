@@ -9,6 +9,7 @@ This volume explains where DeepSeek CLI is going as a product, how it compares t
 | Document / 文档 | Purpose / 用途 |
 | --- | --- |
 | [Product Roadmap](product-roadmap.md) | Staged product roadmap from R0 to R7. / R0 到 R7 的分阶段产品路线图。 |
+| [CLI Reference Extraction Implementation Plan](cli-reference-extraction-implementation-plan.md) | Claude CLI capability ledger, DeepSeek architecture extraction, and directory-planning guardrails. / Claude CLI 能力总账、DeepSeek 架构抽离和目录规划护栏。 |
 | [Competitive Matrix](competitive-matrix.md) | Detailed comparison with Claude Code and Codex public product surfaces. / 与 Claude Code、Codex 公开产品能力面的详细对比。 |
 | [Roadmap To Architecture](roadmap-to-architecture.md) | How roadmap nodes map to packages, tests, and acceptance gates. / 路线图节点如何映射到包、测试和验收门禁。 |
 
@@ -25,6 +26,7 @@ It should support:
 - local coding workflows / 本地编码工作流
 - CLI and IDE usage / CLI 与 IDE 使用
 - safe file/search/edit/shell tools / 安全文件、搜索、编辑、shell 工具
+- permission approvals with headless fail-closed behavior / 具备 headless fail-closed 行为的权限审批
 - provider-backed model reasoning / provider-backed 模型推理
 - context, memory, and compaction / 上下文、记忆和压缩
 - skills, hooks, MCP, plugins / skills、hooks、MCP、plugins

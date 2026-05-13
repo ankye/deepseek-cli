@@ -1,4 +1,6 @@
 import type {
+  CacheManager,
+  CodeIntelligenceService,
   ContextEngine,
   ContextGraphNode,
   ContextNode,
@@ -18,13 +20,27 @@ import type {
   SessionId
 } from "@deepseek/platform-contracts";
 import { CONTEXT_PROJECTION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { PROJECTION_CACHE_NAMESPACE, createProjectionCacheEntry, projectionCacheKey } from "@deepseek/memory-cache-management";
+import type { ProjectionCacheInput } from "@deepseek/memory-cache-management";
 import { createSecretRedactionDecision, redactSecretText } from "@deepseek/policy-sandbox";
 
-export const CONTEXT_PROJECTION_CACHE_NAMESPACE = "context.projection";
+export const CONTEXT_PROJECTION_CACHE_NAMESPACE = PROJECTION_CACHE_NAMESPACE;
+
+export interface InMemoryContextEngineOptions {
+  readonly cache?: CacheManager;
+  readonly codeIntelligence?: CodeIntelligenceService;
+}
 
 export class InMemoryContextEngine implements ContextEngine {
   private readonly nodes = new Map<string, ContextGraphNode[]>();
   private readonly projectionCache = new Map<string, ContextProjectionResult>();
+  private readonly cache?: CacheManager;
+  private readonly codeIntelligence?: CodeIntelligenceService;
+
+  constructor(options: InMemoryContextEngineOptions = {}) {
+    if (options.cache) this.cache = options.cache;
+    if (options.codeIntelligence) this.codeIntelligence = options.codeIntelligence;
+  }
 
   async addNode(sessionId: SessionId, node: ContextNode): Promise<void> {
     const current = this.nodes.get(sessionId) ?? [];
@@ -62,18 +78,34 @@ export class InMemoryContextEngine implements ContextEngine {
       return rejectedProjection(request, "unsupported-schema", "Unsupported context projection schema version");
     }
 
-    const candidates = this.candidatesFor(request);
-    const cacheKey = projectionCacheKey(request, candidates);
-    const cached = this.projectionCache.get(cacheKey);
-    if (cached) {
-      return freezeProjection({
-        ...cached,
-        cache: {
-          ...cached.cache,
-          hit: true
-        },
-        replayFingerprint: `${cached.replayFingerprint}:cache-hit`
-      });
+    const baseCandidates = this.candidatesFor(request);
+    const candidates = await this.enrichCandidates(request, baseCandidates);
+    const cacheInput = buildProjectionCacheInput(request, candidates);
+    const cacheKey = projectionCacheKey(cacheInput);
+    if (this.cache) {
+      const cached = await this.cache.get<ContextProjectionResult>(cacheKey);
+      if (cached) {
+        return freezeProjection({
+          ...cached.value,
+          cache: {
+            ...cached.value.cache,
+            hit: true
+          },
+          replayFingerprint: `${cached.value.replayFingerprint}:cache-hit`
+        });
+      }
+    } else {
+      const local = this.projectionCache.get(cacheKey);
+      if (local) {
+        return freezeProjection({
+          ...local,
+          cache: {
+            ...local.cache,
+            hit: true
+          },
+          replayFingerprint: `${local.replayFingerprint}:cache-hit`
+        });
+      }
     }
 
     const filtered = filterCandidates(request, candidates);
@@ -127,7 +159,11 @@ export class InMemoryContextEngine implements ContextEngine {
     };
     const frozen = freezeProjection(result);
     if (frozen.status !== "rejected") {
-      this.projectionCache.set(cacheKey, frozen);
+      if (this.cache) {
+        await this.cache.set(createProjectionCacheEntry(cacheInput, frozen, new Date(0).toISOString()));
+      } else {
+        this.projectionCache.set(cacheKey, frozen);
+      }
     }
     return frozen;
   }
@@ -158,6 +194,33 @@ export class InMemoryContextEngine implements ContextEngine {
     });
     const requested = request.candidateNodes ?? [];
     return [...stored, ...requested.map((node) => normalizeGraphNode(request.sessionId, node)), promptNode];
+  }
+
+  private async enrichCandidates(
+    request: ContextProjectionRequest,
+    candidates: readonly ContextGraphNode[]
+  ): Promise<readonly ContextGraphNode[]> {
+    if (!this.codeIntelligence) return candidates;
+    try {
+      const enrich = await this.codeIntelligence.contextNodes({
+        sessionId: request.sessionId,
+        root: request.scope.workspaceRoot ?? "/workspace",
+        includeDiagnostics: true,
+        includeSymbols: true
+      });
+      if (!enrich.ok || !enrich.value) return candidates;
+      const seen = new Set(candidates.map((node) => String(node.id)));
+      const extras: ContextGraphNode[] = [];
+      for (const node of enrich.value.nodes) {
+        const id = String(node.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        extras.push(normalizeGraphNode(request.sessionId, node));
+      }
+      return extras.length > 0 ? [...candidates, ...extras] : candidates;
+    } catch {
+      return candidates;
+    }
   }
 }
 
@@ -413,8 +476,8 @@ function dependencyFingerprints(nodes: readonly ContextGraphNode[]): readonly st
   return [...new Set(nodes.flatMap((node) => node.dependencyFingerprints))].sort();
 }
 
-function projectionCacheKey(request: ContextProjectionRequest, candidates: readonly ContextGraphNode[]): string {
-  return stableHash(JSON.stringify({
+function buildProjectionCacheInput(request: ContextProjectionRequest, candidates: readonly ContextGraphNode[]): ProjectionCacheInput {
+  const requestFingerprint = stableHash(JSON.stringify({
     schemaVersion: request.schemaVersion,
     sessionId: request.sessionId,
     turnId: request.turnId ?? "",
@@ -422,7 +485,6 @@ function projectionCacheKey(request: ContextProjectionRequest, candidates: reado
     prompt: request.prompt,
     budget: request.budget,
     scope: request.scope,
-    dependencies: dependencyFingerprints(candidates),
     candidates: candidates.map((node) => ({
       id: node.id,
       priority: node.priority,
@@ -432,6 +494,10 @@ function projectionCacheKey(request: ContextProjectionRequest, candidates: reado
       content: stableHash(node.content)
     }))
   }));
+  return {
+    requestFingerprint,
+    dependencyFingerprints: dependencyFingerprints(candidates)
+  };
 }
 
 function replayFingerprint(request: ContextProjectionRequest, selected: readonly ProjectedContextNode[], excluded: readonly ExcludedContextNode[]): string {

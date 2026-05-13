@@ -1,7 +1,13 @@
 import type {
+  ApprovalAuditReference,
   ApprovalBroker,
   ApprovalDecision,
+  ApprovalDecisionSource,
+  ApprovalId,
+  ApprovalLifecycleRecord,
   ApprovalRequest,
+  ApprovalRenderSummary,
+  ApprovalRiskSummary,
   JsonObject,
   PolicyAction,
   PolicyDecision,
@@ -21,9 +27,10 @@ import type {
   SecretClassification,
   SecretKind,
   SecretRedactionDecision,
-  SideEffectLevel
+  SideEffectLevel,
+  TraceContext
 } from "@deepseek/platform-contracts";
-import { SECRET_SANDBOX_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, SECRET_SANDBOX_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 
 export const SECRET_REDACTION_TOKEN = "[REDACTED:secret]";
 
@@ -215,7 +222,7 @@ export function selectSandboxDecision(request: PolicyRequest): SandboxDecision {
   const requirements = request.sandbox ?? sandboxRequirementFromMetadata(request.metadata, sideEffect, resourceScope);
   const reasonCodes = sandboxReasonCodes(request, sideEffect, requirements, capabilities);
   const denied = reasonCodes.some((reason) => reason.endsWith(".unavailable") || reason.endsWith(".missing") || reason.endsWith(".rejected") || reason.endsWith(".read-only") || reason === "secret.raw-exposure" || reason === "secret.unsafe-exposure" || reason === "timeout.invalid");
-  const requireSandbox = request.metadata.requireSandbox === true;
+  const requireSandbox = request.metadata.requireSandbox === true || reasonCodes.some((reason) => reason.startsWith("shell.analysis."));
   const action: PolicyAction = denied
     ? reasonCodes.some((reason) => reason.startsWith("secret.")) ? "rewrite" : "deny"
     : requireSandbox
@@ -258,7 +265,7 @@ export class DefaultPolicyEngine implements PolicyEngine {
     });
 
     if (secret.action === "deny" || secret.action === "rewrite" || secret.action === "exclude") {
-      return {
+      return withApprovalEvidence(request, {
         action: secret.action === "rewrite" ? "rewrite" : "deny",
         reason: `Secret exposure rejected by policy: ${secret.reasonCode}`,
         rewritten: { redacted: secret.redactedText ?? SECRET_REDACTION_TOKEN },
@@ -267,11 +274,11 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox,
         auditEvidence
-      };
+      });
     }
 
     if (sandbox.action === "deny" || sandbox.action === "rewrite" || sandbox.action === "require-sandbox") {
-      return {
+      return withApprovalEvidence(request, {
         action: sandbox.action,
         reason: `Sandbox policy ${sandbox.action}: ${sandbox.reasonCodes.join(", ")}`,
         audit: auditEvidence,
@@ -279,7 +286,7 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox,
         auditEvidence
-      };
+      });
     }
 
     const sideEffect = sideEffectFrom(request.metadata);
@@ -296,7 +303,7 @@ export class DefaultPolicyEngine implements PolicyEngine {
       };
     }
     if (sideEffect === "write" || sideEffect === "network" || sideEffect === "process") {
-      return {
+      return withApprovalEvidence(request, {
         action: "deny",
         reason: `Side effect ${String(sideEffect)} is not allowed by deterministic policy`,
         audit: auditEvidence,
@@ -304,10 +311,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "deny", profile: "development-denied", reasonCodes: [...sandbox.reasonCodes, "policy.side-effect.denied"] },
         auditEvidence: { ...auditEvidence, decision: "deny", reasonCode: "policy.side-effect.denied", sandboxProfile: "development-denied" }
-      };
+      });
     }
     if (request.action.includes("delete") || request.action.includes("secret")) {
-      return {
+      return withApprovalEvidence(request, {
         action: "ask",
         reason: "Potentially sensitive action requires approval",
         audit: auditEvidence,
@@ -315,10 +322,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "ask" },
         auditEvidence
-      };
+      });
     }
     if (request.resource.includes("untrusted")) {
-      return {
+      return withApprovalEvidence(request, {
         action: "quarantine",
         reason: "Untrusted resource",
         audit: auditEvidence,
@@ -326,7 +333,7 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "quarantine", profile: "development-quarantine" },
         auditEvidence
-      };
+      });
     }
     return {
       action: "allow",
@@ -340,13 +347,64 @@ export class DefaultPolicyEngine implements PolicyEngine {
   }
 }
 
+export type HeadlessApprovalDecisionProvider = (request: ApprovalRequest) => ApprovalDecision | undefined | Promise<ApprovalDecision | undefined>;
+
+export interface HeadlessApprovalBrokerOptions {
+  readonly defaultApproved?: boolean;
+  readonly defaultSource?: ApprovalDecisionSource;
+  readonly decisionProvider?: HeadlessApprovalDecisionProvider;
+}
+
 export class HeadlessApprovalBroker implements ApprovalBroker {
-  constructor(private readonly defaultApproved = false) {}
+  private readonly defaultApproved: boolean;
+  private readonly defaultSource: ApprovalDecisionSource;
+  private readonly decisionProvider: HeadlessApprovalDecisionProvider | undefined;
+
+  constructor(options: boolean | HeadlessApprovalBrokerOptions = false) {
+    if (typeof options === "boolean") {
+      this.defaultApproved = options;
+      this.defaultSource = "headless-default";
+      return;
+    }
+    this.defaultApproved = options.defaultApproved ?? false;
+    this.defaultSource = options.defaultSource ?? "headless-default";
+    this.decisionProvider = options.decisionProvider;
+  }
 
   async requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
+    const auditReference = request.auditReference ?? approvalAuditReferenceFromRequest(request);
+    const provided = await this.decisionProvider?.(request);
+    if (provided) {
+      return {
+        ...provided,
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        approvalId: request.approvalId,
+        approved: provided.approved && provided.decision === "allow",
+        auditReference: provided.auditReference ?? auditReference,
+        trace: provided.trace ?? request.trace,
+        redaction: provided.redaction ?? { class: "internal", fields: ["reason", "metadata.prompt"] },
+        metadata: {
+          summary: approvalSummaryFromRequest(request),
+          ...provided.metadata
+        }
+      };
+    }
     return {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      approvalId: request.approvalId ?? approvalIdFromPrompt(request.prompt),
       approved: this.defaultApproved,
-      reason: this.defaultApproved ? `Approved: ${request.prompt}` : `Denied by headless default: ${request.prompt}`
+      decision: this.defaultApproved ? "allow" : "deny",
+      source: this.defaultSource,
+      reason: this.defaultApproved ? `Approved: ${request.prompt}` : `Denied by headless default: ${request.prompt}`,
+      reasonCode: this.defaultApproved ? "headless.default_allow" : "headless.fail_closed",
+      auditReference,
+      trace: request.trace ?? auditReference.trace as ApprovalDecision["trace"],
+      redaction: { class: "internal", fields: ["reason", "metadata.prompt"] },
+      metadata: {
+        prompt: request.prompt,
+        summary: approvalSummaryFromRequest(request),
+        referencePitFixtureIds: this.defaultApproved ? [] : ["pit.headless-trust.fail-closed"]
+      }
     };
   }
 }
@@ -382,6 +440,9 @@ function sandboxReasonCodes(
   if (requirements.resourceScope.paths.some((path) => path.traversal === "rejected")) reasons.push("filesystem.path-scope.rejected");
   if (sideEffect === "process" && !capabilities.processExecution.execute) reasons.push("process.unavailable");
   if (sideEffect === "process" && !capabilities.shell.execute && (requirements.capabilities.includes("shell-execute") || typeof request.metadata.shellProfile === "string")) reasons.push("shell.unavailable");
+  if (sideEffect === "process" && typeof request.metadata.shellAnalysisStatus === "string" && request.metadata.shellAnalysisStatus !== "safe") {
+    reasons.push(`shell.analysis.${request.metadata.shellAnalysisStatus}`);
+  }
   if (sideEffect === "process" && !requirements.resourceScope.cwd) reasons.push("process.cwd.missing");
   if (sideEffect === "network" && !capabilities.network.access) reasons.push("network.unavailable");
   if (requirements.capabilities.includes("secure-storage") && capabilities.secureStorage.status === "unavailable") reasons.push("secure-storage.unavailable");
@@ -529,6 +590,323 @@ function stableFingerprint(value: string | undefined): string | undefined {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function withApprovalEvidence(request: PolicyRequest, decision: PolicyDecision): PolicyDecision {
+  if (decision.action === "allow") return decision;
+  const trace = approvalTraceFromRequest(request);
+  const reasonCodes = approvalReasonCodes(request, decision);
+  const referencePitFixtureIds = referencePitIdsForDecision(request, decision, reasonCodes);
+  const auditReference = approvalAuditReferenceFromPolicy(request, decision, trace, reasonCodes);
+  const summary = approvalSummaryFromPolicy(request, decision, reasonCodes, referencePitFixtureIds);
+  const approvalRequest = approvalRequestFromPolicy(request, decision, trace, auditReference, summary);
+  const lifecycle: ApprovalLifecycleRecord = {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    kind: decision.action === "ask" ? "approval.required" : "approval.denied",
+    approvalId: approvalRequest.approvalId,
+    ...(trace.sessionId ? { sessionId: trace.sessionId } : {}),
+    trace,
+    summary,
+    auditReference,
+    redaction: { class: "internal", fields: ["summary.resource", "summary.targetLabel", "auditReference.reasonCodes"] },
+    compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+  };
+  return {
+    ...decision,
+    approval: lifecycle,
+    approvalRequest,
+    approvalSummary: summary
+  };
+}
+
+function approvalRequestFromPolicy(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  trace: TraceContext,
+  auditReference: ApprovalAuditReference,
+  summary: ApprovalRenderSummary
+): ApprovalRequest {
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    approvalId: approvalIdFromPolicy(request, decision),
+    subject: redactSecretText(request.subject),
+    action: request.action,
+    resource: redactSecretText(request.resource),
+    metadata: approvalMetadataFromPolicy(request, decision),
+    ...(request.platform ? { platform: request.platform } : {}),
+    ...(request.secret ? { secret: request.secret } : {}),
+    ...(request.resourceScope ? { resourceScope: request.resourceScope } : {}),
+    ...(request.sandbox ? { sandbox: request.sandbox } : {}),
+    ...(request.auditEvidence ? { auditEvidence: request.auditEvidence } : {}),
+    prompt: approvalPromptFromPolicy(request, decision),
+    decisionOptions: decision.action === "ask" ? ["allow", "deny", "cancel"] : ["deny", "cancel"],
+    summary,
+    auditReference,
+    trace,
+    ...(trace.sessionId ? { sessionId: trace.sessionId } : {}),
+    compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+  };
+}
+
+function approvalLifecycleFromDecision(request: ApprovalRequest, decision: ApprovalDecision): ApprovalLifecycleRecord {
+  const summary = approvalSummaryFromRequest(request);
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    kind: decision.decision === "allow"
+      ? "approval.decided"
+      : decision.decision === "timeout"
+        ? "approval.timeout"
+        : decision.decision === "cancel"
+          ? "approval.cancelled"
+          : "approval.denied",
+    approvalId: request.approvalId,
+    ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+    trace: decision.trace,
+    summary,
+    decision,
+    auditReference: decision.auditReference,
+    redaction: { class: "internal", fields: ["summary.resource", "summary.targetLabel", "decision.reason"] },
+    compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+  };
+}
+
+function approvalSummaryFromPolicy(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  reasonCodes: readonly string[],
+  referencePitFixtureIds: readonly string[]
+): ApprovalRenderSummary {
+  const targetLabel = approvalTargetLabel(request);
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    title: decision.action === "ask" ? "Approval required" : "Policy decision requires attention",
+    subject: redactSecretText(request.subject),
+    action: request.action,
+    resource: redactSecretText(request.resource),
+    capability: typeof request.metadata.capabilityId === "string" ? request.metadata.capabilityId : request.resource,
+    targetKind: "capability",
+    targetLabel,
+    riskSummaries: approvalRiskSummaries(request, decision, reasonCodes, referencePitFixtureIds),
+    allowedDecisions: decision.action === "ask" ? ["allow", "deny", "cancel"] : ["deny", "cancel"],
+    referencePitFixtureIds,
+    redaction: { class: "internal", fields: ["resource", "targetLabel", "riskSummaries.detail", "metadata"] },
+    metadata: {
+      action: decision.action,
+      reason: redactSecretText(decision.reason),
+      sandboxProfile: decision.sandboxProfile ?? "",
+      reasonCodes
+    }
+  };
+}
+
+function approvalRiskSummaries(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  reasonCodes: readonly string[],
+  referencePitFixtureIds: readonly string[]
+): readonly ApprovalRiskSummary[] {
+  const summaries: ApprovalRiskSummary[] = [];
+  const shellReasons = reasonCodes.filter((reason) => reason.startsWith("shell.") || reason.startsWith("process."));
+  if (shellReasons.length > 0) {
+    summaries.push(approvalRiskSummary("shell", "high", "Shell execution requires review", "Shell analysis is degraded, wrapped, unavailable, or requires sandbox enforcement.", shellReasons, referencePitFixtureIdsForKind(referencePitFixtureIds, "pit.shell-parser.fallback-risk"), {
+      shellProfile: typeof request.metadata.shellProfile === "string" ? request.metadata.shellProfile : "",
+      shellAnalysisStatus: typeof request.metadata.shellAnalysisStatus === "string" ? request.metadata.shellAnalysisStatus : ""
+    }));
+  }
+
+  const fileReasons = reasonCodes.filter((reason) => reason.startsWith("filesystem.") || reason.startsWith("path."));
+  if (fileReasons.length > 0 || request.resourceScope?.kind === "filesystem") {
+    summaries.push(approvalRiskSummary("file", fileReasons.some((reason) => reason.endsWith(".rejected")) ? "critical" : "medium", "Filesystem scope requires review", "The filesystem scope, path syntax, or rollback coverage requires policy attention.", fileReasons.length > 0 ? fileReasons : ["filesystem.scope.review"], referencePitFixtureIdsForKind(referencePitFixtureIds, "pit.path-canonicalization.unsafe-syntax"), {
+      pathCount: request.resourceScope?.paths.length ?? 0,
+      rollbackAvailable: request.resourceScope?.rollbackAvailable ?? false
+    }));
+  }
+
+  const secretReasons = reasonCodes.filter((reason) => reason.startsWith("secret."));
+  if (secretReasons.length > 0) {
+    summaries.push(approvalRiskSummary("redaction", "critical", "Secret exposure blocked or rewritten", "Raw or unsafe credential material was detected and only redacted evidence is available.", secretReasons, referencePitFixtureIdsForKind(referencePitFixtureIds, "pit.permission-bypass.hard-safety"), {
+      secretAction: decision.secret?.action ?? request.secret?.action ?? "",
+      secretKind: decision.secret?.classification.kind ?? request.secret?.classification.kind ?? ""
+    }));
+  }
+
+  const platformReasons = reasonCodes.filter((reason) => reason.endsWith(".unavailable") || reason.endsWith(".missing") || reason.endsWith(".read-only") || reason === "timeout.invalid");
+  if (platformReasons.length > 0) {
+    summaries.push(approvalRiskSummary("platform", "high", "Platform capability is degraded", "A required platform or sandbox capability is unavailable, missing, or read-only.", platformReasons, referencePitFixtureIdsForKind(referencePitFixtureIds, "pit.permission-bypass.hard-safety"), {
+      sandboxProfile: decision.sandboxProfile ?? "",
+      degraded: decision.sandbox?.degraded ?? false
+    }));
+  }
+
+  if (decision.action === "ask") {
+    summaries.push(approvalRiskSummary("policy", "medium", "Approval required before execution", "Policy requires an explicit decision before the scheduler can run this invocation.", reasonCodes.length > 0 ? reasonCodes : ["policy.approval.required"], referencePitFixtureIds, {
+      decisionOptions: ["allow", "deny", "cancel"]
+    }));
+  }
+
+  if (summaries.length === 0) {
+    summaries.push(approvalRiskSummary("policy", decision.action === "deny" ? "high" : "medium", "Policy decision", redactSecretText(decision.reason), reasonCodes.length > 0 ? reasonCodes : [`policy.${decision.action}`], referencePitFixtureIds, {
+      action: decision.action
+    }));
+  }
+
+  return summaries;
+}
+
+function approvalRiskSummary(
+  kind: ApprovalRiskSummary["kind"],
+  severity: ApprovalRiskSummary["severity"],
+  title: string,
+  detail: string,
+  reasonCodes: readonly string[],
+  referencePitFixtureIds: readonly string[],
+  metadata: JsonObject
+): ApprovalRiskSummary {
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    kind,
+    severity,
+    title,
+    detail: redactSecretText(detail),
+    reasonCodes,
+    referencePitFixtureIds,
+    redaction: { class: "internal", fields: ["detail", "metadata"] },
+    metadata: redactJsonSecrets(metadata) as JsonObject
+  };
+}
+
+function approvalAuditReferenceFromPolicy(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  trace: TraceContext,
+  reasonCodes: readonly string[]
+): ApprovalAuditReference {
+  const audit = decision.auditEvidence ?? request.auditEvidence;
+  const auditId = audit && typeof audit.metadata.auditId === "string" ? audit.metadata.auditId as ApprovalAuditReference["auditId"] : undefined;
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    traceId: trace.traceId,
+    correlationId: trace.correlationId,
+    policyDecision: decision.action,
+    reasonCodes,
+    ...(auditId ? { auditId } : {}),
+    redaction: { class: "internal", fields: ["reasonCodes"] }
+  };
+}
+
+function approvalIdFromPolicy(request: PolicyRequest, decision: PolicyDecision): ApprovalId {
+  const envelopeId = typeof request.metadata.envelopeId === "string" ? request.metadata.envelopeId : undefined;
+  return `approval:${stableFingerprint(`${request.subject}:${request.action}:${request.resource}:${decision.action}:${envelopeId ?? ""}`) ?? "policy"}` as ApprovalId;
+}
+
+function approvalTraceFromRequest(request: PolicyRequest): TraceContext {
+  const trace = request.auditEvidence?.trace;
+  if (trace?.traceId && trace.spanId && trace.correlationId) {
+    return trace;
+  }
+  const envelopeId = typeof request.metadata.envelopeId === "string" ? request.metadata.envelopeId : "policy";
+  return {
+    traceId: `trace-approval-${stableFingerprint(envelopeId) ?? "policy"}` as TraceContext["traceId"],
+    spanId: `span-approval-${stableFingerprint(`${envelopeId}:span`) ?? "policy"}` as TraceContext["spanId"],
+    correlationId: `corr-approval-${stableFingerprint(`${envelopeId}:corr`) ?? "policy"}` as TraceContext["correlationId"]
+  };
+}
+
+function approvalReasonCodes(request: PolicyRequest, decision: PolicyDecision): readonly string[] {
+  const codes = new Set<string>();
+  for (const reason of decision.sandbox?.reasonCodes ?? []) codes.add(reason);
+  if (decision.secret?.reasonCode) codes.add(decision.secret.reasonCode);
+  if (request.secret?.reasonCode) codes.add(request.secret.reasonCode);
+  if (decision.auditEvidence?.reasonCode) codes.add(decision.auditEvidence.reasonCode);
+  if (request.auditEvidence?.reasonCode) codes.add(request.auditEvidence.reasonCode);
+  if (typeof decision.audit?.reasonCode === "string") codes.add(decision.audit.reasonCode);
+  if (decision.action === "ask") codes.add("policy.approval.required");
+  if (decision.action !== "allow" && codes.size === 0) codes.add(`policy.${decision.action}`);
+  return [...codes].sort();
+}
+
+function referencePitIdsForDecision(request: PolicyRequest, decision: PolicyDecision, reasonCodes: readonly string[]): readonly string[] {
+  const ids = new Set<string>();
+  if (decision.action === "ask") ids.add("pit.headless-trust.fail-closed");
+  if (hasBypassMetadata(request) || reasonCodes.some((reason) => reason.startsWith("secret.") || reason.endsWith(".unavailable") || reason.endsWith(".missing") || reason.endsWith(".read-only"))) {
+    ids.add("pit.permission-bypass.hard-safety");
+  }
+  if (reasonCodes.some((reason) => reason.startsWith("shell.analysis.") || reason === "shell.unavailable" || reason === "process.unavailable" || reason === "process.cwd.missing")) {
+    ids.add("pit.shell-parser.fallback-risk");
+  }
+  if (reasonCodes.some((reason) => reason === "filesystem.path-scope.rejected" || reason === "filesystem.path-scope.missing" || reason.startsWith("path."))) {
+    ids.add("pit.path-canonicalization.unsafe-syntax");
+  }
+  return [...ids].sort();
+}
+
+function referencePitFixtureIdsForKind(referencePitFixtureIds: readonly string[], id: string): readonly string[] {
+  return referencePitFixtureIds.includes(id) ? [id] : [];
+}
+
+function hasBypassMetadata(request: PolicyRequest): boolean {
+  return request.metadata.permissionMode === "bypass" || request.metadata.breakGlass === true || request.metadata.bypass === true;
+}
+
+function approvalTargetLabel(request: PolicyRequest): string {
+  const command = typeof request.metadata.command === "string" ? request.metadata.command : undefined;
+  const args = Array.isArray(request.metadata.args) ? request.metadata.args.map(String).join(" ") : "";
+  if (command) return redactSecretText([command, args].filter(Boolean).join(" "));
+  const path = request.resourceScope?.paths[0]?.path;
+  if (path) return redactSecretText(path);
+  return redactSecretText(request.resource);
+}
+
+function approvalPromptFromPolicy(request: PolicyRequest, decision: PolicyDecision): string {
+  return `${decision.action === "ask" ? "Approve" : "Review"} ${request.action} on ${redactSecretText(request.resource)}: ${redactSecretText(decision.reason)}`;
+}
+
+function approvalMetadataFromPolicy(request: PolicyRequest, decision: PolicyDecision): JsonObject {
+  return redactJsonSecrets({
+    source: "policy-sandbox",
+    policyAction: decision.action,
+    reason: decision.reason,
+    originalMetadata: request.metadata,
+    sandboxProfile: decision.sandboxProfile ?? "",
+    referencePitFixtureIds: decision.approvalSummary?.referencePitFixtureIds ?? []
+  }) as JsonObject;
+}
+
+function approvalIdFromPrompt(prompt: string): ApprovalId {
+  return `approval:${stableFingerprint(prompt) ?? "headless"}` as ApprovalId;
+}
+
+function approvalAuditReferenceFromRequest(request: ApprovalRequest): ApprovalAuditReference {
+  const trace = request.trace ?? {
+    traceId: "trace:approval-headless",
+    spanId: "span:approval-headless",
+    correlationId: "correlation:approval-headless"
+  } as ApprovalDecision["trace"];
+  return {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    traceId: trace.traceId,
+    correlationId: trace.correlationId,
+    policyDecision: request.action,
+    reasonCodes: ["headless.fail_closed"],
+    redaction: { class: "internal", fields: ["reasonCodes"] }
+  };
+}
+
+function approvalSummaryFromRequest(request: ApprovalRequest): ApprovalRenderSummary {
+  return request.summary ?? {
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
+    title: "Approval required",
+    subject: request.subject,
+    action: request.action,
+    resource: request.resource,
+    targetKind: "capability",
+    targetLabel: request.resource,
+    riskSummaries: [],
+    allowedDecisions: ["allow", "deny", "cancel"],
+    referencePitFixtureIds: [],
+    redaction: { class: "internal", fields: ["resource", "targetLabel"] },
+    metadata: {}
+  };
 }
 
 export function policyError(code: string, message: string, details: JsonObject = {}): RedactedError {

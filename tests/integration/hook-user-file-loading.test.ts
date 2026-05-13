@@ -10,6 +10,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
 const hookStubPath = join(repoRoot, "scripts", "hook-stub.mjs");
 
+async function removeWorkspaceRoot(workspaceRoot: string): Promise<void> {
+  await rm(workspaceRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === "win32" ? 10 : 3,
+    retryDelay: 100
+  });
+}
+
 describe("CLI loads user hooks from .deepseek/hooks.json", () => {
   it("registers a user hook defined in .deepseek/hooks.json and invokes it during a run", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "deepseek-hooks-"));
@@ -54,7 +63,7 @@ describe("CLI loads user hooks from .deepseek/hooks.json", () => {
         process.chdir(cwd);
       }
     } finally {
-      await rm(workspaceRoot, { recursive: true, force: true });
+      await removeWorkspaceRoot(workspaceRoot);
     }
   });
 
@@ -80,7 +89,7 @@ describe("CLI loads user hooks from .deepseek/hooks.json", () => {
         process.chdir(cwd);
       }
     } finally {
-      await rm(workspaceRoot, { recursive: true, force: true });
+      await removeWorkspaceRoot(workspaceRoot);
     }
   });
 });

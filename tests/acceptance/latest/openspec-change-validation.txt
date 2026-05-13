@@ -1,1 +1,1 @@
-Change 'wire-skill-system-into-runtime' is valid
+Change 'implement-plugin-lockfile-v1' is valid

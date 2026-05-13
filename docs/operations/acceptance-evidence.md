@@ -19,6 +19,21 @@ tests/acceptance/latest/
 - Security or boundary evidence if relevant. / 相关时记录安全或边界证据。
 - Explicit skips for live tests. / live tests 的显式跳过说明。
 
+## Refresh Command / 刷新命令
+
+For CLI release evidence, refresh before verifying:
+
+CLI release evidence 应先刷新再验证：
+
+```bash
+deepseek diagnostics refresh --output json
+deepseek diagnostics verify --output json
+```
+
+`diagnostics refresh` writes allowlisted local command output to `tests/acceptance/latest/*.txt`. Add `--dry-run` to inspect the plan without executing it, or `--full` to include contracts, integration, golden, versioning, matrix, and e2e suites.
+
+`diagnostics refresh` 会把 allowlisted local command output 写入 `tests/acceptance/latest/*.txt`。使用 `--dry-run` 可只查看计划不执行；使用 `--full` 可额外包含 contracts、integration、golden、versioning、matrix 与 e2e suites。
+
 ## Example / 示例
 
 ```text

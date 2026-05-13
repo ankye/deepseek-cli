@@ -106,8 +106,10 @@ describe("host adapter smoke", () => {
         "turn.started",
         "hooks.invoked",
         "context.projection.started",
+        "context.memory.collected",
         "context.projection.completed",
         "hooks.invoked",
+        "prompt.assembled",
         "model.requested",
         "model.delta",
         "usage.updated",
@@ -197,6 +199,7 @@ describe("host adapter smoke", () => {
         event: {
           kind: "capability.completed",
           sessionId: asId<"session">("session-e2e"),
+          createdAt: new Date(0).toISOString(),
           trace: {
             traceId: asId<"trace">("trace-e2e"),
             spanId: asId<"span">("span-e2e"),

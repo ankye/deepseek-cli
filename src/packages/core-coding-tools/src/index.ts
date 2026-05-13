@@ -50,6 +50,7 @@ export async function registerCoreCodingToolsForRuntime(deps: {
   readonly agentSpawner?: RuntimeDependencies["agentSpawner"];
   readonly hooks?: RuntimeDependencies["hooks"];
   readonly skills?: RuntimeDependencies["skills"];
+  readonly codeIntelligence?: RuntimeDependencies["codeIntelligence"];
 }, workspaceRoot: string): Promise<void> {
   await registerCoreCodingTools(deps.capabilities, {
     platform: deps.platform,
@@ -60,7 +61,8 @@ export async function registerCoreCodingToolsForRuntime(deps: {
     ...(deps.backgroundTasks ? { backgroundTasks: deps.backgroundTasks } : {}),
     ...(deps.agentSpawner ? { agentSpawner: deps.agentSpawner } : {}),
     ...(deps.hooks ? { hooks: deps.hooks } : {}),
-    ...(deps.skills ? { skills: deps.skills } : {})
+    ...(deps.skills ? { skills: deps.skills } : {}),
+    ...(deps.codeIntelligence ? { codeIntelligence: deps.codeIntelligence } : {})
   });
 }
 

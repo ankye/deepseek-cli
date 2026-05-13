@@ -21,6 +21,8 @@ export type DeepSeekCredentialEnv = Readonly<Record<"DEEPSEEK_API_KEY" | "DEEPSE
 
 const defaultDeepSeekCredentialRef = asId<"credentialRef">("credential-deepseek-api-key");
 
+export * from "./extension-auth.js";
+
 export function createDeepSeekCredentialPresenceEnv(env: Readonly<Record<string, string | undefined>> = process.env): DeepSeekCredentialEnv {
   return {
     DEEPSEEK_API_KEY: hasValue(env.DEEPSEEK_API_KEY) ? "present" : undefined,

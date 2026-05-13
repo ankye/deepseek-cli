@@ -1,5 +1,5 @@
 import type { JsonObject, RedactedError, RedactionMetadata } from "./common.js";
-import type { CapabilityId, SessionId } from "./ids.js";
+import type { CapabilityId, SessionId, TurnId } from "./ids.js";
 import type { PlatformProviderResultMetadata } from "./platform.js";
 
 export type CoreCodingToolName =
@@ -180,6 +180,7 @@ export interface TodoPlanInput extends JsonObject {
 export interface WorkspaceEditTransactionEvidence extends JsonObject {
   readonly id: string;
   readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
   readonly capabilityId: CapabilityId;
   readonly path: string;
   readonly precondition: "exact-match" | "full-write";

@@ -3,443 +3,902 @@
 > tsx --test "tests/contracts/**/*.test.ts"
 
 TAP version 13
+# Subtest: core.agent.spawn tool
+    # Subtest: fails closed when no agentSpawner registered
+    ok 1 - fails closed when no agentSpawner registered
+      ---
+      duration_ms: 2.011
+      type: 'test'
+      ...
+    # Subtest: runs the sub-agent via injected spawner and returns structured result
+    ok 2 - runs the sub-agent via injected spawner and returns structured result
+      ---
+      duration_ms: 13.4104
+      type: 'test'
+      ...
+    # Subtest: default toolProjection is read-only when caller omits it
+    ok 3 - default toolProjection is read-only when caller omits it
+      ---
+      duration_ms: 1.5993
+      type: 'test'
+      ...
+    1..3
+ok 1 - core.agent.spawn tool
+  ---
+  duration_ms: 18.1587
+  type: 'suite'
+  ...
+# Subtest: background shell tools
+    # Subtest: starts a background task and returns taskId
+    ok 1 - starts a background task and returns taskId
+      ---
+      duration_ms: 5.6511
+      type: 'test'
+      ...
+    # Subtest: shell.output returns stored stdout for a task
+    ok 2 - shell.output returns stored stdout for a task
+      ---
+      duration_ms: 1.0654
+      type: 'test'
+      ...
+    # Subtest: shell.kill marks the task as killed
+    ok 3 - shell.kill marks the task as killed
+      ---
+      duration_ms: 0.8119
+      type: 'test'
+      ...
+    # Subtest: shell.run without backgroundTasks fails closed when runInBackground=true
+    ok 4 - shell.run without backgroundTasks fails closed when runInBackground=true
+      ---
+      duration_ms: 0.4812
+      type: 'test'
+      ...
+    # Subtest: shell.output returns BACKGROUND_TASK_NOT_FOUND for unknown task
+    ok 5 - shell.output returns BACKGROUND_TASK_NOT_FOUND for unknown task
+      ---
+      duration_ms: 0.3374
+      type: 'test'
+      ...
+    1..5
+ok 2 - background shell tools
+  ---
+  duration_ms: 9.4693
+  type: 'suite'
+  ...
 # Subtest: capability registry hardening
     # Subtest: returns immutable deep-copy host and model projections without executor bindings
     ok 1 - returns immutable deep-copy host and model projections without executor bindings
       ---
-      duration_ms: 2.3819
+      duration_ms: 1.2901
       type: 'test'
       ...
     # Subtest: keeps stored manifests isolated from registration input and get() mutations
     ok 2 - keeps stored manifests isolated from registration input and get() mutations
       ---
-      duration_ms: 0.4556
+      duration_ms: 0.2055
       type: 'test'
       ...
     1..2
-ok 1 - capability registry hardening
+ok 3 - capability registry hardening
   ---
-  duration_ms: 4.4506
+  duration_ms: 2.3378
+  type: 'suite'
+  ...
+# Subtest: chat slash commands
+    # Subtest: /help lists controls and does not call the model
+    ok 1 - /help lists controls and does not call the model
+      ---
+      duration_ms: 8.3701
+      type: 'test'
+      ...
+    # Subtest: /clear renders ANSI clear sequence without invoking runtime
+    ok 2 - /clear renders ANSI clear sequence without invoking runtime
+      ---
+      duration_ms: 2.3599
+      type: 'test'
+      ...
+    # Subtest: /cost reports zero usage before any turn
+    ok 3 - /cost reports zero usage before any turn
+      ---
+      duration_ms: 1.9195
+      type: 'test'
+      ...
+    # Subtest: /model reports active profile
+    ok 4 - /model reports active profile
+      ---
+      duration_ms: 3.0327
+      type: 'test'
+      ...
+    # Subtest: /cost after a turn sums usage from usage.updated events
+    ok 5 - /cost after a turn sums usage from usage.updated events
+      ---
+      duration_ms: 8.5649
+      type: 'test'
+      ...
+    # Subtest: unknown slash does not reach the model
+    ok 6 - unknown slash does not reach the model
+      ---
+      duration_ms: 1.4038
+      type: 'test'
+      ...
+    # Subtest: /cancel with no active turn prints no-op notice
+    ok 7 - /cancel with no active turn prints no-op notice
+      ---
+      duration_ms: 1.9578
+      type: 'test'
+      ...
+    # Subtest: plain prompt still calls the model
+    ok 8 - plain prompt still calls the model
+      ---
+      duration_ms: 4.2196
+      type: 'test'
+      ...
+    1..8
+ok 4 - chat slash commands
+  ---
+  duration_ms: 33.0366
   type: 'suite'
   ...
 # Subtest: checkpoint undo contracts
     # Subtest: returns contract-safe checkpoint and restore result shapes
     ok 1 - returns contract-safe checkpoint and restore result shapes
       ---
-      duration_ms: 2.3815
+      duration_ms: 1.7549
       type: 'test'
       ...
     1..1
-ok 2 - checkpoint undo contracts
+ok 5 - checkpoint undo contracts
   ---
-  duration_ms: 3.621
+  duration_ms: 2.5878
   type: 'suite'
   ...
 # Subtest: code intelligence contracts
     # Subtest: emits versioned serializable analyzer DTOs
     ok 1 - emits versioned serializable analyzer DTOs
       ---
-      duration_ms: 3.1943
+      duration_ms: 3.6234
       type: 'test'
       ...
     # Subtest: projects host-neutral context graph nodes
     ok 2 - projects host-neutral context graph nodes
       ---
-      duration_ms: 1.7674
+      duration_ms: 4.83
       type: 'test'
       ...
     1..2
-ok 3 - code intelligence contracts
+ok 6 - code intelligence contracts
   ---
-  duration_ms: 6.3492
+  duration_ms: 10.7801
+  type: 'suite'
+  ...
+# Subtest: code-intelligence safe-fallback & idempotence
+    # Subtest: returns { ok: true, value: { nodes: [] } } when root does not exist
+    ok 1 - returns { ok: true, value: { nodes: [] } } when root does not exist
+      ---
+      duration_ms: 3.5999
+      type: 'test'
+      ...
+    # Subtest: falls back safely when root is missing even with includeDiagnostics/includeSymbols flags
+    ok 2 - falls back safely when root is missing even with includeDiagnostics/includeSymbols flags
+      ---
+      duration_ms: 0.9846
+      type: 'test'
+      ...
+    # Subtest: invalidate() on an unknown path resolves without throwing
+    ok 3 - invalidate() on an unknown path resolves without throwing
+      ---
+      duration_ms: 0.281
+      type: 'test'
+      ...
+    # Subtest: invalidate() is idempotent across repeated calls on the same unknown path
+    ok 4 - invalidate() is idempotent across repeated calls on the same unknown path
+      ---
+      duration_ms: 0.2141
+      type: 'test'
+      ...
+    # Subtest: invalidate() does not throw when interleaved with contextNodes on a missing root
+    ok 5 - invalidate() does not throw when interleaved with contextNodes on a missing root
+      ---
+      duration_ms: 0.2361
+      type: 'test'
+      ...
+    1..5
+ok 7 - code-intelligence safe-fallback & idempotence
+  ---
+  duration_ms: 7.6146
+  type: 'suite'
+  ...
+# Subtest: context-engine projection cache
+    # Subtest: returns cache.hit=true on the second projectGraph when a CacheManager is injected
+    ok 1 - returns cache.hit=true on the second projectGraph when a CacheManager is injected
+      ---
+      duration_ms: 7.0353
+      type: 'test'
+      ...
+    # Subtest: falls back to in-memory cache and still reports cache.hit=true on repeat when no CacheManager is injected
+    ok 2 - falls back to in-memory cache and still reports cache.hit=true on repeat when no CacheManager is injected
+      ---
+      duration_ms: 0.5865
+      type: 'test'
+      ...
+    # Subtest: changing a candidate dependency fingerprint invalidates the cached projection key
+    ok 3 - changing a candidate dependency fingerprint invalidates the cached projection key
+      ---
+      duration_ms: 0.8102
+      type: 'test'
+      ...
+    1..3
+ok 8 - context-engine projection cache
+  ---
+  duration_ms: 9.5084
+  type: 'suite'
+  ...
+# Subtest: context-engine code-intelligence auto-enrichment
+    # Subtest: adds source=code-intelligence nodes when codeIntelligence is injected
+    ok 1 - adds source=code-intelligence nodes when codeIntelligence is injected
+      ---
+      duration_ms: 9.4282
+      type: 'test'
+      ...
+    # Subtest: does not emit code-intelligence nodes when no codeIntelligence is injected (zero regression)
+    ok 2 - does not emit code-intelligence nodes when no codeIntelligence is injected (zero regression)
+      ---
+      duration_ms: 0.3768
+      type: 'test'
+      ...
+    # Subtest: falls back gracefully when codeIntelligence.contextNodes throws
+    ok 3 - falls back gracefully when codeIntelligence.contextNodes throws
+      ---
+      duration_ms: 0.4817
+      type: 'test'
+      ...
+    # Subtest: does not enrich when workspace root is missing on platform (safe fallback)
+    ok 4 - does not enrich when workspace root is missing on platform (safe fallback)
+      ---
+      duration_ms: 0.3683
+      type: 'test'
+      ...
+    1..4
+ok 9 - context-engine code-intelligence auto-enrichment
+  ---
+  duration_ms: 12.5452
   type: 'suite'
   ...
 # Subtest: context graph projection contracts
     # Subtest: defines serializable versioned projection request and result DTOs
     ok 1 - defines serializable versioned projection request and result DTOs
       ---
-      duration_ms: 4.2492
+      duration_ms: 3.9202
       type: 'test'
       ...
     # Subtest: creates projection cache entries with dependency invalidation metadata
     ok 2 - creates projection cache entries with dependency invalidation metadata
       ---
-      duration_ms: 0.7778
+      duration_ms: 0.5656
       type: 'test'
       ...
     1..2
-ok 4 - context graph projection contracts
+ok 10 - context graph projection contracts
   ---
-  duration_ms: 6.3361
+  duration_ms: 5.489
   type: 'suite'
   ...
 # Subtest: core coding tool contracts
     # Subtest: defines stable manifests with schema, replay, timeout, projection, and compatibility metadata
     ok 1 - defines stable manifests with schema, replay, timeout, projection, and compatibility metadata
       ---
-      duration_ms: 6.4062
+      duration_ms: 4.6917
       type: 'test'
       ...
     # Subtest: projects model-visible schemas while executor bindings remain registry-only
     ok 2 - projects model-visible schemas while executor bindings remain registry-only
       ---
-      duration_ms: 4.5656
+      duration_ms: 5.2689
       type: 'test'
       ...
     # Subtest: keeps workspace edit transaction evidence replay-safe and records only successful mutations
     ok 3 - keeps workspace edit transaction evidence replay-safe and records only successful mutations
       ---
-      duration_ms: 5.3378
+      duration_ms: 4.3161
       type: 'test'
       ...
     1..3
-ok 5 - core coding tool contracts
+ok 11 - core coding tool contracts
   ---
-  duration_ms: 17.8318
+  duration_ms: 15.526
   type: 'suite'
   ...
 # Subtest: cross-platform runtime contracts
     # Subtest: exposes stable descriptor shape and provider result metadata
     ok 1 - exposes stable descriptor shape and provider result metadata
       ---
-      duration_ms: 3.9217
+      duration_ms: 2.2776
       type: 'test'
       ...
     # Subtest: fails closed with diagnostics for unsafe paths and unavailable process execution
     ok 2 - fails closed with diagnostics for unsafe paths and unavailable process execution
       ---
-      duration_ms: 0.7275
+      duration_ms: 0.5217
       type: 'test'
       ...
     # Subtest: adds platform execution context to envelopes and policy decisions
     ok 3 - adds platform execution context to envelopes and policy decisions
       ---
-      duration_ms: 7.6718
+      duration_ms: 4.9042
       type: 'test'
       ...
     1..3
-ok 6 - cross-platform runtime contracts
+ok 12 - cross-platform runtime contracts
   ---
-  duration_ms: 13.9439
+  duration_ms: 8.8916
+  type: 'suite'
+  ...
+# Subtest: file.read offset/limit
+    # Subtest: returns slice of lines with nextOffset metadata
+    ok 1 - returns slice of lines with nextOffset metadata
+      ---
+      duration_ms: 9.7376
+      type: 'test'
+      ...
+    # Subtest: returns full file when offset/limit omitted (backwards compatible)
+    ok 2 - returns full file when offset/limit omitted (backwards compatible)
+      ---
+      duration_ms: 3.0912
+      type: 'test'
+      ...
+    # Subtest: returns base64 for PNG images
+    ok 3 - returns base64 for PNG images
+      ---
+      duration_ms: 4.201
+      type: 'test'
+      ...
+    1..3
+ok 13 - file.read offset/limit
+  ---
+  duration_ms: 18.1206
+  type: 'suite'
+  ...
+# Subtest: file.list mtime sort
+    # Subtest: returns files sorted by mtime descending by default
+    ok 1 - returns files sorted by mtime descending by default
+      ---
+      duration_ms: 7.8511
+      type: 'test'
+      ...
+    1..1
+ok 14 - file.list mtime sort
+  ---
+  duration_ms: 8.0441
+  type: 'suite'
+  ...
+# Subtest: search.text advanced options
+    # Subtest: supports contextLines with outputMode=content
+    ok 1 - supports contextLines with outputMode=content
+      ---
+      duration_ms: 1.3381
+      type: 'test'
+      ...
+    # Subtest: filters files via glob
+    ok 2 - filters files via glob
+      ---
+      duration_ms: 0.4914
+      type: 'test'
+      ...
+    # Subtest: case insensitive option matches patterns regardless of case
+    ok 3 - case insensitive option matches patterns regardless of case
+      ---
+      duration_ms: 0.646
+      type: 'test'
+      ...
+    1..3
+ok 15 - search.text advanced options
+  ---
+  duration_ms: 2.7409
   type: 'suite'
   ...
 # Subtest: hook system contracts
     # Subtest: emits serializable v1 DTOs for summaries, order projection, and invocation
     ok 1 - emits serializable v1 DTOs for summaries, order projection, and invocation
       ---
-      duration_ms: 4.3265
+      duration_ms: 2.66
       type: 'test'
       ...
     # Subtest: does not expose legacy generic hook APIs
     ok 2 - does not expose legacy generic hook APIs
       ---
-      duration_ms: 0.224
+      duration_ms: 0.1416
       type: 'test'
       ...
     1..2
-ok 7 - hook system contracts
+ok 16 - hook system contracts
   ---
-  duration_ms: 6.1017
+  duration_ms: 3.7679
+  type: 'suite'
+  ...
+# Subtest: hook wiring
+    # Subtest: fires user-input.before + model-call.before/after during a simple turn
+    ok 1 - fires user-input.before + model-call.before/after during a simple turn
+      ---
+      duration_ms: 12.4463
+      type: 'test'
+      ...
+    # Subtest: blocks the tool call when a tool-execution.before hook returns block policy
+    ok 2 - blocks the tool call when a tool-execution.before hook returns block policy
+      ---
+      duration_ms: 9.2535
+      type: 'test'
+      ...
+    # Subtest: aborts the turn when user-input.before hook blocks
+    ok 3 - aborts the turn when user-input.before hook blocks
+      ---
+      duration_ms: 1.6972
+      type: 'test'
+      ...
+    # Subtest: emits model.blocked when model-call.before hook blocks
+    ok 4 - emits model.blocked when model-call.before hook blocks
+      ---
+      duration_ms: 3.7096
+      type: 'test'
+      ...
+    # Subtest: continue-policy hook failures do not crash the turn
+    ok 5 - continue-policy hook failures do not crash the turn
+      ---
+      duration_ms: 2.8494
+      type: 'test'
+      ...
+    1..5
+ok 17 - hook wiring
+  ---
+  duration_ms: 30.9849
   type: 'suite'
   ...
 # Subtest: architecture lint framework
     # Subtest: passes a valid minimal workspace
     ok 1 - passes a valid minimal workspace
       ---
-      duration_ms: 600.0791
+      duration_ms: 495.7837
       type: 'test'
       ...
     # Subtest: reports stable rule ids for boundary violations
     ok 2 - reports stable rule ids for boundary violations
       ---
-      duration_ms: 443.141
+      duration_ms: 309.4096
       type: 'test'
       ...
     # Subtest: allows governed execution primitives in runtime, owner packages, and tests
     ok 3 - allows governed execution primitives in runtime, owner packages, and tests
       ---
-      duration_ms: 446.3559
+      duration_ms: 291.6734
       type: 'test'
       ...
     # Subtest: rejects direct governed execution primitive bypasses outside approved owners
     ok 4 - rejects direct governed execution primitive bypasses outside approved owners
       ---
-      duration_ms: 447.0678
+      duration_ms: 288.4338
       type: 'test'
       ...
     # Subtest: rejects legacy generic skill system APIs
     ok 5 - rejects legacy generic skill system APIs
       ---
-      duration_ms: 425.5943
+      duration_ms: 282.7938
       type: 'test'
       ...
     # Subtest: rejects legacy generic hook system APIs
     ok 6 - rejects legacy generic hook system APIs
       ---
-      duration_ms: 438.1727
+      duration_ms: 283.1796
       type: 'test'
       ...
     # Subtest: rejects legacy generic MCP gateway APIs
     ok 7 - rejects legacy generic MCP gateway APIs
       ---
-      duration_ms: 420.9462
+      duration_ms: 283.6732
       type: 'test'
       ...
     # Subtest: rejects legacy runtime direct execution paths inside runtime package
     ok 8 - rejects legacy runtime direct execution paths inside runtime package
       ---
-      duration_ms: 429.2811
+      duration_ms: 282.7256
       type: 'test'
       ...
     # Subtest: rejects direct provider credential access outside credential owners and tests
     ok 9 - rejects direct provider credential access outside credential owners and tests
       ---
-      duration_ms: 426.4088
+      duration_ms: 290.269
       type: 'test'
       ...
     # Subtest: allows credential owner and tests to access host credential seams
     ok 10 - allows credential owner and tests to access host credential seams
       ---
-      duration_ms: 427.1394
+      duration_ms: 281.534
       type: 'test'
       ...
     # Subtest: rejects direct platform primitive access outside platform owners
     ok 11 - rejects direct platform primitive access outside platform owners
       ---
-      duration_ms: 429.7236
+      duration_ms: 285.5252
       type: 'test'
       ...
     # Subtest: rejects direct secret, filesystem, process, native, and sandbox bypasses outside owners
     ok 12 - rejects direct secret, filesystem, process, native, and sandbox bypasses outside owners
       ---
-      duration_ms: 433.6457
+      duration_ms: 288.1672
       type: 'test'
       ...
     # Subtest: rejects direct context projection assembly outside approved owners
     ok 13 - rejects direct context projection assembly outside approved owners
       ---
-      duration_ms: 430.1579
+      duration_ms: 283.7225
       type: 'test'
       ...
     # Subtest: allows platform owners and tests to access platform primitives
     ok 14 - allows platform owners and tests to access platform primitives
       ---
-      duration_ms: 421.1473
+      duration_ms: 283.5124
       type: 'test'
       ...
     1..14
-ok 8 - architecture lint framework
+ok 18 - architecture lint framework
   ---
-  duration_ms: 6221.0238
+  duration_ms: 4231.9914
   type: 'suite'
   ...
 # Subtest: local readiness contracts
     # Subtest: defines stable manifests for every readiness command
     ok 1 - defines stable manifests for every readiness command
       ---
-      duration_ms: 2.3187
+      duration_ms: 1.5659
       type: 'test'
       ...
     # Subtest: runs every readiness command through the command registry
     ok 2 - runs every readiness command through the command registry
       ---
-      duration_ms: 2.7654
+      duration_ms: 14.7696
       type: 'test'
       ...
     # Subtest: reports credential references without raw secret fields
     ok 3 - reports credential references without raw secret fields
       ---
-      duration_ms: 0.3449
+      duration_ms: 0.2442
       type: 'test'
       ...
     1..3
-ok 9 - local readiness contracts
+ok 19 - local readiness contracts
   ---
-  duration_ms: 6.9288
+  duration_ms: 17.6283
   type: 'suite'
   ...
 # Subtest: MCP gateway contracts
     # Subtest: uses canonical v1 DTOs and fake substitutability
     ok 1 - uses canonical v1 DTOs and fake substitutability
       ---
-      duration_ms: 5.761
+      duration_ms: 11.4598
       type: 'test'
       ...
     1..1
-ok 10 - MCP gateway contracts
+ok 20 - MCP gateway contracts
   ---
-  duration_ms: 7.2525
+  duration_ms: 12.6089
+  type: 'suite'
+  ...
+# Subtest: StdioMcpClient against the echo server
+    # Subtest: initializes, lists one tool, calls echo, and shuts down
+    ok 1 - initializes, lists one tool, calls echo, and shuts down
+      ---
+      duration_ms: 130.0231
+      type: 'test'
+      ...
+    # Subtest: times out when the server does not respond
+    ok 2 - times out when the server does not respond
+      ---
+      duration_ms: 119.0546
+      type: 'test'
+      ...
+    # Subtest: propagates JSON-RPC error responses as rejected promises
+    ok 3 - propagates JSON-RPC error responses as rejected promises
+      ---
+      duration_ms: 54.978
+      type: 'test'
+      ...
+    1..3
+ok 21 - StdioMcpClient against the echo server
+  ---
+  duration_ms: 305.1268
+  type: 'suite'
+  ...
+# Subtest: memory-cache-management contracts
+    # Subtest: projectionCacheKey is stable under dependencyFingerprints reordering
+    ok 1 - projectionCacheKey is stable under dependencyFingerprints reordering
+      ---
+      duration_ms: 0.9174
+      type: 'test'
+      ...
+    # Subtest: InMemoryCacheManager.set with the same key overwrites previous value
+    ok 2 - InMemoryCacheManager.set with the same key overwrites previous value
+      ---
+      duration_ms: 1.4192
+      type: 'test'
+      ...
+    # Subtest: InMemoryCacheManager.get returns frozen entry with frozen invalidation
+    ok 3 - InMemoryCacheManager.get returns frozen entry with frozen invalidation
+      ---
+      duration_ms: 0.4872
+      type: 'test'
+      ...
+    # Subtest: InMemoryMemoryManager.query preserves put insertion order within scope
+    ok 4 - InMemoryMemoryManager.query preserves put insertion order within scope
+      ---
+      duration_ms: 1.7148
+      type: 'test'
+      ...
+    1..4
+ok 22 - memory-cache-management contracts
+  ---
+  duration_ms: 5.7227
   type: 'suite'
   ...
 # Subtest: observability privacy contracts
     # Subtest: serializes privacy settings, canonical records, and diagnostic bundles
     ok 1 - serializes privacy settings, canonical records, and diagnostic bundles
       ---
-      duration_ms: 6.4075
+      duration_ms: 2.8299
       type: 'test'
       ...
     # Subtest: returns denied privacy decisions before external export payloads are produced
     ok 2 - returns denied privacy decisions before external export payloads are produced
       ---
-      duration_ms: 0.9089
+      duration_ms: 0.3745
       type: 'test'
       ...
     1..2
-ok 11 - observability privacy contracts
+ok 23 - observability privacy contracts
   ---
-  duration_ms: 9.0738
+  duration_ms: 4.0824
   type: 'suite'
   ...
 # Subtest: package boundaries
     # Subtest: passes dependency boundary checker
     ok 1 - passes dependency boundary checker
       ---
-      duration_ms: 1812.7482
+      duration_ms: 1471.3318
       type: 'test'
       ...
     1..1
-ok 12 - package boundaries
+ok 24 - package boundaries
   ---
-  duration_ms: 1813.868
+  duration_ms: 1472.1334
   type: 'suite'
   ...
 # Subtest: persistent config and auth contracts
     # Subtest: serializes config documents without raw credential fields
     ok 1 - serializes config documents without raw credential fields
       ---
-      duration_ms: 1.1508
+      duration_ms: 0.7543
       type: 'test'
       ...
     # Subtest: stores credential references while keeping raw secret out of reference JSON
     ok 2 - stores credential references while keeping raw secret out of reference JSON
       ---
-      duration_ms: 0.7651
+      duration_ms: 0.3959
       type: 'test'
       ...
     # Subtest: defines readiness live-check and live verification result shapes
     ok 3 - defines readiness live-check and live verification result shapes
       ---
-      duration_ms: 0.2552
+      duration_ms: 0.1558
       type: 'test'
       ...
     1..3
-ok 13 - persistent config and auth contracts
+ok 25 - persistent config and auth contracts
   ---
-  duration_ms: 3.4851
+  duration_ms: 2.3044
   type: 'suite'
   ...
 # Subtest: runtime kernel contracts
     # Subtest: constructs the kernel and validates execution envelopes
     ok 1 - constructs the kernel and validates execution envelopes
       ---
-      duration_ms: 3.5377
+      duration_ms: 2.9263
       type: 'test'
       ...
     # Subtest: returns typed rejection events for unknown capabilities
     ok 2 - returns typed rejection events for unknown capabilities
       ---
-      duration_ms: 2.7688
+      duration_ms: 1.7704
       type: 'test'
       ...
     # Subtest: rejects invalid timeout and malformed trace before policy or scheduler submission
     ok 3 - rejects invalid timeout and malformed trace before policy or scheduler submission
       ---
-      duration_ms: 4.431
+      duration_ms: 3.0882
       type: 'test'
       ...
     # Subtest: validates governance metadata shape directly
     ok 4 - validates governance metadata shape directly
       ---
-      duration_ms: 0.5257
+      duration_ms: 0.3889
       type: 'test'
       ...
     # Subtest: prevents denied policy invocations from reaching the scheduler
     ok 5 - prevents denied policy invocations from reaching the scheduler
       ---
-      duration_ms: 6.5386
+      duration_ms: 4.642
       type: 'test'
       ...
     # Subtest: fails closed when replayable session or bus event persistence fails
     ok 6 - fails closed when replayable session or bus event persistence fails
       ---
-      duration_ms: 1.3508
+      duration_ms: 0.886
       type: 'test'
       ...
     # Subtest: records explicit degraded observability events without failing successful execution
     ok 7 - records explicit degraded observability events without failing successful execution
       ---
-      duration_ms: 5.7279
+      duration_ms: 3.684
       type: 'test'
       ...
     1..7
-ok 14 - runtime kernel contracts
+ok 26 - runtime kernel contracts
   ---
-  duration_ms: 26.0514
+  duration_ms: 18.3032
   type: 'suite'
   ...
 # Subtest: secret sandbox hardening contracts
     # Subtest: serializes secret, sandbox, and audit DTOs without raw secret evidence
     ok 1 - serializes secret, sandbox, and audit DTOs without raw secret evidence
       ---
-      duration_ms: 0.9793
+      duration_ms: 1.3726
       type: 'test'
       ...
     # Subtest: requires execution envelopes to carry secret, resource, sandbox, and audit metadata
     ok 2 - requires execution envelopes to carry secret, resource, sandbox, and audit metadata
       ---
-      duration_ms: 2.5515
+      duration_ms: 2.1698
       type: 'test'
       ...
     1..2
-ok 15 - secret sandbox hardening contracts
+ok 27 - secret sandbox hardening contracts
   ---
-  duration_ms: 4.4298
+  duration_ms: 4.6367
   type: 'suite'
   ...
 # Subtest: session store resume and fork contracts
     # Subtest: passes against in-memory store
     ok 1 - passes against in-memory store
       ---
-      duration_ms: 3.6788
+      duration_ms: 2.1937
       type: 'test'
       ...
     # Subtest: passes against development filesystem store
     ok 2 - passes against development filesystem store
       ---
-      duration_ms: 16.933
+      duration_ms: 21.6833
       type: 'test'
       ...
-    1..2
-ok 16 - session store resume and fork contracts
+    # Subtest: hydrates from disk so a new store instance sees prior events
+    ok 3 - hydrates from disk so a new store instance sees prior events
+      ---
+      duration_ms: 6.8066
+      type: 'test'
+      ...
+    # Subtest: keeps DevelopmentFilesystemSessionStore as a backwards-compatible alias
+    ok 4 - keeps DevelopmentFilesystemSessionStore as a backwards-compatible alias
+      ---
+      duration_ms: 0.25
+      type: 'test'
+      ...
+    # Subtest: picks a per-user sessions directory from environment
+    ok 5 - picks a per-user sessions directory from environment
+      ---
+      duration_ms: 0.2958
+      type: 'test'
+      ...
+    1..5
+ok 28 - session store resume and fork contracts
   ---
-  duration_ms: 22.3984
+  duration_ms: 32.3775
   type: 'suite'
   ...
 # Subtest: skill system contracts
     # Subtest: emits serializable v1 DTOs for summaries, activation, and context projection
     ok 1 - emits serializable v1 DTOs for summaries, activation, and context projection
       ---
-      duration_ms: 3.6052
+      duration_ms: 1.7742
       type: 'test'
       ...
     # Subtest: does not expose legacy generic skill APIs
     ok 2 - does not expose legacy generic skill APIs
       ---
-      duration_ms: 0.2317
+      duration_ms: 0.085
       type: 'test'
       ...
     1..2
-ok 17 - skill system contracts
+ok 29 - skill system contracts
   ---
-  duration_ms: 5.3785
+  duration_ms: 2.4465
   type: 'suite'
   ...
-1..17
-# tests 52
-# suites 17
-# pass 52
+# Subtest: skill tools wiring
+    # Subtest: skill.list returns count:0 when no skills are registered
+    ok 1 - skill.list returns count:0 when no skills are registered
+      ---
+      duration_ms: 18.0834
+      type: 'test'
+      ...
+    # Subtest: skill.list returns registered skills sorted by manifest.name
+    ok 2 - skill.list returns registered skills sorted by manifest.name
+      ---
+      duration_ms: 8.8663
+      type: 'test'
+      ...
+    # Subtest: skill.activate on a registered skill emits skill.activated runtime event
+    ok 3 - skill.activate on a registered skill emits skill.activated runtime event
+      ---
+      duration_ms: 7.0445
+      type: 'test'
+      ...
+    # Subtest: skill.activate on an unregistered skill returns SKILL_NOT_FOUND and does not emit skill.activated
+    ok 4 - skill.activate on an unregistered skill returns SKILL_NOT_FOUND and does not emit skill.activated
+      ---
+      duration_ms: 5.7716
+      type: 'test'
+      ...
+    1..4
+ok 30 - skill tools wiring
+  ---
+  duration_ms: 40.5388
+  type: 'suite'
+  ...
+# Subtest: core.web.fetch tool
+    # Subtest: fetches an HTML page and returns markdown without calling model
+    ok 1 - fetches an HTML page and returns markdown without calling model
+      ---
+      duration_ms: 23.0994
+      type: 'test'
+      ...
+    # Subtest: rejects non-http URLs
+    ok 2 - rejects non-http URLs
+      ---
+      duration_ms: 0.7093
+      type: 'test'
+      ...
+    # Subtest: uses injected WebFetchProvider when present
+    ok 3 - uses injected WebFetchProvider when present
+      ---
+      duration_ms: 1.1036
+      type: 'test'
+      ...
+    1..3
+ok 31 - core.web.fetch tool
+  ---
+  duration_ms: 25.6888
+  type: 'suite'
+  ...
+# Subtest: core.web.search tool
+    # Subtest: returns WEB_SEARCH_UNAVAILABLE when no provider registered
+    ok 1 - returns WEB_SEARCH_UNAVAILABLE when no provider registered
+      ---
+      duration_ms: 0.4417
+      type: 'test'
+      ...
+    # Subtest: returns filtered results from injected provider
+    ok 2 - returns filtered results from injected provider
+      ---
+      duration_ms: 0.3709
+      type: 'test'
+      ...
+    1..2
+ok 32 - core.web.search tool
+  ---
+  duration_ms: 0.9737
+  type: 'suite'
+  ...
+1..32
+# tests 111
+# suites 32
+# pass 111
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6891.1456
+# duration_ms 4648.424

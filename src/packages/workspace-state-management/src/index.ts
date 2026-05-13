@@ -10,6 +10,8 @@ import type {
   WorkspaceCheckpointRestoreResult,
   WorkspaceEditTransaction,
   WorkspaceIdentity,
+  WorkspaceRequestRevertResult,
+  WorkspaceRevertRequest,
   WorkspaceRestoreCheckpointRequest,
   WorkspaceStateManager,
   WorkspaceTransactionResult,
@@ -59,6 +61,8 @@ export class InMemoryWorkspaceStateManager implements WorkspaceStateManager {
         checkpointId: checkpoint.id,
         transactionId: checkpoint.transactionId,
         sessionId: checkpoint.sessionId,
+        ...(checkpoint.turnId ? { turnId: checkpoint.turnId } : {}),
+        ...(checkpoint.requestId ? { requestId: checkpoint.requestId } : {}),
         path: checkpoint.path,
         beforeHash: checkpoint.beforeHash,
         afterHash: checkpoint.afterHash,
@@ -151,6 +155,29 @@ export class InMemoryWorkspaceStateManager implements WorkspaceStateManager {
     };
   }
 
+  async revertRequest(request: WorkspaceRevertRequest): Promise<SerializableResult<WorkspaceRequestRevertResult>> {
+    const candidates = this.checkpointRecords.filter((checkpoint) => matchesRevertTarget(checkpoint, request));
+    if (candidates.length === 0) {
+      const error = diagnostic("CHECKPOINT_REVERT_EMPTY", "No checkpoints match the requested request or turn target.");
+      const value = requestRevertResult("rejected", request, [], [error]);
+      return { ok: false, error, value };
+    }
+    if (request.dryRun === true) {
+      return { ok: true, value: requestRevertResult("preview", request, candidates.map((checkpoint) => restoreResult(checkpoint.id, "restored", [], checkpoint)), []) };
+    }
+    const restored: WorkspaceCheckpointRestoreResult[] = [];
+    for (const checkpoint of candidates) {
+      const result = await this.restoreCheckpoint({ checkpointId: checkpoint.id, reason: request.reason ?? "request-revert" });
+      if (result.value) restored.push(result.value);
+    }
+    const diagnostics = restored.flatMap((checkpoint) => checkpoint.diagnostics);
+    const restoredCount = restored.filter((checkpoint) => checkpoint.status === "restored").length;
+    const status: WorkspaceRequestRevertResult["status"] =
+      restoredCount === candidates.length ? "restored" : restoredCount > 0 ? "partial" : diagnostics.some((entry) => entry.code === "CHECKPOINT_STALE_FILE") ? "rejected" : "failed";
+    const value = requestRevertResult(status, request, restored, diagnostics);
+    return { ok: status === "restored" || status === "partial", ...(status === "restored" || status === "partial" ? {} : { error: diagnostics[0] ?? diagnostic("CHECKPOINT_REVERT_FAILED", "Request revert failed.") }), value };
+  }
+
   private createCheckpoint(
     transaction: WorkspaceEditTransaction,
     edit: JsonObject,
@@ -169,6 +196,8 @@ export class InMemoryWorkspaceStateManager implements WorkspaceStateManager {
       id: checkpointId,
       transactionId: transaction.id,
       sessionId: transaction.sessionId,
+      ...(transaction.turnId ? { turnId: transaction.turnId } : {}),
+      ...(transaction.requestId ? { requestId: transaction.requestId } : {}),
       path,
       beforeHash,
       afterHash,
@@ -211,6 +240,8 @@ function restoreResult(
     ...(checkpoint ? {
       transactionId: checkpoint.transactionId,
       sessionId: checkpoint.sessionId,
+      ...(checkpoint.turnId ? { turnId: checkpoint.turnId } : {}),
+      ...(checkpoint.requestId ? { requestId: checkpoint.requestId } : {}),
       path: checkpoint.path,
       beforeHash: checkpoint.beforeHash,
       afterHash: checkpoint.afterHash
@@ -223,6 +254,51 @@ function restoreResult(
     },
     redaction: { class: "internal", fields: ["path"] }
   };
+}
+
+function matchesRevertTarget(checkpoint: WorkspaceCheckpointRecord, request: WorkspaceRevertRequest): boolean {
+  const target = request.target;
+  if (target.sessionId && checkpoint.sessionId !== target.sessionId) return false;
+  if (target.turnId && checkpoint.turnId !== target.turnId) return false;
+  if (target.requestId && checkpoint.requestId !== target.requestId) return false;
+  if (target.path && checkpoint.path !== target.path) return false;
+  return Boolean(target.sessionId || target.turnId || target.requestId || target.path);
+}
+
+function requestRevertResult(
+  status: WorkspaceRequestRevertResult["status"],
+  request: WorkspaceRevertRequest,
+  checkpoints: readonly WorkspaceCheckpointRestoreResult[],
+  diagnostics: readonly RedactedError[]
+): WorkspaceRequestRevertResult {
+  const affectedPaths = uniqueStrings(checkpoints.map((checkpoint) => checkpoint.path).filter((path): path is string => typeof path === "string"));
+  const restoredPaths = uniqueStrings(checkpoints.filter((checkpoint) => checkpoint.status === "restored").map((checkpoint) => checkpoint.path).filter((path): path is string => typeof path === "string"));
+  const stalePaths = uniqueStrings(checkpoints.filter((checkpoint) => checkpoint.diagnostics.some((entry) => entry.code === "CHECKPOINT_STALE_FILE")).map((checkpoint) => checkpoint.path).filter((path): path is string => typeof path === "string"));
+  const nonRestorablePaths = uniqueStrings(checkpoints.filter((checkpoint) => checkpoint.status !== "restored" && !checkpoint.diagnostics.some((entry) => entry.code === "CHECKPOINT_STALE_FILE")).map((checkpoint) => checkpoint.path).filter((path): path is string => typeof path === "string"));
+  return {
+    status,
+    target: request.target,
+    eventKind: "workspace.request.reverted",
+    checkpoints,
+    affectedCheckpointIds: checkpoints.map((checkpoint) => checkpoint.checkpointId),
+    affectedPaths,
+    restoredPaths,
+    stalePaths,
+    nonRestorablePaths,
+    nonReversibleEffects: [],
+    contextProjection: {
+      reverted: status !== "rejected" && status !== "failed",
+      ...(request.target.turnId ? { targetTurnId: request.target.turnId } : {}),
+      ...(request.target.requestId ? { targetRequestId: request.target.requestId } : {}),
+      compensatedWorkspaceEffects: restoredPaths
+    },
+    diagnostics,
+    redaction: { class: "internal", fields: ["checkpoints.path", "affectedPaths", "restoredPaths", "stalePaths", "nonRestorablePaths"] }
+  };
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values)];
 }
 
 function diagnostic(code: string, message: string): RedactedError {

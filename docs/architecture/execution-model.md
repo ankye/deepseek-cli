@@ -31,6 +31,55 @@ sequenceDiagram
   Bus-->>Host: render event
 ```
 
+## Projection Cache Tiers / Projection 缓存的两级存储
+
+`InMemoryContextEngine` resolves `projectGraph` through two tiers so that the same request is served identically whether or not a shared cache is wired in.
+
+`InMemoryContextEngine` 通过两级缓存解析 `projectGraph`，确保无论是否注入共享缓存，相同请求都能得到一致结果。
+
+- Library-authoritative key: `projectionCacheKey({ requestFingerprint, dependencyFingerprints })` from `@deepseek/memory-cache-management` is the only supported key. `dependencyFingerprints` are sorted before hashing so reordered inputs collide on the same entry.
+- 库权威的 key：`@deepseek/memory-cache-management` 导出的 `projectionCacheKey({ requestFingerprint, dependencyFingerprints })` 是唯一支持的 key；`dependencyFingerprints` 在 hash 前排序，保证顺序不同的输入命中同一条记录。
+- Tier 1 — injected `CacheManager`: when the engine is constructed as `new InMemoryContextEngine({ cache })`, projections are stored under the `PROJECTION_CACHE_NAMESPACE` with dependency fingerprints copied into `CacheEntry.invalidation`. Repeat calls return `cache.hit === true` and the `replayFingerprint` is suffixed with `:cache-hit`.
+- 第一层 —— 注入的 `CacheManager`：当引擎通过 `new InMemoryContextEngine({ cache })` 构造时，投影结果存入 `PROJECTION_CACHE_NAMESPACE`，`dependencyFingerprints` 复制到 `CacheEntry.invalidation`；重复调用返回 `cache.hit === true`，`replayFingerprint` 追加 `:cache-hit` 后缀。
+- Tier 2 — private `Map` fallback: when no cache is injected, the engine falls back to a process-local `Map` keyed by the same `projectionCacheKey`. Behavior is byte-identical: `cache.hit === true` and the `:cache-hit` suffix on repeat calls.
+- 第二层 —— 私有 `Map` 回退：未注入缓存时，引擎使用按同一 `projectionCacheKey` 索引的进程内 `Map`；行为逐字节一致：重复调用返回 `cache.hit === true` 并追加 `:cache-hit` 后缀。
+- Invalidation: rotating any candidate's `dependencyFingerprints` changes the key, so the next call computes a fresh projection and reports `cache.hit === false`. Consumers should not mutate returned `CacheEntry` values — entries and their `invalidation` arrays are shallow-frozen before return.
+- 失效：只要任意候选节点的 `dependencyFingerprints` 变化，key 就会变化，下一次调用重新计算投影并返回 `cache.hit === false`。消费者不得修改返回的 `CacheEntry` —— 条目及其 `invalidation` 数组在返回前会被浅冻结。
+
+## Code Intelligence Auto-Enrichment / Code Intelligence 自动富化
+
+`InMemoryContextEngine` accepts an optional `codeIntelligence` field in the same constructor options bag as `cache`. When injected, `projectGraph` enriches candidate nodes with diagnostic and symbol evidence before selection so callers do not have to pre-invoke `contextNodes` and splice the result into `candidateNodes` by hand.
+
+`InMemoryContextEngine` 在与 `cache` 相同的 options bag 中接受可选的 `codeIntelligence` 字段。注入后，`projectGraph` 会在选择前用 diagnostic 与 symbol evidence 富化 candidate nodes，调用方无须手动先调用 `contextNodes` 再拼接结果。
+
+- Injected path / 注入路径: the engine calls `codeIntelligence.contextNodes({ sessionId, root: scope.workspaceRoot ?? "/workspace", includeDiagnostics: true, includeSymbols: true })` inside a `try/catch`, appends `value.nodes` to the caller-supplied `candidateNodes`, and deduplicates by `id` so caller nodes take precedence over analyzer-emitted nodes.
+- 注入路径：引擎在 `try/catch` 内调用 `codeIntelligence.contextNodes({ sessionId, root: scope.workspaceRoot ?? "/workspace", includeDiagnostics: true, includeSymbols: true })`，把 `value.nodes` 追加到调用方传入的 `candidateNodes` 末尾，并按 `id` 去重 —— 调用方的同 id 节点优先。
+- Not-injected path / 未注入路径: when no `codeIntelligence` is provided the engine's behavior is byte-identical to prior versions; only caller-supplied `candidateNodes` participate in selection and the cache fingerprint.
+- 未注入路径：未传入 `codeIntelligence` 时，引擎行为与历史版本逐字节一致；只有调用方传入的 `candidateNodes` 参与选择与缓存指纹。
+- Failure fallback / 失败回退: if `contextNodes` throws, returns `ok: false`, or times out, the engine silently falls back to caller-supplied candidates and the projection status remains `completed`; enrichment failures never degrade a projection to `rejected`.
+- 失败回退：当 `contextNodes` 抛错、返回 `ok: false` 或超时时，引擎静默回退到仅使用调用方传入的 candidates，投影状态保持 `completed`；富化失败永不把投影降级为 `rejected`。
+- Cache interaction / 缓存交互: enriched candidates participate in `projectionCacheKey`'s `dependencyFingerprints`, so the cache naturally diverges between enriched and non-enriched calls — this is the intended behavior and does not require explicit invalidation wiring.
+- 缓存交互：富化后的 candidates 参与 `projectionCacheKey` 的 `dependencyFingerprints`，因此富化与未富化调用的 cache key 自然分叉 —— 这是预期行为，不需要额外的显式失效接线。
+- Edit-path invalidation / 编辑路径失效: write-path core-coding-tools (`file.write`, `file.edit`) call `deps.codeIntelligence?.invalidate(path).catch(() => undefined)` after a successful write so the next `diagnostics` or `symbols` query re-indexes the affected file.
+- 编辑路径失效：写路径的 core-coding-tools（`file.write`、`file.edit`）在成功写入后非阻塞地调用 `deps.codeIntelligence?.invalidate(path).catch(() => undefined)`，使下一次 `diagnostics` 或 `symbols` 查询重新索引受影响文件。
+
+## Plugin Lockfile / 插件 Lockfile
+
+`PluginManager` exposes a four-state decision tree over `install` / `verify` / `snapshot` / `applyLockfile` so plugin state is reproducible across managers and tampering is fail-closed.
+
+`PluginManager` 在 `install` / `verify` / `snapshot` / `applyLockfile` 之上暴露一棵四态决策树，使 plugin 状态在不同 manager 之间可复现，且遇到篡改 fail-closed。
+
+- Install / 安装: `install(manifest)` first calls `verify(manifest)`; on `{ ok: false, reason: "mismatch" }` it throws `IntegrityMismatchError` with `expected` / `actual` copied from the conflicting lock entry and manifest, and the existing lock entry is left untouched. On `{ ok: true }` it computes `PermissionDiff` against the prior lock entry (if any) — `added` = permissions in the new manifest but not the prior entry, `removed` = permissions in the prior entry but not the new manifest — writes/overwrites the lock entry, and returns `{ diff, lockEntry }`.
+- 安装：`install(manifest)` 先走 `verify(manifest)`；`{ ok: false, reason: "mismatch" }` 时抛 `IntegrityMismatchError`（`expected` / `actual` 复制自冲突的 lock entry 与 manifest），已有 lock entry 保持不变。`{ ok: true }` 时基于旧 lock entry（若有）计算 `PermissionDiff` —— `added` 精确为新 manifest 有、旧 entry 没有的 permission，`removed` 精确为旧 entry 有、新 manifest 没有的 permission —— 然后写入/覆盖 lock entry 并返回 `{ diff, lockEntry }`。
+- Verify / 校验: `verify(manifest)` is read-only. TOFU: no lock entry for `manifest.id` → `{ ok: true }`. Entry exists and `integrity` matches → `{ ok: true }`. Entry exists and `integrity` differs → `{ ok: false, reason: "mismatch", expected, actual }`. `verify` never mutates state; `snapshot()` before and after a verify call is byte-identical.
+- 校验：`verify(manifest)` 是只读操作。TOFU：`manifest.id` 无 lock entry → `{ ok: true }`；已有且 integrity 一致 → `{ ok: true }`；已有但 integrity 不一致 → `{ ok: false, reason: "mismatch", expected, actual }`。`verify` 不改动任何状态，调用前后 `snapshot()` 必须 byte-identical。
+- Snapshot / 快照: `snapshot()` returns a frozen `PluginLockfile { version: 1, entries }` with `entries` sorted by `pluginId` and two-level `Object.freeze` applied to the entries array and each entry, so two managers starting from the same lockfile hash identically.
+- 快照：`snapshot()` 返回 frozen `PluginLockfile { version: 1, entries }`，`entries` 按 `pluginId` 升序，数组与每个 entry 都经过 `Object.freeze` 两层冻结；相同 lockfile 在不同 manager 上哈希一致。
+- Apply / 应用: `applyLockfile(lockfile)` replays entries in lockfile order. For each entry: if a matching `pluginId` + `integrity` lock entry already exists → no-op (empty `PermissionDiff`, no duplicate install event); if `pluginId` exists but `integrity` differs → throw `IntegrityMismatchError`; otherwise synthesize a `PluginManifest` from the entry and run `install` — results are returned as a `ReadonlyArray<PluginInstallResult>` in lockfile order, so re-applying the same lockfile is idempotent.
+- 应用：`applyLockfile(lockfile)` 按 lockfile 顺序重放 entries。对每条 entry：已存在同 `pluginId` + `integrity` 的 lock entry → no-op（空 `PermissionDiff`，不重复触发 install 事件）；`pluginId` 已有但 `integrity` 不一致 → 抛 `IntegrityMismatchError`；否则以 entry 构造 `PluginManifest` 并走 `install`。结果以 `ReadonlyArray<PluginInstallResult>` 按 lockfile 顺序返回，重复 apply 幂等。
+- Fail-closed on integrity / integrity fail-closed: the only path that overwrites an existing `pluginId` is an explicit `install(manifest)` whose `integrity` matches the current lock entry. Any mismatch — whether during `install` or during `applyLockfile` — fails the whole call rather than silently rewriting state.
+- integrity fail-closed：覆盖已有 `pluginId` 的唯一路径，是 `integrity` 与当前 lock entry 一致的 `install(manifest)`；`install` 或 `applyLockfile` 中任何 integrity 不一致都会整体 fail，而不是静默改写状态。
+
 ## Execution Envelope / 执行信封
 
 The execution envelope is the single required shape for executable work.

@@ -62,6 +62,7 @@ export function buildExecutionEnvelope(input: ExecutionEnvelopeBuildInput): Exec
     caller: input.request.caller,
     ...(input.request.parentInvocationId ? { parentInvocationId: input.request.parentInvocationId } : {}),
     sessionId: input.sessionId,
+    ...(input.request.turnId ? { turnId: input.request.turnId } : {}),
     ...(input.workflowId ? { workflowId: asId<"workflow">(input.workflowId) } : {}),
     ...(input.taskId ? { taskId: asId<"task">(input.taskId) } : {}),
     ...(input.request.agentId ? { agentId: input.request.agentId } : {}),

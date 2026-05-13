@@ -1,5 +1,6 @@
 import type {
   CapabilityExecutionContext,
+  CodeIntelligenceService,
   CoreCodingToolName,
   CoreToolDiagnostic,
   CoreToolResult,
@@ -20,6 +21,7 @@ export interface CoreCodingToolsDependencies {
   readonly platform: PlatformRuntime;
   readonly workspaceState: WorkspaceStateManager;
   readonly workspaceRoot: string;
+  readonly codeIntelligence?: CodeIntelligenceService;
 }
 
 export async function requireDeps(deps: CoreCodingToolsDependencies | undefined): Promise<CoreCodingToolsDependencies> {
@@ -54,6 +56,7 @@ export function editTransaction(
   return {
     id: `${context.envelope.invocationId}:${path}`,
     ...(context.envelope.sessionId ? { sessionId: context.envelope.sessionId } : {}),
+    ...(context.envelope.turnId ? { turnId: context.envelope.turnId } : {}),
     capabilityId: context.envelope.capabilityId,
     path,
     precondition,
@@ -70,6 +73,8 @@ export function toWorkspaceTransaction(evidence: WorkspaceEditTransactionEvidenc
   return {
     id: evidence.id,
     sessionId: evidence.sessionId ?? asId<"session">("session-unbound"),
+    ...(evidence.turnId ? { turnId: evidence.turnId } : {}),
+    requestId: evidence.id,
     edits: [{
       path: evidence.path,
       precondition: evidence.precondition,
@@ -102,6 +107,10 @@ export function hashText(value: string): string {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
+}
+
+export function invalidateCodeIntelligence(deps: CoreCodingToolsDependencies, path: string): void {
+  void deps.codeIntelligence?.invalidate(path).catch(() => undefined);
 }
 
 export function processResultToEvidence(

@@ -8,9 +8,11 @@ import { modelGatewayStaysAnAdapter } from "./model-gateway.mjs";
 import { packageJsonBoundaryRule } from "./package-json.mjs";
 import { noDirectPlatformPrimitiveAccess } from "./platform.mjs";
 import { noDirectProviderCredentialAccess } from "./provider.mjs";
+import { promptAssemblyStaysHostNeutral } from "./prompt-assembly.mjs";
 import { noLegacyRuntimeDirectExecution, runtimeDoesNotDependOnTesting } from "./runtime.mjs";
 import { noDirectSecretSandboxBypass } from "./secret-sandbox.mjs";
 import { noLegacySkillSystemApi } from "./skill-system.mjs";
+import { centralFileScaleGuardrail } from "./scale-guardrails.mjs";
 
 export const architectureRules = [
   noCrossPackageRelativeImports,
@@ -26,7 +28,9 @@ export const architectureRules = [
   modelGatewayStaysAnAdapter,
   noDirectPlatformPrimitiveAccess,
   noDirectProviderCredentialAccess,
+  promptAssemblyStaysHostNeutral,
   noDirectSecretSandboxBypass,
   noLegacySkillSystemApi,
+  centralFileScaleGuardrail,
   packageJsonBoundaryRule
 ];

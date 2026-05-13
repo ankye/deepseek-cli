@@ -155,8 +155,10 @@ export interface PlatformRuntime {
   probeNativeCapability(capability: NativeCapabilityName): Promise<NativeCapabilityProbe>;
   watcherCapability(root: string): Promise<WatcherCapability>;
   resolvePath(...parts: readonly string[]): string;
+  createTempDirectory(prefix: string): Promise<string>;
   userConfigPath(appName: string): string;
   workspaceMetadataPath(workspaceRoot: string, appName: string): SerializableResult<string>;
+  ensureDirectory(path: string): Promise<void>;
   atomicWriteFile(path: string, content: string): Promise<SerializableResult<PlatformPersistenceMetadata>>;
   permissionDiagnostics(path: string): Promise<readonly PlatformPersistenceDiagnostic[]>;
   readFile(path: string): Promise<string>;

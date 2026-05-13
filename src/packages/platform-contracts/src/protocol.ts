@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue, RedactedError, TraceContext, VersionedEnvelope } from "./common.js";
 import type { CorrelationId, MessageId, SessionId } from "./ids.js";
+import type { ApprovalDecision, ApprovalId, ApprovalLifecycleRecord, ApprovalRenderSummary, ApprovalAuditReference } from "./approval.js";
 import type { RuntimeEvent, RuntimeRequest } from "./runtime.js";
 
 export type ProtocolMessageKind = "request" | "response" | "event" | "control";
@@ -14,8 +15,40 @@ export interface ProtocolRouting {
 export interface ProtocolPayload extends JsonObject {
   readonly request?: RuntimeRequest;
   readonly event?: RuntimeEvent;
+  readonly approval?: ApprovalLifecycleProtocolRecord;
+  readonly approvalControl?: ApprovalDecisionControlMessage;
   readonly control?: JsonObject;
   readonly response?: JsonObject;
+}
+
+export interface ApprovalLifecycleProtocolRecord extends JsonObject {
+  readonly protocolVersion: string;
+  readonly schemaVersion: string;
+  readonly messageId: MessageId;
+  readonly kind: ApprovalLifecycleRecord["kind"];
+  readonly approvalId: ApprovalId;
+  readonly correlationId: CorrelationId;
+  readonly sessionId?: SessionId;
+  readonly trace: TraceContext;
+  readonly redaction: ApprovalLifecycleRecord["redaction"];
+  readonly compatibility: ApprovalLifecycleRecord["compatibility"];
+  readonly decisionOptions: readonly string[];
+  readonly summary: ApprovalRenderSummary;
+  readonly auditReference: ApprovalAuditReference;
+  readonly decision?: ApprovalDecision;
+  readonly referencePitFixtureIds: readonly string[];
+}
+
+export interface ApprovalDecisionControlMessage extends JsonObject {
+  readonly schemaVersion: string;
+  readonly kind: "approval.decision";
+  readonly approvalId: ApprovalId;
+  readonly correlationId: CorrelationId;
+  readonly sessionId?: SessionId;
+  readonly decision: ApprovalDecision;
+  readonly trace: TraceContext;
+  readonly redaction: ApprovalDecision["redaction"];
+  readonly compatibility: ApprovalLifecycleRecord["compatibility"];
 }
 
 export interface ProtocolEnvelope extends VersionedEnvelope<ProtocolMessageKind, ProtocolPayload> {

@@ -18,7 +18,7 @@ import type {
 
 const schemaVersion = "1.0.0";
 const appName = "deepseek";
-const knownKeys = new Set(["model", "profile", "output", "telemetry", "privacy", "sandbox", "credentialRef"]);
+const knownKeys = new Set(["model", "profile", "output", "telemetry", "privacy", "sandbox", "credentialRef", "indexProviders"]);
 const secretLike = /api[_-]?key|token|password|secret|credential/i;
 
 type ConfigPathResult = { readonly ok: true; readonly value: string } | { readonly ok: false; readonly error?: NonNullable<SerializableResult["error"]> };
@@ -55,13 +55,19 @@ export class InMemoryConfigStore implements ConfigStore {
 
 export class PersistentConfigService implements ConfigService {
   private readonly profileName: string;
+  private readonly defaults: JsonObject;
+  private readonly environment: JsonObject;
+  private readonly cli: JsonObject;
   private userDocument: ConfigDocument | undefined;
   private workspaceDocument: ConfigDocument | undefined;
 
   constructor(private readonly options: PersistentConfigServiceOptions) {
     this.profileName = options.profile ?? "default";
-    this.userDocument = options.userDocument;
-    this.workspaceDocument = options.workspaceDocument;
+    this.defaults = cloneJsonObject(options.defaults ?? {});
+    this.environment = cloneJsonObject(options.environment ?? {});
+    this.cli = cloneJsonObject(options.cli ?? {});
+    this.userDocument = options.userDocument ? cloneConfigDocument(options.userDocument) : undefined;
+    this.workspaceDocument = options.workspaceDocument ? cloneConfigDocument(options.workspaceDocument) : undefined;
   }
 
   async load(): Promise<ResolvedConfig> {
@@ -70,11 +76,11 @@ export class PersistentConfigService implements ConfigService {
 
   async resolve(overrides: JsonObject = {}): Promise<ResolvedConfig> {
     const sources = [
-      documentSource("defaults", { schemaVersion, profile: this.profileName, values: this.options.defaults ?? {}, source: source("defaults", 0), redaction: { class: "public" }, migration: migration() }),
+      documentSource("defaults", { schemaVersion, profile: this.profileName, values: this.defaults, source: source("defaults", 0), redaction: { class: "public" }, migration: migration() }),
       documentSource("user", this.userDocument ?? (await this.readDocument("user"))),
       documentSource("workspace", this.workspaceDocument ?? (await this.readDocument("workspace"))),
-      documentSource("environment", { schemaVersion, profile: this.profileName, values: this.options.environment ?? {}, source: source("environment", 3), redaction: { class: "sensitive" }, migration: migration() }),
-      documentSource("cli", { schemaVersion, profile: this.profileName, values: { ...(this.options.cli ?? {}), ...overrides }, source: source("cli", 4), redaction: { class: "internal" }, migration: migration() })
+      documentSource("environment", { schemaVersion, profile: this.profileName, values: this.environment, source: source("environment", 3), redaction: { class: "sensitive" }, migration: migration() }),
+      documentSource("cli", { schemaVersion, profile: this.profileName, values: { ...this.cli, ...cloneJsonObject(overrides) }, source: source("cli", 4), redaction: { class: "internal" }, migration: migration() })
     ].filter((entry): entry is ConfigDocument => Boolean(entry));
 
     const diagnostics = sources.flatMap((document) => validateDocument(document));
@@ -258,4 +264,12 @@ function migration(version = schemaVersion) {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cloneJsonObject(value: JsonObject): JsonObject {
+  return JSON.parse(JSON.stringify(value)) as JsonObject;
+}
+
+function cloneConfigDocument(document: ConfigDocument): ConfigDocument {
+  return cloneJsonObject(document) as ConfigDocument;
 }

@@ -2,9 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   interactiveControlManifest,
+  interactiveControlCompositionRecords,
   interactiveHelpProjection,
   invokeInteractiveCommand,
-  invokeInteractiveControlCommand
+  invokeInteractiveControlCommand,
+  modelVisibleInteractiveControlProjection,
+  readinessCompositionRecords
 } from "../src/index.js";
 
 describe("interactive control commands", () => {
@@ -17,6 +20,8 @@ describe("interactive control commands", () => {
     assert.deepEqual(help.hostSupport, ["cli"]);
     assert.equal(cancel.id, "interactive.cancel");
     assert.equal(cancel.sideEffect, "runtime-control");
+    assert.equal(cancel.projection?.hostOnly, true);
+    assert.equal(cancel.target?.id, "command:interactive.cancel");
   });
 
   it("returns structured help and control results", async () => {
@@ -35,5 +40,25 @@ describe("interactive control commands", () => {
     assert.equal(quit.value?.command, "exit");
 
     assert.equal(interactiveHelpProjection().some((item) => item.name === "/cancel"), true);
+  });
+
+  it("derives help and slash projection from inert composition records", () => {
+    const records = interactiveControlCompositionRecords();
+    const help = interactiveHelpProjection();
+
+    assert.equal(records.some((record) => record.displayName === "cancel" && record.sideEffect === "runtime-control"), true);
+    assert.equal(help.some((item) => item.name === "/exit" && Array.isArray(item.aliases) && item.aliases.includes("/quit")), true);
+    assert.equal(modelVisibleInteractiveControlProjection().length, 0);
+  });
+
+  it("projects readiness commands with typed targets and model-hidden defaults", () => {
+    const records = readinessCompositionRecords();
+    const init = records.find((record) => record.displayName === "init");
+    const verify = records.find((record) => record.displayName === "verify-install");
+
+    assert.equal(init?.target.id, "command:readiness.init");
+    assert.equal(init?.permissions.includes("workspace:metadata"), true);
+    assert.equal(init?.projection.modelVisible, false);
+    assert.deepEqual(verify?.aliases, ["verify"]);
   });
 });

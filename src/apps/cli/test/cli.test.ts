@@ -1,8 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { ModelGateway, ModelRequest, ModelStreamEvent } from "@deepseek/platform-contracts";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { APPROVAL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, PlatformRuntime, PolicyDecision, PolicyEngine, PolicyRequest, ProcessResult, RuntimeEvent, WorkspaceEditTransaction } from "@deepseek/platform-contracts";
+import { FakePlatformRuntime, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
+import { chatPageIndexPagesFromSnapshot, explainChatPageIndexRecallItem, markStalePageIndexPagesAfterWorkspaceEdits, markStalePageIndexPagesFromWorkspaceWatermark, recordChatPageIndexTurn, renderChatPageIndexRecallExplain, resolveChatPageIndexRecall } from "../src/commands/pageindex.js";
+import { createChatPaletteState } from "../src/commands/palette-state.js";
+import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
+import { refreshAcceptanceEvidence } from "../src/diagnostics/refresh-evidence.js";
 import {
   cliUsageLines,
   parseCliArgs,
@@ -24,6 +33,120 @@ describe("cli host adapter", () => {
       live: true,
       timeoutMs: 1000
     });
+    assert.deepEqual(parseCliArgs(["chat", "--session", "session-resume", "--output", "jsonl"]), {
+      command: "chat",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      sessionId: asId<"session">("session-resume")
+    });
+    assert.deepEqual(parseCliArgs(["index-provider", "set", "zvec", "enabled", "--user", "--output", "json"]), {
+      command: "index-provider",
+      prompt: "",
+      output: "json",
+      live: false,
+      indexProviderAction: "set",
+      indexProviderId: "zvec",
+      indexProviderStatus: "enabled",
+      indexProviderScope: "user"
+    });
+    assert.deepEqual(parseCliArgs(["revert", "preview", "--request", "request-1", "--output", "jsonl"]), {
+      command: "revert",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      revertAction: "preview",
+      revertTarget: { requestId: "request-1" }
+    });
+    assert.deepEqual(parseCliArgs(["revert", "apply", "--turn", "turn-1", "--output", "json"]), {
+      command: "revert",
+      prompt: "",
+      output: "json",
+      live: false,
+      revertAction: "apply",
+      revertTarget: { turnId: asId<"turn">("turn-1") }
+    });
+    assert.deepEqual(parseCliArgs(["diagnostics", "verify", "--output", "jsonl"]), {
+      command: "diagnostics",
+      diagnosticsCommand: "verify",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      diagnosticsInput: { command: "verify" }
+    });
+    assert.deepEqual(parseCliArgs(["diagnostics", "refresh", "--full", "--dry-run", "--output", "jsonl"]), {
+      command: "diagnostics",
+      diagnosticsCommand: "refresh",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      diagnosticsInput: { command: "refresh", full: true, dryRun: true, extraArgs: [] }
+    });
+    assert.deepEqual(parseCliArgs(["diagnostics", "evaluate", "--baseline", "claude-code", "--dry-run", "--output", "json"]), {
+      command: "diagnostics",
+      diagnosticsCommand: "evaluate",
+      prompt: "",
+      output: "json",
+      live: false,
+      diagnosticsInput: { command: "evaluate", full: false, smoke: false, dryRun: true, baseline: "claude-code", allowExternalBaseline: false, baselineArgs: [], extraArgs: [] }
+    });
+    assert.deepEqual(parseCliArgs(["diagnostics", "evaluate", "--baseline", "codex", "--allow-external-baseline", "--baseline-command", "codex", "--baseline-arg", "--version", "--dry-run", "--output", "json"]), {
+      command: "diagnostics",
+      diagnosticsCommand: "evaluate",
+      prompt: "",
+      output: "json",
+      live: false,
+      diagnosticsInput: {
+        command: "evaluate",
+        full: false,
+        smoke: false,
+        dryRun: true,
+        baseline: "codex",
+        allowExternalBaseline: true,
+        baselineCommand: "codex",
+        baselineArgs: ["--version"],
+        extraArgs: []
+      }
+    });
+    assert.deepEqual(parseCliArgs([
+      "diagnostics",
+      "evaluate",
+      "--full",
+      "--compare-baseline",
+      "deepseek-cli",
+      "--compare-baseline",
+      "codex",
+      "--compare-baseline",
+      "claude-code",
+      "--execute-task",
+      "eval.webpage.generation",
+      "--codex-command",
+      "codex",
+      "--claude-command",
+      "claude",
+      "--output",
+      "json"
+    ]), {
+      command: "diagnostics",
+      diagnosticsCommand: "evaluate",
+      prompt: "",
+      output: "json",
+      live: false,
+      diagnosticsInput: {
+        command: "evaluate",
+        full: true,
+        smoke: false,
+        dryRun: false,
+        baseline: "deepseek-cli",
+        compareBaselines: ["deepseek-cli", "codex", "claude-code"],
+        allowExternalBaseline: false,
+        codexCommand: "codex",
+        claudeCommand: "claude",
+        executeTask: "eval.webpage.generation",
+        baselineArgs: [],
+        extraArgs: []
+      }
+    });
     assert.deepEqual(parseCliArgs(["-p", "hello"]), {
       command: "help",
       prompt: "",
@@ -38,6 +161,14 @@ describe("cli host adapter", () => {
       lines.push(line);
     }, [], { stdinIsTTY: true, stdoutIsTTY: true });
     assert.deepEqual(lines, cliUsageLines());
+    assert.equal(lines.some((line) => line.includes("deepseek palette list")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek palette keymap")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek palette action")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek revert preview")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek revert apply")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek index-provider status")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek chat [--session <session-id>]")), true);
     assert.equal(lines.join("\n").includes("stream-json"), false);
     assert.equal(lines.join("\n").includes(" -p "), false);
   });
@@ -79,6 +210,1898 @@ describe("cli host adapter", () => {
 
     assert.equal(completed.length, 2);
     assert.equal(completed[0]?.sessionId, completed[1]?.sessionId);
+  });
+
+  it("keeps approval slash commands local in chat", async () => {
+    const lines: string[] = [];
+    await runCli(["chat", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    }, ["/approval inspect approval:cli-test\n/approval deny approval:cli-test\n/approval unknown approval:cli-test\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false });
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; result?: { action?: string; brokerDecision?: string }; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.approval" && record.result?.action === "inspect"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.approval" && record.result?.brokerDecision === "deny"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.code === "CLI_APPROVAL_COMMAND_INVALID"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("keeps palette slash commands local in chat", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette\n/keymap vi-minimal\n/palette action inspect command:readiness.doctor\n/palette action inspect missing-target\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      turnId?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        target?: { id?: string };
+        diagnostics?: readonly { code?: string }[];
+        diagnostic?: { code?: string };
+        name?: string;
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette" && record.record?.kind === "palette.summary"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.keymap" && record.record?.kind === "palette.keymap.summary"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.keymap" && record.record?.name === "vi-minimal"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.ok === true && record.record.action === "inspect"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === false), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.diagnostic" && record.record.diagnostic?.code === "CLI_ACTION_TARGET_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("keeps palette navigation state local in chat", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette\n/palette state\n/palette next\n/palette back\n/palette forward\n/palette refs add current\n/palette state\n/palette refs remove current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      command?: string;
+      code?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        activeTargetId?: string;
+        activeItemId?: string;
+        jumpCount?: number;
+        jumpCursor?: number;
+        referenceCount?: number;
+      };
+    });
+    const stateRecords = records
+      .filter((record) => record.kind === "chat.command.palette-state" || record.record?.kind === "palette.state")
+      .map((record) => record.record ?? record as { activeTargetId?: string; activeItemId?: string; jumpCount?: number; jumpCursor?: number; referenceCount?: number });
+    const initialState = stateRecords.find((record) => record.jumpCount === 0 && record.jumpCursor === -1);
+    const navigationState = stateRecords.find((record) => record.jumpCount === 1 && record.jumpCursor === 0 && record.activeItemId !== initialState?.activeItemId);
+    const backState = stateRecords.find((record) => record.jumpCount === 1 && record.jumpCursor === -1 && record.activeItemId === initialState?.activeItemId);
+    const forwardState = stateRecords.find((record) => record.jumpCount === 1 && record.jumpCursor === 0 && record.activeItemId === navigationState?.activeItemId);
+    const referenceState = stateRecords.find((record) => record.jumpCount === 1 && record.jumpCursor === 0 && record.referenceCount === 1);
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "next"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "back"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "forward"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "add-to-reference-set"), true);
+    assert.equal(Boolean(initialState), true);
+    assert.equal(Boolean(navigationState), true);
+    assert.equal(Boolean(backState), true);
+    assert.equal(Boolean(forwardState), true);
+    assert.equal(Boolean(referenceState), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.mutation" && record.record.ok === true && record.record.action === "remove" && record.record.referenceCount === 0), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("lists and focuses chat palette references locally", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette\n/palette refs add current\n/palette next\n/palette refs add current\n/palette refs list\n/palette refs focus 1\n/palette refs list\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        selector?: string;
+        referenceCount?: number;
+        activeReferenceId?: string;
+        referenceId?: string;
+        targetId?: string;
+        set?: { itemCount?: number };
+        item?: { id?: string; target?: { id?: string } };
+        active?: boolean;
+      };
+    });
+    const items = records.filter((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item");
+    const focus = records.find((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.focus");
+    const finalSummary = records.filter((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.references").at(-1)?.record;
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.references" && record.record.referenceCount === 2), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.set" && record.record.set?.itemCount === 2), true);
+    assert.equal(items.length >= 4, true);
+    assert.equal(focus?.record?.ok, true);
+    assert.equal(focus?.record?.selector, "1");
+    assert.equal(finalSummary?.activeReferenceId, focus?.record?.referenceId);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    assert.equal(lines.join("\n").includes('"content"'), false);
+  });
+
+  it("removes and clears chat palette references locally", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette\n/palette refs add current\n/palette next\n/palette refs add current\n/palette refs remove 1\n/palette refs list\n/palette refs remove missing-reference\n/palette refs clear\n/palette refs list\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        selector?: string;
+        referenceCount?: number;
+        activeReferenceId?: string;
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.mutation" && record.record.ok === true && record.record.action === "remove" && record.record.referenceCount === 1), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.references" && record.record.referenceCount === 1), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.mutation" && record.record.ok === false && record.record.action === "remove" && record.record.selector === "missing-reference"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.mutation" && record.record.ok === true && record.record.action === "clear" && record.record.referenceCount === 0), true);
+    assert.equal(records.filter((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.references").at(-1)?.record?.referenceCount, 0);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("keeps missing palette reference focus local in chat", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette refs focus missing-reference\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        diagnostic?: { code?: string };
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.focus" && record.record.ok === false), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.action.diagnostic" && record.record.diagnostic?.code === "CLI_ACTION_TARGET_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("carries active chat references as runtime request metadata without prompt mutation", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette\n/palette refs add current\nuse active refs\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      data?: {
+        referenceContext?: {
+          itemCount?: number;
+          setCount?: number;
+          activeItemId?: string;
+          targets?: readonly { targetId?: string }[];
+          sets?: readonly { items?: readonly { target?: { id?: string } }[] }[];
+        };
+      };
+    });
+    const started = records.find((record) => record.kind === "agent.loop.started");
+    const turnStarted = records.find((record) => record.kind === "turn.started");
+    const modelRequested = records.find((record) => record.kind === "model.requested");
+
+    assert.equal(started?.data?.referenceContext?.itemCount, 1);
+    assert.equal(started?.data?.referenceContext?.targets?.[0]?.targetId, "command:interactive.cancel");
+    assert.equal(turnStarted?.data?.referenceContext?.itemCount, 1);
+    assert.equal(turnStarted?.data?.referenceContext?.sets?.[0]?.items?.[0]?.target?.id, "command:interactive.cancel");
+    assert.equal(modelRequested?.data?.referenceContext?.itemCount, 1);
+    assert.equal(gateway.requests.length, 1);
+    assert.equal(requestUserMessage(gateway.requests[0], "use active refs")?.content, "use active refs");
+    assert.equal(gateway.requests[0]?.prompt.includes("user: use active refs"), true);
+    assert.equal(gateway.requests[0]?.metadata?.referenceContext && typeof gateway.requests[0]?.metadata.referenceContext === "object", true);
+    assert.equal(JSON.stringify(gateway.requests[0]).includes("use active refs\n"), false);
+    assert.equal(lines.join("\n").includes('"content"'), false);
+    await kernel.shutdown("cli-test-reference-context");
+  });
+
+  it("keeps add-file references local and projects them on the next prompt", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    await deps.platform.writeFile(`${process.cwd().replace(/\\/g, "/")}/notes.md`, "cli projected note\n");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette refs add-file notes.md\n/palette refs list\nuse file ref\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: { kind?: string; referenceCount?: number; item?: { target?: { path?: string } } };
+      data?: { contextProjection?: { selectedNodeCount?: number } };
+    });
+    const firstModelIndex = records.findIndex((record) => record.kind === "model.requested");
+    const firstRuntimeIndex = records.findIndex((record) => record.kind === "agent.loop.started");
+    const addFileIndex = records.findIndex((record) => record.kind === "chat.command.palette-action");
+
+    assert.equal(addFileIndex >= 0, true);
+    assert.equal(firstModelIndex > addFileIndex, true);
+    assert.equal(firstRuntimeIndex > addFileIndex, true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.target?.path === "notes.md"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested" && (record.data?.contextProjection?.selectedNodeCount ?? 0) >= 2), true);
+    assert.equal(requestSystemMessageIncluding(gateway.requests[0], "cli projected note")?.role, "system");
+    assert.equal(requestUserMessage(gateway.requests[0], "use file ref")?.content, "use file ref");
+    assert.equal(lines.slice(0, firstRuntimeIndex).join("\n").includes("cli projected note"), false);
+    await kernel.shutdown("cli-test-add-file-reference");
+  });
+
+  it("turns palette file search results into navigable file references", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    const root = process.cwd().replace(/\\/g, "/");
+    await deps.platform.writeFile(`${root}/src/alpha-search.ts`, "alpha should stay local before prompt\n");
+    await deps.platform.writeFile(`${root}/src/beta-search.ts`, "beta selected through palette files\n");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette files search.ts\n/palette next\n/palette refs add current\n/palette refs list\nuse selected file\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        matchedCount?: number;
+        activeItemId?: string;
+        item?: { kind?: string; target?: { kind?: string; path?: string } };
+        referenceCount?: number;
+      };
+      data?: { contextProjection?: { selectedNodeCount?: number } };
+    });
+    const firstModelIndex = records.findIndex((record) => record.kind === "model.requested");
+    const preModelOutput = lines.slice(0, firstModelIndex).join("\n");
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-files" && record.record?.kind === "palette.files" && record.record.matchedCount === 2), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-files" && record.record?.kind === "palette.file.item" && record.record.item?.target?.kind === "file"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "next"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "file" && record.record.item.target?.path === "src/beta-search.ts"), true);
+    assert.equal(firstModelIndex > 0, true);
+    assert.equal(preModelOutput.includes("alpha should stay local before prompt"), false);
+    assert.equal(preModelOutput.includes("beta selected through palette files"), false);
+    assert.equal(records.some((record) => record.kind === "model.requested" && (record.data?.contextProjection?.selectedNodeCount ?? 0) >= 2), true);
+    assert.equal(gateway.requests.length, 1);
+    assert.equal(requestSystemMessageIncluding(gateway.requests[0], "beta selected through palette files")?.content.includes("alpha should stay local before prompt"), false);
+    assert.equal(requestUserMessage(gateway.requests[0], "use selected file")?.content, "use selected file");
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-palette-file-search");
+  });
+
+  it("turns palette text search results into navigable file references", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    const root = process.cwd().replace(/\\/g, "/");
+    await deps.platform.writeFile(`${root}/src/grep-alpha.ts`, "needle alpha preview\nalpha hidden full line detail\n");
+    await deps.platform.writeFile(`${root}/src/grep-beta.ts`, "needle beta preview\nbeta projected full file detail\n");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette grep needle\n/palette next\n/palette refs add current\n/palette refs list\nuse selected grep result\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        matchedCount?: number;
+        item?: { kind?: string; target?: { kind?: string; path?: string; metadata?: { line?: number; preview?: string } } };
+      };
+      data?: { contextProjection?: { selectedNodeCount?: number } };
+    });
+    const firstModelIndex = records.findIndex((record) => record.kind === "model.requested");
+    const preModelOutput = lines.slice(0, firstModelIndex).join("\n");
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-grep" && record.record?.kind === "palette.grep" && record.record.matchedCount === 2), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-grep" && record.record?.kind === "palette.grep.item" && record.record.item?.target?.kind === "file" && record.record.item.target.metadata?.line === 1), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "next"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "file" && record.record.item.target?.path === "src/grep-beta.ts" && record.record.item.target.metadata?.line === 1), true);
+    assert.equal(firstModelIndex > 0, true);
+    assert.equal(preModelOutput.includes("alpha hidden full line detail"), false);
+    assert.equal(preModelOutput.includes("beta projected full file detail"), false);
+    assert.equal(records.some((record) => record.kind === "model.requested" && (record.data?.contextProjection?.selectedNodeCount ?? 0) >= 2), true);
+    assert.equal(gateway.requests.length, 1);
+    assert.equal(requestSystemMessageIncluding(gateway.requests[0], "beta projected full file detail")?.content.includes("alpha hidden full line detail"), false);
+    assert.equal(requestUserMessage(gateway.requests[0], "use selected grep result")?.content, "use selected grep result");
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-palette-text-search");
+  });
+
+  it("replaces chat palette references with the current result before projection", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    const root = process.cwd().replace(/\\/g, "/");
+    await deps.platform.writeFile(`${root}/src/replace-alpha.ts`, "alpha replaced away\n");
+    await deps.platform.writeFile(`${root}/src/replace-beta.ts`, "beta replacement context\n");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette refs add-file src/replace-alpha.ts\n/palette files replace-\n/palette next\n/palette refs replace current\n/palette refs list\nuse replacement only\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        referenceCount?: number;
+        item?: { target?: { path?: string } };
+      };
+      data?: {
+        referenceContext?: { itemCount?: number };
+        contextProjection?: { selectedNodeCount?: number };
+      };
+    });
+    const firstModelIndex = records.findIndex((record) => record.kind === "model.requested");
+    const firstRuntimeIndex = records.findIndex((record) => record.kind === "agent.loop.started");
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.mutation" && record.record.ok === true && record.record.action === "replace" && record.record.referenceCount === 1), true);
+    assert.equal(records.filter((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item").length, 1);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.target?.path === "src/replace-beta.ts"), true);
+    assert.equal(firstRuntimeIndex >= 0, true);
+    assert.equal(records.some((record) => record.kind === "agent.loop.started" && record.data?.referenceContext?.itemCount === 1), true);
+    assert.equal(records.some((record) => record.kind === "model.requested" && (record.data?.contextProjection?.selectedNodeCount ?? 0) >= 2), true);
+    assert.equal(gateway.requests.length, 1);
+    assert.equal(requestSystemMessageIncluding(gateway.requests[0], "beta replacement context")?.content.includes("alpha replaced away"), false);
+    assert.equal(requestUserMessage(gateway.requests[0], "use replacement only")?.content, "use replacement only");
+    assert.equal(lines.slice(0, firstRuntimeIndex).join("\n").includes("beta replacement context"), false);
+    await kernel.shutdown("cli-test-reference-replace");
+  });
+
+  it("keeps empty palette jump traversal local in chat", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette back\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        action?: string;
+        diagnostic?: { code?: string };
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === false && record.record.action === "back"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.diagnostic" && record.record.diagnostic?.code === "CLI_ACTION_TARGET_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders scriptable revert preview as typed dry-run output", async () => {
+    const jsonLines: string[] = [];
+    await runCli(["revert", "preview", "--request", "request-missing", "--output", "json"], (line: string) => {
+      jsonLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const preview = JSON.parse(jsonLines[0] ?? "{}") as {
+      kind?: string;
+      ok?: boolean;
+      dryRun?: boolean;
+      status?: string;
+      diagnostics?: readonly { code?: string }[];
+    };
+
+    assert.equal(preview.kind, "revert.preview");
+    assert.equal(preview.ok, false);
+    assert.equal(preview.dryRun, true);
+    assert.equal(preview.status, "rejected");
+    assert.equal(preview.diagnostics?.[0]?.code, "CHECKPOINT_REVERT_EMPTY");
+
+    const jsonlLines: string[] = [];
+    await runCli(["revert", "preview", "--turn", "turn-missing", "--output", "jsonl"], (line: string) => {
+      jsonlLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const records = jsonlLines.map((line) => JSON.parse(line) as { kind?: string; ok?: boolean; status?: string; diagnostic?: { code?: string } });
+
+    assert.equal(records[0]?.kind, "revert.preview.summary");
+    assert.equal(records[0]?.ok, false);
+    assert.equal(records[0]?.status, "rejected");
+    assert.equal(records.some((record) => record.kind === "revert.preview.diagnostic" && record.diagnostic?.code === "CHECKPOINT_REVERT_EMPTY"), true);
+  });
+
+  it("keeps chat revert preview local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/revert preview --turn turn-missing\n/revert preview\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: { kind?: string; ok?: boolean; status?: string; diagnostic?: { code?: string } };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.revert-preview" && record.record?.kind === "revert.preview.summary" && record.record.ok === false), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.revert-preview" && record.record?.kind === "revert.preview.diagnostic" && record.record.diagnostic?.code === "CHECKPOINT_REVERT_EMPTY"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.revert-preview" && record.record?.kind === "revert.preview.diagnostic" && record.record.diagnostic?.code === "CLI_REVERT_TARGET_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("tracks chat history and previews revert for the selected current turn", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["first prompt\nsecond prompt\n/history\n/history select 1\n/revert preview current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      turnId?: string;
+      record?: {
+        kind?: string;
+        count?: number;
+        selectedTurnId?: string;
+        entry?: { index?: number; turnId?: string; selected?: boolean; promptPreview?: string };
+        target?: { turnId?: string; sessionId?: string };
+        diagnostic?: { code?: string };
+      };
+    });
+    const completed = records.filter((record) => record.kind === "agent.loop.completed");
+    const firstTurnId = completed[0]?.turnId;
+
+    assert.equal(completed.length, 2);
+    assert.equal(records.some((record) => record.kind === "chat.command.history" && record.record?.kind === "history.summary" && record.record.count === 2), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.history" && record.record?.kind === "history.entry" && record.record.entry?.promptPreview === "first prompt"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.history" && record.record?.kind === "history.selection" && record.record.entry?.index === 1), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.revert-preview" && record.record?.kind === "revert.preview.summary" && record.record.target?.turnId === firstTurnId), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("recalls completed chat turns through the local PageIndex", async () => {
+    const lines: string[] = [];
+    const longHiddenSuffix = "pageindex-secret-detail-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [`database auth decision ${longHiddenSuffix}\nrenderer layout decision\n/palette recall database\n/palette next\n/palette state\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        indexedCount?: number;
+        matchedCount?: number;
+        activeItemId?: string;
+        activeTargetKind?: string;
+        jumpCount?: number;
+        item?: {
+          id?: string;
+          target?: {
+            kind?: string;
+            sessionId?: string;
+            turnId?: string;
+            metadata?: {
+              createdAt?: string;
+              pageId?: string;
+              promptPreview?: string;
+              assistantPreview?: string;
+              deterministicScore?: number;
+              rankingReason?: string;
+              matchedFields?: readonly string[];
+              freshnessStatus?: string;
+              evidenceQuality?: { createdAtSource?: string; freshnessStatus?: string };
+              semantic?: { status?: string };
+            };
+          };
+          metadata?: {
+            createdAt?: string;
+            pageId?: string;
+            promptPreview?: string;
+            assistantPreview?: string;
+            deterministicScore?: number;
+            rankingReason?: string;
+            matchedFields?: readonly string[];
+            freshnessStatus?: string;
+            evidenceQuality?: { createdAtSource?: string; freshnessStatus?: string };
+          };
+        };
+        action?: string;
+        ok?: boolean;
+      };
+    });
+    const recallSummary = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall")?.record;
+    const recallItem = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+    const paletteState = records.find((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state")?.record;
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 2);
+    assert.equal(recallSummary?.indexedCount, 2);
+    assert.equal(recallSummary?.matchedCount, 1);
+    assert.equal(recallItem?.item?.target?.kind, "turn");
+    assert.equal(typeof recallItem?.item?.target?.sessionId, "string");
+    assert.equal(typeof recallItem?.item?.target?.turnId, "string");
+    assert.equal(typeof recallItem?.item?.target?.metadata?.pageId, "string");
+    assert.equal(recallItem?.item?.target?.metadata?.createdAt, "1970-01-01T00:00:00.000Z");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessStatus, "fresh");
+    assert.deepEqual(recallItem?.item?.target?.metadata?.matchedFields, ["assistantPreview", "promptPreview"]);
+    assert.equal(recallItem?.item?.target?.metadata?.rankingReason, "deterministic-text-match");
+    assert.equal(recallItem?.item?.target?.metadata?.evidenceQuality?.createdAtSource, "runtime-event");
+    assert.equal(recallItem?.item?.target?.metadata?.semantic?.status, "deferred");
+    assert.equal((recallItem?.item?.target?.metadata?.promptPreview?.length ?? 0) <= 160, true);
+    assert.equal((recallItem?.item?.target?.metadata?.assistantPreview?.length ?? 0) <= 160, true);
+    assert.equal(typeof recallItem?.item?.target?.metadata?.deterministicScore, "number");
+    assert.deepEqual(recallItem?.item?.metadata?.matchedFields, ["assistantPreview", "promptPreview"]);
+    assert.equal(recallItem?.item?.metadata?.freshnessStatus, "fresh");
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-action" && record.record?.kind === "palette.action.result" && record.record.ok === true && record.record.action === "next"), true);
+    assert.equal(paletteState?.activeTargetKind, "turn");
+    assert.equal(JSON.stringify(recallSummary).includes(longHiddenSuffix), false);
+    assert.equal(JSON.stringify(recallItem).includes(longHiddenSuffix), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("explains the active PageIndex recall result locally", async () => {
+    const lines: string[] = [];
+    const longHiddenSuffix = "pageindex-explain-hidden-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [`database explain decision ${longHiddenSuffix}\nrenderer layout decision\n/palette recall database\n/palette recall explain current\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        scope?: string;
+        pageId?: string;
+        sessionId?: string;
+        turnId?: string;
+        createdAt?: string;
+        freshnessStatus?: string;
+        matchedFields?: readonly string[];
+        rankingReason?: string;
+        deterministicScore?: number;
+        semanticStatus?: string;
+        promptPreview?: string;
+        assistantPreview?: string;
+        diagnosticCode?: string;
+      };
+    });
+    const explain = records.find((record) => record.kind === "chat.command.palette-recall-explain" && record.record?.kind === "palette.recall.explain")?.record;
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 2);
+    assert.equal(explain?.ok, true);
+    assert.equal(explain?.scope, "session");
+    assert.equal(typeof explain?.pageId, "string");
+    assert.equal(typeof explain?.sessionId, "string");
+    assert.equal(typeof explain?.turnId, "string");
+    assert.equal(explain?.createdAt, "1970-01-01T00:00:00.000Z");
+    assert.equal(explain?.freshnessStatus, "fresh");
+    assert.deepEqual(explain?.matchedFields, ["assistantPreview", "promptPreview"]);
+    assert.equal(explain?.rankingReason, "deterministic-text-match");
+    assert.equal(typeof explain?.deterministicScore, "number");
+    assert.equal(explain?.semanticStatus, "deferred");
+    assert.equal(JSON.stringify(explain).includes(longHiddenSuffix), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("keeps missing PageIndex recall explain targets local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette recall explain current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: { kind?: string; ok?: boolean; diagnosticCode?: string };
+    });
+    const explain = records.find((record) => record.kind === "chat.command.palette-recall-explain" && record.record?.kind === "palette.recall.explain")?.record;
+
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(explain?.ok, false);
+    assert.equal(explain?.diagnosticCode, "CLI_PAGEINDEX_RECALL_EXPLAIN_TARGET_NOT_FOUND");
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("keeps PageIndex deterministic timestamp fallback for legacy terminal events", () => {
+    const sessionId = asId<"session">("session-pageindex-legacy");
+    const turnId = asId<"turn">("turn-pageindex-legacy");
+    const terminal = {
+      kind: "agent.loop.completed",
+      sessionId,
+      turnId,
+      trace: {
+        traceId: asId<"trace">("trace-pageindex-legacy"),
+        spanId: asId<"span">("span-pageindex-legacy"),
+        correlationId: asId<"correlation">("corr-pageindex-legacy"),
+        sessionId
+      },
+      data: { assistantText: "legacy assistant" }
+    } as unknown as RuntimeEvent;
+    const pages = recordChatPageIndexTurn([], { prompt: "legacy prompt", terminal });
+    const page = pages[0];
+
+    assert.equal(page?.createdAt, "1970-01-01T00:00:00.000Z");
+    assert.equal(page?.evidenceQuality.createdAtSource, "deterministic-fallback");
+    assert.equal(page?.evidenceQuality.freshnessStatus, "unknown");
+  });
+
+  it("preserves stale PageIndex freshness through restored snapshots", () => {
+    const sessionId = asId<"session">("session-pageindex-stale");
+    const turnId = asId<"turn">("turn-pageindex-stale");
+    const pages = chatPageIndexPagesFromSnapshot({
+      kind: "chat.pageindex.snapshot",
+      schemaVersion: "1.0.0",
+      scope: "session",
+      pageCount: 1,
+      pages: [{
+        kind: "pageindex.page",
+        scope: "session",
+        pageId: "page-stale",
+        sessionId,
+        turnId,
+        sequence: 1,
+        status: "completed",
+        traceId: "trace-pageindex-stale",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        promptPreview: "stale database decision",
+        assistantPreview: "stale assistant",
+        evidenceQuality: {
+          createdAt: "1970-01-01T00:00:00.000Z",
+          createdAtSource: "runtime-event",
+          freshnessStatus: "stale"
+        },
+        redaction: { class: "internal" },
+        semantic: { status: "deferred" }
+      }],
+      redaction: { class: "internal" }
+    });
+    const resolved = resolveChatPageIndexRecall(createChatPaletteState(), pages, "database");
+    const item = resolved.resultList.items[0];
+
+    assert.equal(pages[0]?.evidenceQuality.freshnessStatus, "stale");
+    assert.equal(item?.target.metadata?.freshnessStatus, "stale");
+    assert.equal(item?.metadata?.freshnessStatus, "stale");
+  });
+
+  it("marks earlier same-session PageIndex pages stale after later workspace mutations", () => {
+    const sessionId = asId<"session">("session-pageindex-workspace-stale");
+    const firstTurnId = asId<"turn">("turn-pageindex-workspace-stale-1");
+    const secondTurnId = asId<"turn">("turn-pageindex-workspace-stale-2");
+    const pages = chatPageIndexPagesFromSnapshot({
+      kind: "chat.pageindex.snapshot",
+      schemaVersion: "1.0.0",
+      scope: "session",
+      pageCount: 1,
+      pages: [{
+        kind: "pageindex.page",
+        scope: "session",
+        pageId: "page-workspace-stale",
+        sessionId,
+        turnId: firstTurnId,
+        sequence: 1,
+        status: "completed",
+        traceId: "trace-pageindex-workspace-stale",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        promptPreview: "database stale candidate",
+        assistantPreview: "assistant stale candidate",
+        evidenceQuality: {
+          createdAt: "1970-01-01T00:00:00.000Z",
+          createdAtSource: "runtime-event",
+          freshnessStatus: "fresh"
+        },
+        redaction: { class: "internal" },
+        semantic: { status: "deferred" }
+      }],
+      redaction: { class: "internal" }
+    });
+    const adjusted = markStalePageIndexPagesAfterWorkspaceEdits(pages, {
+      turnOrder: [
+        { sessionId, turnId: firstTurnId, index: 1 },
+        { sessionId, turnId: secondTurnId, index: 2 }
+      ],
+      mutations: [{ sessionId, turnId: secondTurnId }]
+    });
+    const resolved = resolveChatPageIndexRecall(createChatPaletteState(), adjusted, "database");
+    const item = resolved.resultList.items[0];
+
+    assert.equal(adjusted[0]?.evidenceQuality.freshnessStatus, "stale");
+    assert.equal(adjusted[0]?.evidenceQuality.staleReason, "workspace-edit-after-page");
+    assert.equal(item?.target.metadata?.freshnessStatus, "stale");
+    assert.equal(item?.metadata?.freshnessStatus, "stale");
+  });
+
+  it("preserves unknown and cross-session PageIndex freshness when stale ordering is unproven", () => {
+    const sessionId = asId<"session">("session-pageindex-stale-unproven");
+    const otherSessionId = asId<"session">("session-pageindex-stale-other");
+    const turnId = asId<"turn">("turn-pageindex-stale-unproven-1");
+    const laterTurnId = asId<"turn">("turn-pageindex-stale-unproven-2");
+    const pages = chatPageIndexPagesFromSnapshot({
+      kind: "chat.pageindex.snapshot",
+      schemaVersion: "1.0.0",
+      scope: "session",
+      pageCount: 2,
+      pages: [{
+        kind: "pageindex.page",
+        scope: "session",
+        pageId: "page-unknown",
+        sessionId,
+        turnId,
+        sequence: 1,
+        status: "completed",
+        traceId: "trace-pageindex-unknown",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        promptPreview: "unknown database",
+        assistantPreview: "assistant unknown",
+        evidenceQuality: {
+          createdAt: "1970-01-01T00:00:00.000Z",
+          createdAtSource: "deterministic-fallback",
+          freshnessStatus: "unknown"
+        },
+        redaction: { class: "internal" },
+        semantic: { status: "deferred" }
+      }, {
+        kind: "pageindex.page",
+        scope: "session",
+        pageId: "page-fresh-cross-session",
+        sessionId,
+        turnId: laterTurnId,
+        sequence: 2,
+        status: "completed",
+        traceId: "trace-pageindex-fresh-cross-session",
+        createdAt: "1970-01-01T00:00:00.000Z",
+        promptPreview: "fresh database",
+        assistantPreview: "assistant fresh",
+        evidenceQuality: {
+          createdAt: "1970-01-01T00:00:00.000Z",
+          createdAtSource: "runtime-event",
+          freshnessStatus: "fresh"
+        },
+        redaction: { class: "internal" },
+        semantic: { status: "deferred" }
+      }],
+      redaction: { class: "internal" }
+    });
+    const adjusted = markStalePageIndexPagesAfterWorkspaceEdits(pages, {
+      turnOrder: [
+        { sessionId, turnId, index: 1 },
+        { sessionId, turnId: laterTurnId, index: 2 }
+      ],
+      mutations: [{ sessionId: otherSessionId, turnId: asId<"turn">("turn-pageindex-stale-other") }]
+    });
+
+    assert.equal(adjusted[0]?.evidenceQuality.freshnessStatus, "unknown");
+    assert.equal(adjusted[1]?.evidenceQuality.freshnessStatus, "fresh");
+  });
+
+  it("adjusts workspace PageIndex freshness from checkpoint watermarks", () => {
+    const sessionId = asId<"session">("session-pageindex-watermark");
+    const basePage = {
+      kind: "pageindex.page",
+      scope: "workspace",
+      pageId: "page-watermark",
+      sessionId,
+      turnId: asId<"turn">("turn-pageindex-watermark"),
+      sequence: 1,
+      status: "completed",
+      traceId: "trace-pageindex-watermark",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      promptPreview: "database watermark",
+      assistantPreview: "assistant watermark",
+      evidenceQuality: {
+        createdAt: "1970-01-01T00:00:00.000Z",
+        createdAtSource: "runtime-event",
+        freshnessStatus: "fresh",
+        workspaceCheckpointWatermark: 1
+      },
+      redaction: { class: "internal" },
+      semantic: { status: "deferred" }
+    } as const;
+    const fresh = markStalePageIndexPagesFromWorkspaceWatermark([basePage], { workspaceCheckpointWatermark: 1 });
+    const stale = markStalePageIndexPagesFromWorkspaceWatermark([basePage], { workspaceCheckpointWatermark: 2 });
+    const unknown = markStalePageIndexPagesFromWorkspaceWatermark([{
+      ...basePage,
+      pageId: "page-watermark-legacy",
+      evidenceQuality: {
+        createdAt: "1970-01-01T00:00:00.000Z",
+        createdAtSource: "runtime-event",
+        freshnessStatus: "fresh"
+      }
+    }], { workspaceCheckpointWatermark: 2 });
+
+    assert.equal(fresh[0]?.evidenceQuality.freshnessStatus, "fresh");
+    assert.equal(stale[0]?.evidenceQuality.freshnessStatus, "stale");
+    assert.equal(stale[0]?.evidenceQuality.staleReason, "workspace-checkpoint-watermark-advanced");
+    assert.equal(unknown[0]?.evidenceQuality.freshnessStatus, "unknown");
+    assert.equal(unknown[0]?.evidenceQuality.staleReason, "workspace-watermark-missing");
+  });
+
+  it("explains unknown PageIndex freshness evidence for missing workspace watermarks", () => {
+    const sessionId = asId<"session">("session-pageindex-unknown-evidence");
+    const page = {
+      kind: "pageindex.page",
+      scope: "workspace",
+      pageId: "page-unknown-evidence",
+      sessionId,
+      turnId: asId<"turn">("turn-pageindex-unknown-evidence"),
+      sequence: 1,
+      status: "completed",
+      traceId: "trace-pageindex-unknown-evidence",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      promptPreview: "database unknown evidence",
+      assistantPreview: "assistant unknown evidence",
+      evidenceQuality: {
+        createdAt: "1970-01-01T00:00:00.000Z",
+        createdAtSource: "runtime-event",
+        freshnessStatus: "fresh"
+      },
+      redaction: { class: "internal" },
+      semantic: { status: "deferred" }
+    } as const;
+    const adjusted = markStalePageIndexPagesFromWorkspaceWatermark([page], { workspaceCheckpointWatermark: 2 });
+    const resolved = resolveChatPageIndexRecall(createChatPaletteState(), adjusted, "database", "workspace");
+    const explain = JSON.parse(renderChatPageIndexRecallExplain(explainChatPageIndexRecallItem(resolved.state.snapshot, "current"), "json")[0] ?? "{}") as {
+      freshnessStatus?: string;
+      freshnessEvidence?: { reason?: string; scope?: string; currentWorkspaceCheckpointWatermark?: number };
+    };
+
+    assert.equal(explain.freshnessStatus, "unknown");
+    assert.equal(explain.freshnessEvidence?.reason, "workspace-watermark-missing");
+    assert.equal(explain.freshnessEvidence?.scope, "workspace-checkpoint-watermark");
+    assert.equal(explain.freshnessEvidence?.currentWorkspaceCheckpointWatermark, 2);
+  });
+
+  it("recalls PageIndex turns with explicit session scope provenance", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["database scoped recall\n/palette recall --scope session database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        scope?: string;
+        indexedCount?: number;
+        matchedCount?: number;
+        item?: {
+          target?: { kind?: string; metadata?: { scope?: string } };
+          metadata?: { scope?: string };
+        };
+      };
+    });
+    const recallSummary = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall")?.record;
+    const recallItem = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 1);
+    assert.equal(recallSummary?.scope, "session");
+    assert.equal(recallSummary?.indexedCount, 1);
+    assert.equal(recallSummary?.matchedCount, 1);
+    assert.equal(recallItem?.item?.target?.kind, "turn");
+    assert.equal(recallItem?.item?.target?.metadata?.scope, "session");
+    assert.equal(recallItem?.item?.metadata?.scope, "session");
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("marks chat PageIndex recall stale after a later core file write", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new WritingThenCapturingModelGateway();
+    const toolDeps = { ...deps, models: gateway, policy: new AllowAllPolicyEngine() };
+    await registerRuntimeCoreTools(toolDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(toolDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["database schema baseline\nwrite app\n/palette recall database\n/palette recall explain current\n/palette refs add current\n/palette refs list\ncontinue from stale recall\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: toolDeps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        freshnessStatus?: string;
+        freshnessEvidence?: { reason?: string; scope?: string; staleMutationTurnId?: string; workspaceCheckpointWatermark?: number; currentWorkspaceCheckpointWatermark?: number };
+        item?: {
+          kind?: string;
+          target?: { kind?: string; metadata?: { freshnessStatus?: string; freshnessEvidence?: { reason?: string; scope?: string; staleMutationTurnId?: string }; promptPreview?: string } };
+          metadata?: { freshnessStatus?: string; freshnessEvidence?: { reason?: string; scope?: string; staleMutationTurnId?: string } };
+        };
+      };
+    });
+    const recallItem = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+    const explain = records.find((record) => record.kind === "chat.command.palette-recall-explain" && record.record?.kind === "palette.recall.explain")?.record;
+    const referenceItem = records.find((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "turn")?.record?.item;
+    const finalRequest = gateway.requests.at(-1);
+
+    assert.equal(toolDeps.workspaceState.checkpoints().length, 1);
+    assert.equal(recallItem?.item?.target?.kind, "turn");
+    assert.equal(recallItem?.item?.target?.metadata?.promptPreview, "database schema baseline");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessStatus, "stale");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessEvidence?.reason, "workspace-edit-after-page");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessEvidence?.scope, "session-turn-order");
+    assert.equal(recallItem?.item?.metadata?.freshnessStatus, "stale");
+    assert.equal(explain?.freshnessStatus, "stale");
+    assert.equal(explain?.freshnessEvidence?.reason, "workspace-edit-after-page");
+    assert.equal(typeof explain?.freshnessEvidence?.staleMutationTurnId, "string");
+    assert.equal(referenceItem?.target?.metadata?.freshnessStatus, "stale");
+    assert.equal(referenceItem?.target?.metadata?.freshnessEvidence?.reason, "workspace-edit-after-page");
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 4);
+    assert.equal(finalRequest?.messages?.[0]?.role, "system");
+    assert.equal(finalRequest?.messages?.[0]?.content.includes("Evidence: createdAt=1970-01-01T00:00:00.000Z freshness=stale"), true);
+    assert.equal(finalRequest?.messages?.[0]?.content.includes("Freshness evidence: reason=workspace-edit-after-page scope=session-turn-order"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-pageindex-stale-after-file-write");
+  });
+
+  it("recalls workspace PageIndex turns across chat sessions", async () => {
+    const workspaceRoot = "/workspace";
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const deps = { ...createDeterministicRuntimeDependencies(), platform };
+    await registerRuntimeCoreTools(deps, workspaceRoot);
+    const firstKernel = await createDefaultRuntimeKernel(deps);
+    const firstLines: string[] = [];
+    const longHiddenSuffix = "workspace-pageindex-hidden-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        firstLines.push(line);
+      },
+      [`database workspace memory ${longHiddenSuffix}\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: firstKernel })
+      }
+    );
+    const metadata = platform.workspaceMetadataPath(process.cwd(), "deepseek");
+    assert.equal(metadata.ok, true);
+    const metadataDir = platform.resolvePath(platform.resolvePath(metadata.value ?? "", ".."), "pageindex.json");
+    const stored = JSON.parse(await platform.readFile(metadataDir)) as {
+      kind?: string;
+      pageCount?: number;
+      pages?: readonly { scope?: string; promptPreview?: string; evidenceQuality?: { workspaceCheckpointWatermark?: number } }[];
+    };
+
+    assert.equal(stored.kind, "chat.pageindex.workspace");
+    assert.equal(stored.pageCount, 1);
+    assert.equal(stored.pages?.[0]?.scope, "workspace");
+    assert.equal(stored.pages?.[0]?.evidenceQuality?.workspaceCheckpointWatermark, 0);
+    assert.equal((stored.pages?.[0]?.promptPreview?.length ?? 0) <= 160, true);
+    assert.equal(JSON.stringify(stored).includes(longHiddenSuffix), false);
+
+    const secondKernel = await createDefaultRuntimeKernel(deps);
+    const secondLines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        secondLines.push(line);
+      },
+      ["/palette recall --scope workspace database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: secondKernel })
+      }
+    );
+    const records = secondLines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        scope?: string;
+        indexedCount?: number;
+        matchedCount?: number;
+        item?: {
+          target?: { kind?: string; metadata?: { scope?: string; promptPreview?: string } };
+          metadata?: { scope?: string; promptPreview?: string };
+        };
+      };
+    });
+    const recallSummary = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall")?.record;
+    const recallItem = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    assert.equal(recallSummary?.scope, "workspace");
+    assert.equal(recallSummary?.indexedCount, 1);
+    assert.equal(recallSummary?.matchedCount, 1);
+    assert.equal(recallItem?.item?.target?.kind, "turn");
+    assert.equal(recallItem?.item?.target?.metadata?.scope, "workspace");
+    assert.equal(recallItem?.item?.metadata?.scope, "workspace");
+    assert.equal(JSON.stringify(records).includes(longHiddenSuffix), false);
+    assert.equal(secondLines.join("\n").includes("\u001b["), false);
+    await firstKernel.shutdown("cli-workspace-pageindex-first");
+    await secondKernel.shutdown("cli-workspace-pageindex-second");
+  });
+
+  it("marks prior workspace PageIndex recall stale after a later session writes the workspace", async () => {
+    const workspaceRoot = "/workspace";
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const gateway = new WritingThenCapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway, platform, policy: new AllowAllPolicyEngine() };
+    await registerRuntimeCoreTools(deps, workspaceRoot);
+    const firstKernel = await createDefaultRuntimeKernel(deps);
+    const firstLines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        firstLines.push(line);
+      },
+      ["database workspace watermark baseline\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: firstKernel })
+      }
+    );
+
+    const secondKernel = await createDefaultRuntimeKernel(deps);
+    const secondLines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        secondLines.push(line);
+      },
+      ["write app\n/palette recall --scope workspace database\n/palette recall explain current\n/palette refs add current\n/palette refs list\ncontinue from stale workspace recall\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: secondKernel })
+      }
+    );
+    const records = secondLines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        freshnessStatus?: string;
+        freshnessEvidence?: { reason?: string; scope?: string; workspaceCheckpointWatermark?: number; currentWorkspaceCheckpointWatermark?: number };
+        item?: {
+          kind?: string;
+          target?: { kind?: string; metadata?: { scope?: string; freshnessStatus?: string; freshnessEvidence?: { reason?: string; scope?: string; workspaceCheckpointWatermark?: number; currentWorkspaceCheckpointWatermark?: number }; promptPreview?: string; evidenceQuality?: { workspaceCheckpointWatermark?: number } } };
+          metadata?: { freshnessStatus?: string; freshnessEvidence?: { reason?: string; scope?: string; workspaceCheckpointWatermark?: number; currentWorkspaceCheckpointWatermark?: number }; evidenceQuality?: { workspaceCheckpointWatermark?: number } };
+        };
+      };
+    });
+    const recallItem = records.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+    const explain = records.find((record) => record.kind === "chat.command.palette-recall-explain" && record.record?.kind === "palette.recall.explain")?.record;
+    const referenceItem = records.find((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "turn")?.record?.item;
+    const finalRequest = gateway.requests.at(-1);
+
+    assert.equal(deps.workspaceState.checkpoints().length, 1);
+    assert.equal(recallItem?.item?.target?.metadata?.scope, "workspace");
+    assert.equal(recallItem?.item?.target?.metadata?.promptPreview, "database workspace watermark baseline");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessStatus, "stale");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessEvidence?.reason, "workspace-checkpoint-watermark-advanced");
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessEvidence?.workspaceCheckpointWatermark, 0);
+    assert.equal(recallItem?.item?.target?.metadata?.freshnessEvidence?.currentWorkspaceCheckpointWatermark, 1);
+    assert.equal(recallItem?.item?.target?.metadata?.evidenceQuality?.workspaceCheckpointWatermark, 0);
+    assert.equal(recallItem?.item?.metadata?.freshnessStatus, "stale");
+    assert.equal(explain?.freshnessStatus, "stale");
+    assert.equal(explain?.freshnessEvidence?.reason, "workspace-checkpoint-watermark-advanced");
+    assert.equal(explain?.freshnessEvidence?.currentWorkspaceCheckpointWatermark, 1);
+    assert.equal(referenceItem?.target?.metadata?.freshnessStatus, "stale");
+    assert.equal(referenceItem?.target?.metadata?.freshnessEvidence?.reason, "workspace-checkpoint-watermark-advanced");
+    assert.equal(finalRequest?.messages?.[0]?.content.includes("Source: scope=workspace"), true);
+    assert.equal(finalRequest?.messages?.[0]?.content.includes("freshness=stale"), true);
+    assert.equal(finalRequest?.messages?.[0]?.content.includes("Freshness evidence: reason=workspace-checkpoint-watermark-advanced scope=workspace-checkpoint-watermark workspaceCheckpointWatermark=0 currentWorkspaceCheckpointWatermark=1"), true);
+    assert.equal(secondLines.join("\n").includes("\u001b["), false);
+    await firstKernel.shutdown("cli-workspace-pageindex-watermark-first");
+    await secondKernel.shutdown("cli-workspace-pageindex-watermark-second");
+  });
+
+  it("defers global PageIndex recall scope locally without workspace fallback", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["database scoped recall\n/palette recall --scope global database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        requestedScope?: string;
+        code?: string;
+        availableScopes?: readonly string[];
+      };
+    });
+    const deferredRecords = records.filter((record) => record.kind === "chat.command.palette-recall.deferred" && record.record?.kind === "palette.recall.deferred");
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 1);
+    assert.equal(deferredRecords.length, 1);
+    assert.equal(deferredRecords.some((record) => record.record?.requestedScope === "global"), true);
+    assert.equal(deferredRecords.every((record) => record.record?.code === "CLI_PALETTE_RECALL_SCOPE_DEFERRED"), true);
+    assert.equal(deferredRecords.every((record) => record.record?.availableScopes?.includes("session")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("keeps invalid PageIndex recall scopes local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette recall --scope project database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "palette" && record.code === "CLI_PALETTE_RECALL_SCOPE_INVALID"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("keeps workspace PageIndex storage failures local without session fallback", async () => {
+    const workspaceRoot = "/workspace";
+    const platform = new FakePlatformRuntime("fake", workspaceRoot, { readOnlyFilesystem: true });
+    const deps = { ...createDeterministicRuntimeDependencies(), platform };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["database session-only fallback check\n/palette recall --scope workspace database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: { kind?: string; code?: string; item?: unknown };
+    });
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 1);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-recall.workspace-failure" && record.record?.kind === "palette.recall.workspace.failure" && record.record.code === "CLI_PAGEINDEX_WORKSPACE_WRITE_FAILED"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-workspace-pageindex-storage-failure");
+  });
+
+  it("keeps missing PageIndex recall scope values local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette recall --scope\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "palette" && record.code === "CLI_PALETTE_RECALL_SCOPE_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("persists and restores chat PageIndex pages through session snapshots", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await registerRuntimeCoreTools(deps, process.cwd());
+    const firstKernel = await createDefaultRuntimeKernel(deps);
+    const firstLines: string[] = [];
+    const longHiddenSuffix = "pageindex-snapshot-hidden-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        firstLines.push(line);
+      },
+      [`database auth snapshot ${longHiddenSuffix}\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: firstKernel })
+      }
+    );
+    const firstRecords = firstLines.map((line) => JSON.parse(line) as { kind?: string; sessionId?: string });
+    const sessionId = firstRecords.find((record) => record.kind === "agent.loop.completed")?.sessionId;
+    assert.equal(typeof sessionId, "string");
+    const resumed = await deps.sessions.resume(asId<"session">(sessionId ?? ""));
+    const snapshot = resumed.value?.snapshot?.payload as { kind?: string; pageCount?: number; pages?: readonly { scope?: string; promptPreview?: string }[] } | undefined;
+
+    assert.equal(resumed.ok, true);
+    assert.equal(snapshot?.kind, "chat.pageindex.snapshot");
+    assert.equal(snapshot?.pageCount, 1);
+    assert.equal(snapshot?.pages?.[0]?.scope, "session");
+    assert.equal((snapshot?.pages?.[0]?.promptPreview?.length ?? 0) <= 160, true);
+    assert.equal(JSON.stringify(snapshot).includes(longHiddenSuffix), false);
+
+    const secondKernel = await createDefaultRuntimeKernel(deps);
+    const secondLines: string[] = [];
+    await runCli(
+      ["chat", "--session", sessionId ?? "", "--output", "jsonl"],
+      (line: string) => {
+        secondLines.push(line);
+      },
+      ["/palette recall database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: secondKernel })
+      }
+    );
+    const secondRecords = secondLines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        scope?: string;
+        indexedCount?: number;
+        matchedCount?: number;
+        item?: { target?: { kind?: string; sessionId?: string; metadata?: { scope?: string; promptPreview?: string } } };
+      };
+    });
+    const recallSummary = secondRecords.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall")?.record;
+    const recallItem = secondRecords.find((record) => record.kind === "chat.command.palette-recall" && record.record?.kind === "palette.recall.item")?.record;
+
+    assert.equal(secondRecords.some((record) => record.kind === "model.requested"), false);
+    assert.equal(recallSummary?.indexedCount, 1);
+    assert.equal(recallSummary?.matchedCount, 1);
+    assert.equal(recallSummary?.scope, "session");
+    assert.equal(recallItem?.item?.target?.kind, "turn");
+    assert.equal(recallItem?.item?.target?.sessionId, sessionId);
+    assert.equal(recallItem?.item?.target?.metadata?.scope, "session");
+    assert.equal(JSON.stringify(secondRecords).includes(longHiddenSuffix), false);
+    assert.equal(secondLines.join("\n").includes("\u001b["), false);
+    await firstKernel.shutdown("cli-pageindex-snapshot-first");
+    await secondKernel.shutdown("cli-pageindex-snapshot-second");
+  });
+
+  it("fails explicit chat session resume locally without model submission", async () => {
+    const lines: string[] = [];
+    const deps = createDeterministicRuntimeDependencies();
+    const kernel = await createDefaultRuntimeKernel(deps);
+    await runCli(
+      ["chat", "--session", "session-missing", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette recall database\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "session" && record.code === "SESSION_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+    await kernel.shutdown("cli-pageindex-missing-session");
+  });
+
+  it("projects selected PageIndex recall references on the next prompt", async () => {
+    const lines: string[] = [];
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const longHiddenSuffix = "recall-projection-hidden-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [`database auth decision ${longHiddenSuffix}\nrenderer layout decision\n/palette recall database\n/palette refs add current\n/palette refs list\ncontinue from recall\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        item?: { kind?: string; target?: { kind?: string; metadata?: { pageId?: string; promptPreview?: string; matchedFields?: readonly string[]; freshnessStatus?: string } } };
+      };
+      data?: {
+        contextProjection?: {
+          selectedNodeCount?: number;
+          referenceEvidence?: { resolvedReferenceCount?: number; unresolvedReferences?: readonly unknown[] };
+        };
+        referenceContext?: { itemCount?: number; targets?: readonly { targetKind?: string; targetId?: string }[] };
+      };
+    });
+    const finalModelRequest = gateway.requests.at(-1);
+    const finalModelRequested = records.filter((record) => record.kind === "model.requested").at(-1);
+    const recallReferenceItem = records.find((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "turn")?.record?.item;
+    const serializedRecallRecords = records
+      .filter((record) => record.kind === "chat.command.palette-recall" || record.kind === "chat.command.palette-refs")
+      .map((record) => JSON.stringify(record))
+      .join("\n");
+
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 3);
+    assert.equal(recallReferenceItem?.target?.kind, "turn");
+    assert.equal(typeof recallReferenceItem?.target?.metadata?.pageId, "string");
+    assert.deepEqual(recallReferenceItem?.target?.metadata?.matchedFields, ["promptPreview"]);
+    assert.equal(recallReferenceItem?.target?.metadata?.freshnessStatus, "fresh");
+    assert.equal(finalModelRequested?.data?.referenceContext?.itemCount, 1);
+    assert.equal(finalModelRequested?.data?.contextProjection?.referenceEvidence?.resolvedReferenceCount, 1);
+    assert.equal(finalModelRequested?.data?.contextProjection?.referenceEvidence?.unresolvedReferences?.length, 0);
+    const recallContextMessage = requestSystemMessageIncluding(finalModelRequest, "PageIndex recall");
+    assert.equal(recallContextMessage?.content.includes("Usage: Treat this as historical recall evidence; verify against current workspace state before relying on it because it may be stale or incomplete."), true);
+    assert.equal(recallContextMessage?.content.includes("Evidence: createdAt=1970-01-01T00:00:00.000Z freshness=fresh matchedFields=promptPreview rankingReason=deterministic-text-match"), true);
+    assert.equal(recallContextMessage?.content.includes("User prompt preview: database auth decision"), true);
+    assert.equal(recallContextMessage?.content.includes("Assistant preview:"), true);
+    assert.equal(requestUserMessage(finalModelRequest, "continue from recall")?.content, "continue from recall");
+    assert.equal(finalModelRequest?.prompt.includes("user: continue from recall"), true);
+    assert.equal(serializedRecallRecords.includes(longHiddenSuffix), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-pageindex-recall-reference-projection");
+  });
+
+  it("projects workspace PageIndex recall references across chat sessions", async () => {
+    const platform = new FakePlatformRuntime("fake", "/workspace");
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway, platform };
+    await registerRuntimeCoreTools(deps, process.cwd());
+    const firstKernel = await createDefaultRuntimeKernel(deps);
+    const firstLines: string[] = [];
+    const longHiddenSuffix = "workspace-recall-projection-hidden-".repeat(12);
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        firstLines.push(line);
+      },
+      [`database workspace durable note ${longHiddenSuffix}\n/exit\n`],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: firstKernel })
+      }
+    );
+
+    const secondKernel = await createDefaultRuntimeKernel(deps);
+    const secondLines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        secondLines.push(line);
+      },
+      ["/palette recall --scope workspace database\n/palette refs add current\n/palette refs list\ncontinue from workspace recall\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel: secondKernel })
+      }
+    );
+    const records = secondLines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        scope?: string;
+        item?: {
+          kind?: string;
+          target?: { kind?: string; metadata?: { scope?: string; pageId?: string; promptPreview?: string; matchedFields?: readonly string[]; freshnessStatus?: string } };
+        };
+      };
+      data?: {
+        contextProjection?: {
+          referenceEvidence?: { resolvedReferenceCount?: number; unresolvedReferences?: readonly unknown[] };
+        };
+        referenceContext?: { itemCount?: number; targets?: readonly { targetKind?: string; targetId?: string }[] };
+      };
+    });
+    const finalModelRequest = gateway.requests.at(-1);
+    const finalModelRequested = records.filter((record) => record.kind === "model.requested").at(-1);
+    const recallReferenceItem = records.find((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.kind === "turn")?.record?.item;
+    const serializedLocalRecords = records
+      .filter((record) => record.kind === "chat.command.palette-recall" || record.kind === "chat.command.palette-refs")
+      .map((record) => JSON.stringify(record))
+      .join("\n");
+
+    assert.equal(gateway.requests.length, 2);
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 1);
+    assert.equal(recallReferenceItem?.target?.kind, "turn");
+    assert.equal(recallReferenceItem?.target?.metadata?.scope, "workspace");
+    assert.equal(typeof recallReferenceItem?.target?.metadata?.pageId, "string");
+    assert.deepEqual(recallReferenceItem?.target?.metadata?.matchedFields, ["promptPreview"]);
+    assert.equal(recallReferenceItem?.target?.metadata?.freshnessStatus, "fresh");
+    assert.equal(finalModelRequested?.data?.referenceContext?.itemCount, 1);
+    assert.equal(finalModelRequested?.data?.contextProjection?.referenceEvidence?.resolvedReferenceCount, 1);
+    assert.equal(finalModelRequested?.data?.contextProjection?.referenceEvidence?.unresolvedReferences?.length, 0);
+    const workspaceRecallContextMessage = requestSystemMessageIncluding(finalModelRequest, "PageIndex recall");
+    assert.equal(workspaceRecallContextMessage?.content.includes("Usage: Treat this as historical recall evidence; verify against current workspace state before relying on it because it may be stale or incomplete."), true);
+    assert.equal(workspaceRecallContextMessage?.content.includes("Source: scope=workspace"), true);
+    assert.equal(workspaceRecallContextMessage?.content.includes("Evidence: createdAt=1970-01-01T00:00:00.000Z freshness=fresh matchedFields=promptPreview rankingReason=deterministic-text-match"), true);
+    assert.equal(workspaceRecallContextMessage?.content.includes("User prompt preview: database workspace durable note"), true);
+    assert.equal(requestUserMessage(finalModelRequest, "continue from workspace recall")?.content, "continue from workspace recall");
+    assert.equal(finalModelRequest?.prompt.includes("user: continue from workspace recall"), true);
+    assert.equal(serializedLocalRecords.includes(longHiddenSuffix), false);
+    assert.equal(secondLines.join("\n").includes("\u001b["), false);
+    await firstKernel.shutdown("cli-test-workspace-pageindex-reference-first");
+    await secondKernel.shutdown("cli-test-workspace-pageindex-reference-second");
+  });
+
+  it("keeps empty PageIndex recall queries local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/palette recall\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "palette" && record.code === "CLI_PALETTE_RECALL_QUERY_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("keeps empty history current failures local", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/history select current\n/revert preview current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "history" && record.code === "CLI_HISTORY_TARGET_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "revert" && record.code === "CLI_REVERT_CURRENT_UNAVAILABLE"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("previews injected workspace revert without mutating files or checkpoints", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const workspaceRoot = "/workspace";
+    const path = `${workspaceRoot}/app.ts`;
+    await deps.platform.writeFile(path, "after");
+    const transaction: WorkspaceEditTransaction = {
+      id: "tx-revert-preview",
+      sessionId: asId<"session">("session-revert-preview"),
+      turnId: asId<"turn">("turn-revert-preview"),
+      requestId: "request-revert-preview",
+      edits: [{
+        applied: true,
+        path,
+        beforeHash: "00000001",
+        afterHash: "00000002",
+        precondition: "exact"
+      }],
+      rollback: {
+        content: "before",
+        contentHash: "00000001"
+      }
+    };
+    await deps.workspaceState.transact(transaction);
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["revert", "preview", "--request", "request-revert-preview", "--output", "json"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+
+    const preview = JSON.parse(lines[0] ?? "{}") as {
+      ok?: boolean;
+      status?: string;
+      result?: { affectedCheckpointIds?: readonly string[]; affectedPaths?: readonly string[] };
+    };
+    assert.equal(preview.ok, true);
+    assert.equal(preview.status, "preview");
+    assert.equal(preview.result?.affectedCheckpointIds?.length, 1);
+    assert.equal(preview.result?.affectedPaths?.[0], path);
+    assert.equal(await deps.platform.readFile(path), "after");
+    assert.equal(deps.workspaceState.checkpoints()[0]?.status, "eligible");
+    await kernel.shutdown("cli-test-revert-preview");
+  });
+
+  it("applies injected workspace revert through checkpoint safety checks", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const workspaceRoot = "/workspace";
+    const path = `${workspaceRoot}/app.ts`;
+    await deps.platform.writeFile(path, "after");
+    const transaction: WorkspaceEditTransaction = {
+      id: "tx-revert-apply",
+      sessionId: asId<"session">("session-revert-apply"),
+      turnId: asId<"turn">("turn-revert-apply"),
+      requestId: "request-revert-apply",
+      edits: [{
+        applied: true,
+        path,
+        beforeHash: hashTextForTest("before"),
+        afterHash: hashTextForTest("after"),
+        precondition: "exact"
+      }],
+      rollback: {
+        content: "before",
+        contentHash: hashTextForTest("before")
+      }
+    };
+    await deps.workspaceState.transact(transaction);
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["revert", "apply", "--request", "request-revert-apply", "--output", "json"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+
+    const applied = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      ok?: boolean;
+      dryRun?: boolean;
+      status?: string;
+      result?: { restoredPaths?: readonly string[] };
+    };
+    assert.equal(applied.kind, "revert.apply");
+    assert.equal(applied.ok, true);
+    assert.equal(applied.dryRun, false);
+    assert.equal(applied.status, "restored");
+    assert.equal(applied.result?.restoredPaths?.[0], path);
+    assert.equal(await deps.platform.readFile(path), "before");
+    assert.equal(deps.workspaceState.checkpoints()[0]?.status, "restored");
+    const serialized = lines.join("\n");
+    assert.equal(serialized.includes('"content":"before"'), false);
+    assert.equal(serialized.includes('"privateContent":"before"'), false);
+    await kernel.shutdown("cli-test-revert-apply");
+  });
+
+  it("rejects stale workspace revert apply without mutating files or checkpoints", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const workspaceRoot = "/workspace";
+    const path = `${workspaceRoot}/app.ts`;
+    await deps.platform.writeFile(path, "after");
+    const transaction: WorkspaceEditTransaction = {
+      id: "tx-revert-stale",
+      sessionId: asId<"session">("session-revert-stale"),
+      turnId: asId<"turn">("turn-revert-stale"),
+      requestId: "request-revert-stale",
+      edits: [{
+        applied: true,
+        path,
+        beforeHash: hashTextForTest("before"),
+        afterHash: hashTextForTest("after"),
+        precondition: "exact"
+      }],
+      rollback: {
+        content: "before",
+        contentHash: hashTextForTest("before")
+      }
+    };
+    await deps.workspaceState.transact(transaction);
+    await deps.platform.writeFile(path, "changed-after-checkpoint");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["revert", "apply", "--request", "request-revert-stale", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps, kernel })
+      }
+    );
+
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; ok?: boolean; status?: string; diagnostic?: { code?: string } });
+    assert.equal(records[0]?.kind, "revert.apply.summary");
+    assert.equal(records[0]?.ok, false);
+    assert.equal(records[0]?.status, "rejected");
+    assert.equal(records.some((record) => record.kind === "revert.apply.diagnostic" && record.diagnostic?.code === "CHECKPOINT_STALE_FILE"), true);
+    assert.equal(await deps.platform.readFile(path), "changed-after-checkpoint");
+    assert.equal(deps.workspaceState.checkpoints()[0]?.status, "eligible");
+    await kernel.shutdown("cli-test-revert-stale");
+  });
+
+  it("applies chat current revert locally through selected history", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const toolDeps = { ...deps, models: new WritingToolModelGateway(), policy: new AllowAllPolicyEngine() };
+    await registerRuntimeCoreTools(toolDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(toolDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["write app\n/revert apply current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: toolDeps, kernel })
+      }
+    );
+
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      turnId?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        dryRun?: boolean;
+        status?: string;
+        target?: { turnId?: string; sessionId?: string };
+        restoredPathCount?: number;
+      };
+    });
+    const completed = records.find((record) => record.kind === "agent.loop.completed");
+    const applySummary = records.find((record) => record.kind === "chat.command.revert-apply" && record.record?.kind === "revert.apply.summary");
+
+    assert.equal(Boolean(completed), true);
+    assert.equal(applySummary?.record?.ok, true);
+    assert.equal(applySummary?.record?.dryRun, false);
+    assert.equal(applySummary?.record?.status, "restored");
+    assert.equal(applySummary?.record?.target?.turnId, completed?.turnId);
+    assert.equal(applySummary?.record?.restoredPathCount, 1);
+    assert.equal(await toolDeps.platform.readFile("/workspace/app.ts"), "");
+    assert.equal(toolDeps.workspaceState.checkpoints()[0]?.status, "restored");
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 2);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-chat-revert-apply");
+  });
+
+  it("reviews and confirms chat current revert locally", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const toolDeps = { ...deps, models: new WritingToolModelGateway(), policy: new AllowAllPolicyEngine() };
+    await registerRuntimeCoreTools(toolDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(toolDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["write app\n/revert review current\n/revert confirm current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: toolDeps, kernel })
+      }
+    );
+
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      turnId?: string;
+      command?: string;
+      code?: string;
+      record?: {
+        kind?: string;
+        reviewId?: string;
+        ok?: boolean;
+        dryRun?: boolean;
+        status?: string;
+        target?: { turnId?: string; sessionId?: string };
+        affectedCheckpointCount?: number;
+        restoredPathCount?: number;
+      };
+    });
+    const completed = records.find((record) => record.kind === "agent.loop.completed");
+    const review = records.find((record) => record.kind === "chat.command.revert-review" && record.record?.kind === "revert.review");
+    const confirm = records.find((record) => record.kind === "chat.command.revert-confirm" && record.record?.kind === "revert.confirm");
+
+    assert.equal(review?.record?.reviewId, "review-1");
+    assert.equal(review?.record?.ok, true);
+    assert.equal(review?.record?.dryRun, true);
+    assert.equal(review?.record?.status, "preview");
+    assert.equal(review?.record?.target?.turnId, completed?.turnId);
+    assert.equal(review?.record?.affectedCheckpointCount, 1);
+    assert.equal(confirm?.record?.reviewId, "review-1");
+    assert.equal(confirm?.record?.ok, true);
+    assert.equal(confirm?.record?.dryRun, false);
+    assert.equal(confirm?.record?.status, "restored");
+    assert.equal(confirm?.record?.restoredPathCount, 1);
+    assert.equal(await toolDeps.platform.readFile("/workspace/app.ts"), "");
+    assert.equal(toolDeps.workspaceState.checkpoints()[0]?.status, "restored");
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 2);
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    await kernel.shutdown("cli-test-chat-revert-review-confirm");
+  });
+
+  it("keeps revert confirm without review as a local typed failure", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/revert confirm current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string; code?: string });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.local-failure" && record.command === "revert" && record.code === "CLI_REVERT_REVIEW_NOT_FOUND"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested"), false);
+  });
+
+  it("rejects stale revert confirm after review without mutating files or checkpoints", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const toolDeps = { ...deps, models: new WritingToolModelGateway(), policy: new AllowAllPolicyEngine() };
+    await registerRuntimeCoreTools(toolDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(toolDeps);
+    const lines: string[] = [];
+    let staleInjected = false;
+
+    await runCli(
+      ["chat", "--output", "jsonl"],
+      async (line: string) => {
+        lines.push(line);
+        const record = JSON.parse(line) as { kind?: string; record?: { kind?: string } };
+        if (!staleInjected && record.kind === "chat.command.revert-review" && record.record?.kind === "revert.review") {
+          staleInjected = true;
+          await toolDeps.platform.writeFile("/workspace/app.ts", "changed-after-review");
+        }
+      },
+      ["write app\n/revert review current\n/revert confirm current\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: toolDeps, kernel })
+      }
+    );
+
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        ok?: boolean;
+        status?: string;
+        stalePathCount?: number;
+        diagnostic?: { code?: string };
+      };
+    });
+    const confirm = records.find((record) => record.kind === "chat.command.revert-confirm" && record.record?.kind === "revert.confirm");
+
+    assert.equal(staleInjected, true);
+    assert.equal(confirm?.record?.ok, false);
+    assert.equal(confirm?.record?.status, "rejected");
+    assert.equal(confirm?.record?.stalePathCount, 1);
+    assert.equal(records.some((record) => record.kind === "chat.command.revert-confirm" && record.record?.kind === "revert.confirm.diagnostic" && record.record.diagnostic?.code === "CHECKPOINT_STALE_FILE"), true);
+    assert.equal(await toolDeps.platform.readFile("/workspace/app.ts"), "changed-after-review");
+    assert.equal(toolDeps.workspaceState.checkpoints()[0]?.status, "eligible");
+    assert.equal(records.filter((record) => record.kind === "model.requested").length, 2);
+    await kernel.shutdown("cli-test-chat-revert-stale-confirm");
+  });
+
+  it("lists palette slash controls in chat help", async () => {
+    const lines: string[] = [];
+    await runCli(
+      ["chat", "--output", "text"],
+      (line: string) => {
+        lines.push(line);
+      },
+      ["/help\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+    const output = lines.join("\n");
+
+    assert.equal(output.includes("/palette"), true);
+    assert.equal(output.includes("/palette next|previous|first|last"), true);
+    assert.equal(output.includes("/palette back|forward"), true);
+    assert.equal(output.includes("/palette recall <query>"), true);
+    assert.equal(output.includes("/palette refs add <target-id|current>"), true);
+    assert.equal(output.includes("/palette refs list"), true);
+    assert.equal(output.includes("/palette refs focus <ref-id|index|target-id|current>"), true);
+    assert.equal(output.includes("/palette state"), true);
+    assert.equal(output.includes("/palette action <action> <target-id>"), true);
+    assert.equal(output.includes("/keymap [core|vi-minimal]"), true);
+    assert.equal(output.includes("/revert preview --request <id>|--turn <id>|--session <id>"), true);
+    assert.equal(output.includes("/revert preview current"), true);
+    assert.equal(output.includes("/revert review current"), true);
+    assert.equal(output.includes("/revert confirm <review-id|current>"), true);
+    assert.equal(output.includes("/revert apply current"), true);
+    assert.equal(output.includes("/history select <turn-id|index|current|last>"), true);
+    assert.equal(output.includes("DeepSeek mock response"), false);
   });
 
   it("preserves chat session id across runtime submissions", async () => {
@@ -221,6 +2244,931 @@ describe("cli host adapter", () => {
       .filter((event) => event.kind === "model.delta");
     assert.equal(deltaEvents.length, 3, "JSONL mode must still produce one event per delta chunk");
   });
+
+  it("renders approval denial evidence in JSONL without terminal controls", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const approvalDeps = { ...deps, models: new ToolCallingModelGateway(), policy: new CliAskApprovalPolicyEngine() };
+    await registerRuntimeCoreTools(approvalDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(approvalDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "read README", "--output", "jsonl"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: approvalDeps, kernel })
+      }
+    );
+    const events = lines.map((line) => JSON.parse(line) as { kind: string; data?: { approval?: { approvalId?: string; summary?: { referencePitFixtureIds?: string[] } } } });
+    const approval = events.find((event) => event.kind === "approval.denied");
+
+    assert.equal(Boolean(approval), true);
+    assert.equal(approval?.data?.approval?.approvalId, "approval:cli-test");
+    assert.equal(approval?.data?.approval?.summary?.referencePitFixtureIds?.includes("pit.headless-trust.fail-closed"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    assert.equal(lines.join("\n").includes("? "), false);
+  });
+
+  it("renders approval denial evidence in text mode from runtime events", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const approvalDeps = { ...deps, models: new ToolCallingModelGateway(), policy: new CliAskApprovalPolicyEngine() };
+    await registerRuntimeCoreTools(approvalDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(approvalDeps);
+    const lines: string[] = [];
+    await runCli(
+      ["run", "read README", "--output", "text"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: approvalDeps, kernel })
+      }
+    );
+    const output = lines.join("\n");
+
+    assert.equal(output.includes("[approval required]"), true);
+    assert.equal(output.includes("[approval denied]"), true);
+    assert.equal(output.includes("pit.headless-trust.fail-closed"), true);
+    assert.equal(output.includes("profile: plain"), true);
+  });
+
+  it("renders diagnostics bundle as redacted JSON", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "bundle", "--fake-secret", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      bundle?: { selectedRecordCount?: number; redactionSummary?: { redactedValueCount?: number } };
+      externalExportDecision?: { action?: string };
+      referencePitFixtureIds?: string[];
+    };
+    const serialized = lines.join("\n");
+
+    assert.equal(parsed.kind, "diagnostics.bundle");
+    assert.equal((parsed.bundle?.selectedRecordCount ?? 0) > 0, true);
+    assert.equal((parsed.bundle?.redactionSummary?.redactedValueCount ?? 0) > 0, true);
+    assert.equal(parsed.externalExportDecision?.action, "deny-export");
+    assert.equal(parsed.referencePitFixtureIds?.includes("pit.diagnostic-redaction.support-bundle"), true);
+    assert.equal(parsed.referencePitFixtureIds?.includes("pit.env-snapshot.immutable-startup"), true);
+    assert.equal(serialized.includes("sk-diagnostics-secret-123456"), false);
+  });
+
+  it("renders diagnostics release evidence in JSONL", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "release", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      packageSurface?: { packageName?: string; binEntry?: string; buildOutputPath?: string; expectedPackageFiles?: string[]; generatedBundleIgnored?: boolean; unexpectedPackageFiles?: string[] };
+      verification?: { requiredCommands?: string[]; acceptanceEvidencePaths?: string[]; missingAcceptanceEvidencePaths?: string[] };
+      check?: { id?: string; status?: string; metadata?: { buildOutputPath?: string; acceptanceEvidencePaths?: string[]; unexpectedPackageFiles?: string[] } };
+    });
+    const summary = records.find((record) => record.kind === "diagnostics.release.summary");
+    const checks = records.filter((record) => record.kind === "diagnostics.release.check");
+
+    assert.equal(records[0]?.kind, "diagnostics.release");
+    assert.equal(summary?.packageSurface?.packageName, "deepseek-agent-cli");
+    assert.equal(summary?.packageSurface?.binEntry, "dist/index.js");
+    assert.equal(summary?.packageSurface?.buildOutputPath, "src/apps/cli/dist/index.js");
+    assert.equal(summary?.packageSurface?.expectedPackageFiles?.includes("dist"), true);
+    assert.equal(summary?.packageSurface?.generatedBundleIgnored, true);
+    assert.deepEqual(summary?.packageSurface?.unexpectedPackageFiles, []);
+    assert.equal(summary?.verification?.acceptanceEvidencePaths?.includes("tests/acceptance/acceptance-index.md"), true);
+    assert.equal(summary?.verification?.requiredCommands?.some((command) => command.includes("npm publish --dry-run")), true);
+    assert.equal(checks.some((record) => record.check?.id === "release.build-output"), true);
+    assert.equal(checks.some((record) => record.check?.id === "release.acceptance"), true);
+    assert.equal(checks.some((record) => record.check?.id === "release.package-surface"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders diagnostics release acceptance evidence in text mode", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "release"], (line: string) => {
+      lines.push(line);
+    });
+    const text = lines.join("\n");
+
+    assert.equal(text.includes("- evidence: tests/acceptance/acceptance-index.md"), true);
+    assert.equal(text.includes("tests/acceptance/latest/openspec-validation.txt"), true);
+    assert.equal(text.includes("tests/acceptance/latest/smoke-headless.txt"), true);
+    assert.equal(text.includes("- build artifact: src/apps/cli/dist/index.js"), true);
+    assert.equal(text.includes("- package surface: safe"), true);
+    assert.equal(text.includes("- release.build-output:"), true);
+    assert.equal(text.includes("- release.acceptance:"), true);
+    assert.equal(text.includes("\u001b["), false);
+  });
+
+  it("renders diagnostics refresh default dry-run as JSON", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "refresh", "--dry-run", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      status?: string;
+      refresh?: {
+        mode?: string;
+        dryRun?: boolean;
+        refreshedPaths?: readonly string[];
+        failedStepIds?: readonly string[];
+        steps?: readonly { id?: string; status?: string; outputPath?: string; exitCode?: number }[];
+        nextAction?: string;
+      };
+    };
+
+    assert.equal(parsed.kind, "diagnostics.refresh");
+    assert.equal(parsed.status, "pass");
+    assert.equal(parsed.refresh?.mode, "default");
+    assert.equal(parsed.refresh?.dryRun, true);
+    assert.deepEqual(parsed.refresh?.refreshedPaths, []);
+    assert.deepEqual(parsed.refresh?.failedStepIds, []);
+    assert.equal(parsed.refresh?.steps?.some((step) => step.id === "release-verify" && step.outputPath === "tests/acceptance/latest/release-verify.txt"), true);
+    assert.equal(parsed.refresh?.steps?.some((step) => step.id === "e2e"), false);
+    assert.equal(parsed.refresh?.steps?.every((step) => step.status === "pass" && step.exitCode === undefined), true);
+    assert.equal(parsed.refresh?.nextAction, "Run deepseek diagnostics verify --output json.");
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+    assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
+  });
+
+  it("renders diagnostics refresh full dry-run as JSONL steps", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "refresh", "--full", "--dry-run", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      status?: string;
+      summary?: { mode?: string; dryRun?: boolean; steps?: readonly { id?: string }[] };
+      step?: { id?: string; outputPath?: string; status?: string; exitCode?: number };
+    });
+    const summary = records.find((record) => record.kind === "diagnostics.refresh.summary");
+
+    assert.equal(records[0]?.kind, "diagnostics.refresh");
+    assert.equal(records[0]?.status, "pass");
+    assert.equal(summary?.summary?.mode, "full");
+    assert.equal(summary?.summary?.dryRun, true);
+    assert.equal(summary?.summary?.steps?.some((step) => step.id === "contracts"), true);
+    assert.equal(summary?.summary?.steps?.some((step) => step.id === "e2e"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.refresh.step" && record.step?.id === "contracts" && record.step.status === "pass"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.refresh.step" && record.step?.id === "e2e" && record.step.outputPath === "tests/acceptance/latest/smoke-host-adapters.txt"), true);
+    assert.equal(lines.every((line) => JSON.parse(line) && true), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("rejects diagnostics refresh positional command input", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "refresh", "npm", "test", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      status?: string;
+      refresh?: {
+        status?: string;
+        steps?: readonly unknown[];
+        diagnostics?: readonly { id?: string; message?: string }[];
+        failedStepIds?: readonly string[];
+      };
+    };
+    const serialized = lines.join("\n");
+
+    assert.equal(parsed.kind, "diagnostics.refresh");
+    assert.equal(parsed.status, "fail");
+    assert.equal(parsed.refresh?.status, "fail");
+    assert.deepEqual(parsed.refresh?.steps, []);
+    assert.deepEqual(parsed.refresh?.failedStepIds, []);
+    assert.equal(parsed.refresh?.diagnostics?.[0]?.id, "diagnostics.refresh.invalid-args");
+    assert.equal(parsed.refresh?.diagnostics?.[0]?.message, "diagnostics refresh received 2 unsupported argument(s).");
+    assert.equal(serialized.includes("npm test"), false);
+    assert.equal(serialized.includes("\u001b["), false);
+  });
+
+  it("writes diagnostics refresh evidence files through platform execution", async () => {
+    const platform = new FakePlatformRuntime("fake", "/workspace");
+    const summary = await refreshAcceptanceEvidence({
+      mode: "default",
+      dryRun: false,
+      extraArgs: [],
+      platform
+    });
+    const firstStep = summary.steps[0];
+    const stored = await platform.readFile(join(process.cwd(), firstStep?.outputPath ?? ""));
+
+    assert.equal(summary.status, "pass");
+    assert.equal(summary.refreshedPaths.includes("tests/acceptance/latest/acceptance-index.txt"), true);
+    assert.equal(firstStep?.id, "acceptance-index");
+    assert.equal(firstStep?.exitCode, 0);
+    assert.equal(stored.includes("# Acceptance index"), true);
+    assert.equal(stored.includes("Command: npm run acceptance:index"), true);
+    assert.equal(stored.includes('"command":"npm"'), true);
+    assert.equal(stored.includes("\u001b["), false);
+  });
+
+  it("renders diagnostics evaluate smoke dry-run as DeepSeek-owned plan", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "evaluate", "--dry-run", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      status?: string;
+      evaluation?: {
+        mode?: string;
+        dryRun?: boolean;
+        taskCatalogVersion?: string;
+        baselines?: readonly { baselineId?: string; status?: string; configured?: boolean }[];
+        taskRuns?: readonly { outcome?: string; baseline?: { baselineId?: string }; task?: { taskId?: string; mode?: string } }[];
+        publicBenchmarkReferences?: readonly { name?: string; advisoryOnly?: boolean }[];
+      };
+    };
+
+    assert.equal(parsed.kind, "diagnostics.evaluate");
+    assert.equal(parsed.status, "pass");
+    assert.equal(parsed.evaluation?.mode, "smoke");
+    assert.equal(parsed.evaluation?.dryRun, true);
+    assert.equal(parsed.evaluation?.taskCatalogVersion, "2026-05-13.smoke");
+    assert.equal(parsed.evaluation?.baselines?.[0]?.baselineId, "deepseek-cli");
+    assert.equal(parsed.evaluation?.baselines?.[0]?.status, "available");
+    assert.equal(parsed.evaluation?.taskRuns?.length, 3);
+    assert.equal(parsed.evaluation?.taskRuns?.every((run) => run.outcome === "planned" && run.baseline?.baselineId === "deepseek-cli" && run.task?.mode === "smoke"), true);
+    assert.equal(parsed.evaluation?.taskRuns?.some((run) => run.task?.taskId === "eval.webpage.generation"), false);
+    assert.equal(parsed.evaluation?.publicBenchmarkReferences?.some((reference) => reference.name === "SWE-bench Verified" && reference.advisoryOnly === true), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("includes webpage generation in diagnostics evaluate full dry-run", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "evaluate", "--full", "--dry-run", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      evaluation?: {
+        mode?: string;
+        taskRuns?: readonly { task?: { taskId?: string; category?: string; checkCommands?: readonly string[]; mode?: string } }[];
+      };
+    };
+    const webpage = parsed.evaluation?.taskRuns?.find((run) => run.task?.taskId === "eval.webpage.generation")?.task;
+
+    assert.equal(parsed.evaluation?.mode, "full");
+    assert.equal(webpage?.category, "webpage-generation");
+    assert.equal(webpage?.mode, "full");
+    assert.equal(webpage?.checkCommands?.includes("node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"), true);
+  });
+
+  it("defers diagnostics evaluate external baselines by default", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "evaluate", "--baseline", "claude-code", "--dry-run", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      status?: string;
+      summary?: {
+        status?: string;
+        baselines?: readonly { baselineId?: string; status?: string; configured?: boolean; kind?: string }[];
+        taskRuns?: readonly { outcome?: string; diagnostics?: readonly { code?: string }[] }[];
+        diagnostics?: readonly { code?: string }[];
+      };
+      diagnostic?: { code?: string };
+      run?: { outcome?: string; baseline?: { baselineId?: string; status?: string; configured?: boolean } };
+    });
+    const summary = records.find((record) => record.kind === "diagnostics.evaluate.summary")?.summary;
+
+    assert.equal(records[0]?.kind, "diagnostics.evaluate");
+    assert.equal(records[0]?.status, "warn");
+    assert.equal(summary?.baselines?.[0]?.baselineId, "claude-code");
+    assert.equal(summary?.baselines?.[0]?.status, "deferred");
+    assert.equal(summary?.baselines?.[0]?.configured, false);
+    assert.equal(summary?.taskRuns?.every((run) => run.outcome === "deferred"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.task-run" && record.run?.baseline?.baselineId === "claude-code" && record.run.baseline.status === "deferred"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.diagnostic" && record.diagnostic?.code === "CLI_EVALUATION_BASELINE_DEFERRED"), true);
+    assert.equal(lines.join("\n").includes("claude --"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders diagnostics evaluate multi-baseline dry-run without executing tasks", async () => {
+    const lines: string[] = [];
+    await runCli([
+      "diagnostics",
+      "evaluate",
+      "--full",
+      "--compare-baseline",
+      "deepseek-cli",
+      "--compare-baseline",
+      "codex",
+      "--compare-baseline",
+      "claude-code",
+      "--dry-run",
+      "--output",
+      "jsonl"
+    ], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      summary?: {
+        baselines?: readonly { baselineId?: string; status?: string }[];
+        baselineAggregates?: readonly { baselineId?: string; executedRunCount?: number; deferredRunCount?: number; commandSuccessRate?: number }[];
+        gapFindings?: readonly { code?: string }[];
+        taskRuns?: readonly { outcome?: string }[];
+      };
+      aggregate?: { baselineId?: string; executedRunCount?: number };
+      finding?: { code?: string };
+    });
+    const summary = records.find((record) => record.kind === "diagnostics.evaluate.summary")?.summary;
+
+    assert.deepEqual(summary?.baselines?.map((baseline) => baseline.baselineId), ["deepseek-cli", "codex", "claude-code"]);
+    assert.equal(summary?.taskRuns?.every((run) => run.outcome === "planned" || run.outcome === "deferred"), true);
+    assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "deepseek-cli")?.executedRunCount, 0);
+    assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "codex")?.deferredRunCount, 7);
+    assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "codex")?.commandSuccessRate, undefined);
+    assert.equal(summary?.gapFindings?.some((finding) => finding.code === "CLI_EVALUATION_GAP_PENDING_EXECUTION"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.baseline-aggregate" && record.aggregate?.baselineId === "deepseek-cli"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.gap-finding" && record.finding?.code === "CLI_EVALUATION_GAP_PENDING_EXECUTION"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("probes configured diagnostics evaluate codex baseline without task execution", async () => {
+    const platform = new FakePlatformRuntime("fake", "/workspace");
+    await platform.writeFile(join(process.cwd(), "tests/evaluation/task-catalog.json"), JSON.stringify({
+      catalogVersion: "test-catalog",
+      tasks: [{
+        taskId: "eval.test",
+        title: "Test task",
+        category: "bug-fix",
+        fixtureId: "fixture.test",
+        workspaceSnapshotId: "snapshot.test",
+        promptDigest: "sha256:test",
+        promptSummary: "Test prompt",
+        allowedCapabilityProfile: "local-edit-test",
+        timeBudgetMs: 1000,
+        checkCommands: ["npm test"],
+        scoringRubricId: "rubric.test",
+        mode: "smoke"
+      }]
+    }));
+    const summary = await collectCliEvaluation({
+      mode: "smoke",
+      dryRun: true,
+      baselineId: "codex",
+      compareBaselineIds: [],
+      allowExternalBaseline: true,
+      baselineCommand: "codex",
+      baselineArgs: ["--version"],
+      extraArgs: [],
+      platform
+    });
+
+    assert.equal(summary.status, "pass");
+    assert.equal(summary.baselines[0]?.baselineId, "codex");
+    assert.equal(summary.baselines[0]?.status, "available");
+    assert.equal(summary.baselines[0]?.configured, true);
+    assert.equal(summary.baselines[0]?.probeExitCode, 0);
+    assert.equal(summary.baselines[0]?.versionCommand, "codex --version");
+    assert.equal(typeof summary.baselines[0]?.commandFingerprint, "string");
+    assert.equal(summary.baselines[0]?.probeOutputPreview?.includes('"command":"codex"'), true);
+    assert.equal(summary.taskRuns[0]?.outcome, "planned");
+    assert.equal(summary.taskRuns[0]?.checks[0]?.status, "skipped");
+  });
+
+  it("executes webpage generation in an isolated baseline workspace", async () => {
+    const platform = new FakeWebpageAgentPlatform();
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      baselineId: "codex",
+      compareBaselineIds: ["codex"],
+      allowExternalBaseline: true,
+      codexCommand: "fake-web-agent",
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+    const aggregate = summary.baselineAggregates.find((item) => item.baselineId === "codex");
+    const workspacePath = webpageRun?.evidencePaths[0] ?? "";
+
+    assert.equal(webpageRun?.outcome, "solved");
+    assert.equal(webpageRun?.dryRun, false);
+    assert.equal(webpageRun?.checks[0]?.status, "pass");
+    assert.equal(webpageRun?.metrics.firstRunSuccess, true);
+    assert.equal(webpageRun?.metrics.commandRunCount, 2);
+    assert.equal(webpageRun?.metrics.commandSuccessCount, 2);
+    assert.equal(webpageRun?.metrics.commandSuccessRate, 1);
+    assert.equal(webpageRun?.metrics.generatedHtmlFileCount, 1);
+    assert.equal(webpageRun?.metrics.generatedCssFileCount, 1);
+    assert.equal(webpageRun?.metrics.generatedJsFileCount, 1);
+    assert.equal((webpageRun?.metrics.codeStructureScore ?? 0) >= 0.85, true);
+    assert.equal(aggregate?.executedRunCount, 1);
+    assert.equal(aggregate?.solvedRunCount, 1);
+    assert.equal(aggregate?.successRate, 1);
+    assert.equal(aggregate?.commandRunCount, 2);
+    assert.equal(aggregate?.commandSuccessCount, 2);
+    assert.equal(aggregate?.commandSuccessRate, 1);
+    assert.deepEqual(webpageRun?.instrumentationEvents.map((event) => event.kind), [
+      "run_started",
+      "workspace_created",
+      "prompt_written",
+      "prompt_sent",
+      "command_started",
+      "command_finished",
+      "checker_started",
+      "checker_finished",
+      "artifact_scan_started",
+      "artifact_scan_finished",
+      "evidence_written",
+      "run_finished"
+    ]);
+    assert.equal(webpageRun?.instrumentationEvents.every((event, index) => event.sequence === index + 1), true);
+    assert.equal(webpageRun?.instrumentationEvents.find((event) => event.kind === "command_finished")?.metadata.exitCode, 0);
+    assert.equal(webpageRun?.instrumentationEvents.find((event) => event.kind === "checker_finished")?.metadata.exitCode, 0);
+    assert.equal(workspacePath.includes("deepseek-evaluation-runs"), true);
+    assert.equal(resolve(workspacePath).startsWith(resolve(process.cwd())), false);
+    assert.equal(platform.executedWorkspaces.length, 1);
+    assert.equal(resolve(platform.executedWorkspaces[0] ?? "").startsWith(resolve(process.cwd())), false);
+  });
+
+  it("collects DeepSeek prompt assembly metrics during webpage evaluation", async () => {
+    const platform = new FakeWebpageAgentPlatform();
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      baselineId: "deepseek-cli",
+      compareBaselineIds: ["deepseek-cli"],
+      allowExternalBaseline: false,
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+
+    assert.equal(webpageRun?.outcome, "solved");
+    assert.equal(webpageRun?.metrics.promptAssemblyAvailable, true);
+    assert.equal(webpageRun?.metrics.promptAssemblyFingerprint, "assembly-test");
+    assert.equal(webpageRun?.metrics.promptAssemblySectionCount, 3);
+    assert.equal(webpageRun?.metrics.promptAssemblyExcludedSectionCount, 0);
+    assert.equal(webpageRun?.metrics.promptAssemblyBudgetStatus, "within-budget");
+    assert.equal(webpageRun?.metrics.promptAssemblyVisibleToolCount, 4);
+    assert.equal(webpageRun?.metrics.promptAssemblyGapReason, "post-assembly-model-failure");
+    assert.equal(webpageRun?.diagnostics.some((item) => item.code === "CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING"), false);
+  });
+
+  it("renders diagnostics verify blockers as JSONL", async () => {
+    const lines = await withTempReleaseRepo("deepseek-cli-verify-blocked-", { buildOutput: false, acceptanceEvidence: true }, async () => {
+      const output: string[] = [];
+      await runCli(["diagnostics", "verify", "--output", "jsonl"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      status?: string;
+      summary?: { status?: string; publishDryRunReady?: boolean; nextAction?: string; blockingChecks?: readonly { id?: string }[] };
+      check?: { id?: string };
+    });
+    const summary = records.find((record) => record.kind === "diagnostics.verify.summary");
+
+    assert.equal(records[0]?.kind, "diagnostics.verify");
+    assert.equal(records[0]?.status, "fail");
+    assert.equal(summary?.summary?.status, "blocked");
+    assert.equal(summary?.summary?.publishDryRunReady, false);
+    assert.equal(summary?.summary?.blockingChecks?.some((check) => check.id === "release.build-output"), true);
+    assert.equal(summary?.summary?.nextAction, "Run npm run build:cli before publishing.");
+    assert.equal(records.some((record) => record.kind === "diagnostics.verify.blocker" && record.check?.id === "release.build-output"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders diagnostics verify warnings and ready text", async () => {
+    const warningLines = await withTempReleaseRepo("deepseek-cli-verify-warn-", { buildOutput: true, acceptanceEvidence: false }, async () => {
+      const output: string[] = [];
+      await runCli(["diagnostics", "verify", "--output", "json"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const warning = JSON.parse(warningLines[0] ?? "{}") as {
+      kind?: string;
+      status?: string;
+      verificationSummary?: { status?: string; missingAcceptanceEvidencePaths?: readonly string[]; warningChecks?: readonly { id?: string }[]; publishDryRunReady?: boolean };
+    };
+
+    assert.equal(warning.kind, "diagnostics.verify");
+    assert.equal(warning.status, "warn");
+    assert.equal(warning.verificationSummary?.status, "warn");
+    assert.equal(warning.verificationSummary?.publishDryRunReady, false);
+    assert.equal(warning.verificationSummary?.warningChecks?.some((check) => check.id === "release.acceptance"), true);
+    assert.equal(warning.verificationSummary?.missingAcceptanceEvidencePaths?.includes("tests/acceptance/latest/typecheck.txt"), true);
+
+    const readyLines = await withTempReleaseRepo("deepseek-cli-verify-ready-", { buildOutput: true, acceptanceEvidence: true }, async () => {
+      const output: string[] = [];
+      await runCli(["diagnostics", "verify"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const text = readyLines.join("\n");
+
+    assert.equal(text.includes("diagnostics.verify: pass"), true);
+    assert.equal(text.includes("- verification: ready"), true);
+    assert.equal(text.includes("- publish dry-run ready: true"), true);
+    assert.equal(text.includes("- next action: npm publish --dry-run --workspace deepseek-agent-cli --access public"), true);
+    assert.equal(text.includes("\u001b["), false);
+  });
+
+  it("renders diagnostics doctor without live provider calls", async () => {
+    const lines = await withTempCwd("deepseek-cli-doctor-", async () => {
+      const output: string[] = [];
+      await runCli(["diagnostics", "doctor", "--output", "json"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      indexProviders?: { enabledProviderIds?: string[]; deferredProviderIds?: string[]; source?: { scope?: string }; providers?: readonly { providerId?: string; requestedStatus?: string; implementationStatus?: string }[] };
+      readiness?: { metadata?: { liveRequested?: boolean }; checks?: readonly { id?: string }[] };
+      release?: { checks?: readonly { id?: string }[] };
+    };
+
+    assert.equal(parsed.kind, "diagnostics.doctor");
+    assert.equal(parsed.readiness?.metadata?.liveRequested, false);
+    assert.equal(parsed.readiness?.checks?.some((check) => check.id === "doctor.live"), true);
+    assert.equal(parsed.readiness?.checks?.some((check) => check.id === "index-provider.pageindex"), true);
+    assert.equal(parsed.indexProviders?.enabledProviderIds?.includes("pageindex"), true);
+    assert.equal(parsed.indexProviders?.deferredProviderIds?.includes("zvec"), true);
+    assert.equal(parsed.indexProviders?.source?.scope, "default");
+    assert.equal(parsed.indexProviders?.providers?.some((provider) => provider.providerId === "zvec" && provider.implementationStatus === "missing"), true);
+    assert.equal(parsed.release?.checks?.some((check) => check.id === "release.package"), true);
+  });
+
+  it("renders index provider status without provider execution", async () => {
+    const lines = await withTempCwd("deepseek-cli-index-status-", async () => {
+      const output: string[] = [];
+      await runCli(["index-provider", "status", "--output", "json"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      summary?: { source?: { scope?: string }; enabledProviderIds?: string[]; providers?: readonly { providerId?: string; status?: string; implementationStatus?: string }[] };
+    };
+
+    assert.equal(parsed.kind, "index-provider.status");
+    assert.equal(parsed.summary?.source?.scope, "default");
+    assert.equal(parsed.summary?.enabledProviderIds?.includes("pageindex"), true);
+    assert.equal(parsed.summary?.providers?.some((provider) => provider.providerId === "zvec" && provider.status === "deferred" && provider.implementationStatus === "missing"), true);
+  });
+
+  it("renders index provider evidence reasons in text mode", async () => {
+    const lines = await withTempCwd("deepseek-cli-index-text-", async () => {
+      const output: string[] = [];
+      await runCli(["index-provider", "status"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const text = lines.join("\n");
+
+    assert.equal(text.includes("evidence=implementation-module:missing, embedding-provider:missing, vector-store:missing"), true);
+    assert.equal(text.includes("missing-evidence=implementation-module, embedding-provider, vector-store"), true);
+    assert.equal(text.includes("diagnostics=INDEX_PROVIDER_DEFERRED"), true);
+    assert.equal(text.includes("\u001b["), false);
+  });
+
+  it("renders diagnostics doctor provider evidence reasons in text mode", async () => {
+    const lines = await withTempCwd("deepseek-cli-doctor-text-", async () => {
+      const output: string[] = [];
+      await runCli(["diagnostics", "doctor"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const text = lines.join("\n");
+
+    assert.equal(text.includes("index provider zvec: deferred"), true);
+    assert.equal(text.includes("evidence=implementation-module:missing, embedding-provider:missing, vector-store:missing"), true);
+    assert.equal(text.includes("missing-evidence=implementation-module, embedding-provider, vector-store"), true);
+    assert.equal(text.includes("\u001b["), false);
+  });
+
+  it("writes index provider intent and previews effective downgrade", async () => {
+    const lines = await withTempCwd("deepseek-cli-index-set-", async () => {
+      const output: string[] = [];
+      await runCli(["index-provider", "set", "zvec", "enabled", "--output", "json"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      written?: boolean;
+      summary?: { source?: { scope?: string }; providers?: readonly { providerId?: string; status?: string; requestedStatus?: string; implementationStatus?: string }[]; diagnostics?: readonly { code?: string }[] };
+    };
+    const zvec = parsed.summary?.providers?.find((provider) => provider.providerId === "zvec");
+
+    assert.equal(parsed.kind, "index-provider.set");
+    assert.equal(parsed.written, true);
+    assert.equal(parsed.summary?.source?.scope, "workspace");
+    assert.equal(zvec?.requestedStatus, "enabled");
+    assert.equal(zvec?.status, "deferred");
+    assert.equal(zvec?.implementationStatus, "missing");
+    assert.equal(parsed.summary?.diagnostics?.some((diagnostic) => diagnostic.code === "INDEX_PROVIDER_UNSUPPORTED_ENABLED"), true);
+  });
+
+  it("rejects invalid index provider arguments before writing config", async () => {
+    const lines = await withTempCwd("deepseek-cli-index-invalid-", async () => {
+      const output: string[] = [];
+      await runCli(["index-provider", "set", "unknown", "enabled", "--output", "json"], (line: string) => {
+        output.push(line);
+      });
+      return output;
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as { ok?: boolean; diagnostics?: readonly { code?: string }[]; written?: boolean };
+
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.written, undefined);
+    assert.equal(parsed.diagnostics?.[0]?.code, "INDEX_PROVIDER_CLI_INVALID_ARGUMENT");
+  });
+
+  it("renders extension list as JSONL result-list records", async () => {
+    const lines: string[] = [];
+    await runCli(["extension", "list", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; record?: { referencePitFixtureIds?: string[] }; item?: { targetKind?: string; targetId?: string } });
+    const summary = records[0]?.record;
+
+    assert.equal(records[0]?.kind, "extension.list.summary");
+    assert.equal(records.some((record) => record.item?.targetKind === "skill"), true);
+    assert.equal(records.some((record) => record.item?.targetKind === "credential-scope"), true);
+    assert.equal(summary?.referencePitFixtureIds?.includes("pit.legacy-contribution-normalization.manifest-boundary"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders extension plugin install permission diff with pit evidence", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-cli-plugin-"));
+    const manifestPath = join(dir, "plugin.json");
+    await writeFile(manifestPath, JSON.stringify({
+      id: "plugin-demo",
+      name: "Demo Plugin",
+      version: "1.0.0",
+      source: "workspace",
+      integrity: "sha256:demo",
+      permissions: ["workspace:read", "process:execute"],
+      contributions: { commands: ["demo"] }
+    }), "utf8");
+    const lines: string[] = [];
+    await runCli(["extension", "plugin", "install", manifestPath, "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      kind?: string;
+      permissionDiffs?: readonly { added?: readonly string[]; referencePitFixtureIds?: readonly string[] }[];
+      items?: readonly { targetId?: string }[];
+    };
+
+    assert.equal(parsed.kind, "extension.plugin.install");
+    assert.deepEqual(parsed.permissionDiffs?.[0]?.added, ["process:execute", "workspace:read"]);
+    assert.equal(parsed.permissionDiffs?.[0]?.referencePitFixtureIds?.includes("pit.extension-permission-expansion.permission-diff"), true);
+    assert.equal(parsed.items?.[0]?.targetId, "plugin:plugin-demo");
+  });
+
+  it("renders extension plugin auth diff in text and JSONL without raw secrets", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-cli-plugin-auth-"));
+    const manifestPath = join(dir, "plugin-auth.json");
+    await writeFile(manifestPath, JSON.stringify({
+      id: "plugin-auth",
+      name: "Auth Plugin",
+      version: "1.0.0",
+      source: "workspace",
+      integrity: "sha256:auth",
+      permissions: ["workspace:read"],
+      credentialRequirements: [{
+        schemaVersion: "1.0.0",
+        requirementId: "req-plugin-auth",
+        owner: { kind: "plugin", id: "plugin:plugin-auth", pluginId: "plugin-auth" },
+        operations: ["diagnose"],
+        provider: "deepseek",
+        profile: "default",
+        required: true,
+        redaction: { class: "internal", fields: ["credentialRef"] },
+        compatibility: { schemaVersion: "1.0.0" }
+      }],
+      contributions: { commands: ["auth-demo"] }
+    }), "utf8");
+
+    const textLines: string[] = [];
+    await runCli(["extension", "plugin", "install", manifestPath, "--output", "text"], (line: string) => {
+      textLines.push(line);
+    });
+    assert.equal(textLines.some((line) => line.includes("auth-diff: +1 -0")), true);
+    assert.equal(textLines.join("\n").includes("sk-extension-secret-123456789"), false);
+
+    const jsonlLines: string[] = [];
+    await runCli(["extension", "plugin", "install", manifestPath, "--output", "jsonl"], (line: string) => {
+      jsonlLines.push(line);
+    });
+    const records = jsonlLines.map((line) => JSON.parse(line) as { kind?: string; diff?: { added?: readonly { requirementId?: string }[]; referencePitFixtureIds?: readonly string[] } });
+    assert.equal(records.some((record) => record.kind === "extension.auth-diff" && record.diff?.added?.[0]?.requirementId === "req-plugin-auth"), true);
+    assert.equal(records.some((record) => record.kind === "extension.auth-diff" && record.diff?.referencePitFixtureIds?.includes("pit.extension-auth.credential-scope-denial")), true);
+    assert.equal(jsonlLines.join("\n").includes("sk-extension-secret-123456789"), false);
+  });
+
+  it("renders extension plugin apply-lockfile as JSONL lifecycle records", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-cli-lockfile-"));
+    const lockfilePath = join(dir, "deepseek-plugin-lock.json");
+    await writeFile(lockfilePath, JSON.stringify({
+      version: 1,
+      entries: [{
+        pluginId: "plugin-locked",
+        version: "1.2.3",
+        source: "workspace",
+        integrity: "sha256:locked",
+        permissions: ["workspace:read"],
+        installedAt: "1970-01-01T00:00:00.000Z"
+      }]
+    }), "utf8");
+    const lines: string[] = [];
+    await runCli(["extension", "plugin", "apply-lockfile", lockfilePath, "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; step?: { targetId?: string }; diff?: { targetId?: string } });
+
+    assert.equal(records[0]?.kind, "extension.plugin.apply-lockfile.summary");
+    assert.equal(records.some((record) => record.kind === "extension.lifecycle" && record.step?.targetId === "plugin-lock-entry:plugin-locked"), true);
+    assert.equal(records.some((record) => record.kind === "extension.permission-diff" && record.diff?.targetId === "plugin:plugin-locked"), true);
+  });
+
+  it("renders extension skill activation without full context segment text", async () => {
+    const lines: string[] = [];
+    await runCli(["extension", "skill", "activate", "repo-summary", "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as { kind?: string; lifecycle?: readonly { metadata?: { segmentCount?: number } }[] };
+    const serialized = lines.join("\n");
+
+    assert.equal(parsed.kind, "extension.skill.activate");
+    assert.equal((parsed.lifecycle?.[0]?.metadata?.segmentCount ?? 0) > 0, true);
+    assert.equal(serialized.includes("Use repo-summary guidance when explicitly activated."), false);
+  });
+
+  it("renders extension auth scopes without raw environment credentials", async () => {
+    const previous = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = "sk-extension-secret-123456789";
+    try {
+      const lines: string[] = [];
+      await runCli(["extension", "auth", "scopes", "--output", "json"], (line: string) => {
+        lines.push(line);
+      });
+      const parsed = JSON.parse(lines[0] ?? "{}") as { kind?: string; credentialScopes?: readonly { source?: string; referencePitFixtureIds?: readonly string[] }[] };
+      const serialized = lines.join("\n");
+
+      assert.equal(parsed.kind, "extension.auth.scopes");
+      assert.equal(parsed.credentialScopes?.[0]?.source, "fake-storage");
+      assert.equal(parsed.credentialScopes?.[0]?.referencePitFixtureIds?.includes("pit.env-snapshot.immutable-startup"), true);
+      assert.equal(serialized.includes("sk-extension-secret-123456789"), false);
+    } finally {
+      if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = previous;
+    }
+  });
+
+  it("projects extension MCP test through governed gateway results", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-cli-mcp-"));
+    const manifestPath = join(dir, "mcp.json");
+    await writeFile(manifestPath, JSON.stringify({
+      schemaVersion: "1.0.0",
+      id: "mcp-demo",
+      name: "Demo MCP",
+      version: "1.0.0",
+      namespace: "demo",
+      source: "workspace",
+      trust: "trusted",
+      transport: { kind: "fake" },
+      permissions: ["mcp:read"],
+      timeoutMs: 1000,
+      tools: [{
+        name: "ping",
+        inputSchema: {},
+        permissions: ["tool:read"]
+      }]
+    }), "utf8");
+    const lines: string[] = [];
+    await runCli(["extension", "mcp", "test", manifestPath, "--output", "json"], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as { kind?: string; items?: readonly { targetKind?: string; targetId?: string }[]; referencePitFixtureIds?: readonly string[] };
+
+    assert.equal(parsed.kind, "extension.mcp.test");
+    assert.equal(parsed.items?.some((item) => item.targetKind === "mcp-server" && item.targetId === "mcp:mcp-demo"), true);
+    assert.equal(parsed.items?.some((item) => item.targetKind === "mcp-tool" && item.targetId === "mcp-tool:demo.ping"), true);
+    assert.equal(parsed.referencePitFixtureIds?.includes("pit.mcp-plugin-precedence.enterprise-deny"), true);
+  });
+
+  it("renders scriptable palette list without model or runtime events", async () => {
+    const jsonLines: string[] = [];
+    await runCli(["palette", "list", "--output", "json"], (line: string) => {
+      jsonLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const projection = JSON.parse(jsonLines[0] ?? "{}") as {
+      schemaVersion?: string;
+      entries?: readonly { entry?: { id?: string; title?: string }; target?: { id?: string }; referencePitFixtureIds?: readonly string[] }[];
+      resultList?: { id?: string; items?: readonly { id?: string; target?: { id?: string } }[] };
+    };
+
+    assert.equal(jsonLines.length, 1);
+    assert.equal(projection.schemaVersion, "1.0.0");
+    assert.equal((projection.entries?.length ?? 0) > 0, true);
+    assert.equal(projection.resultList?.id, "result-list:command-palette");
+    assert.equal(projection.entries?.some((entry) => entry.entry?.title === "doctor"), true);
+    assert.equal(projection.entries?.every((entry) => Array.isArray(entry.referencePitFixtureIds)), true);
+    assert.equal(jsonLines.join("\n").includes("agent.loop.started"), false);
+    assert.equal(jsonLines.join("\n").includes("\u001b["), false);
+
+    const jsonlLines: string[] = [];
+    await runCli(["palette", "list", "--output", "jsonl"], (line: string) => {
+      jsonlLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const records = jsonlLines.map((line) => JSON.parse(line) as { kind?: string; entryCount?: number; entry?: { entry?: { title?: string } } });
+    assert.equal(records[0]?.kind, "palette.summary");
+    assert.equal((records[0]?.entryCount ?? 0) > 0, true);
+    assert.equal(records.some((record) => record.kind === "palette.entry" && record.entry?.entry?.title === "doctor"), true);
+    assert.equal(jsonlLines.join("\n").includes("\u001b["), false);
+
+    const textLines: string[] = [];
+    await runCli(["palette", "list", "--output", "text"], (line: string) => {
+      textLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    assert.equal(textLines[0]?.startsWith("palette: "), true);
+    assert.equal(textLines.some((line) => line.includes("doctor")), true);
+  });
+
+  it("renders scriptable vi keymap profile", async () => {
+    const lines: string[] = [];
+    await runCli(["palette", "keymap", "vi-minimal", "--output", "json"], (line: string) => {
+      lines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const profile = JSON.parse(lines[0] ?? "{}") as {
+      name?: string;
+      diagnostics?: readonly unknown[];
+      contributions?: readonly { id?: string; keymap?: { key?: string; action?: string; mode?: string } }[];
+    };
+
+    assert.equal(profile.name, "vi-minimal");
+    assert.equal(profile.diagnostics?.length, 0);
+    assert.equal(profile.contributions?.some((contribution) => contribution.keymap?.key === "j" && contribution.keymap.action === "next"), true);
+    assert.equal(profile.contributions?.some((contribution) => contribution.keymap?.key === "G" && contribution.keymap.action === "last"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("resolves scriptable palette actions as dry-run typed results", async () => {
+    const inspectLines: string[] = [];
+    await runCli(["palette", "action", "inspect", "command:readiness.doctor", "--output", "json"], (line: string) => {
+      inspectLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const inspect = JSON.parse(inspectLines[0] ?? "{}") as {
+      ok?: boolean;
+      action?: string;
+      target?: { id?: string };
+      update?: { commandDescriptor?: { kind?: string; dryRun?: boolean; target?: { id?: string } } };
+      diagnostics?: readonly unknown[];
+    };
+
+    assert.equal(inspect.ok, true);
+    assert.equal(inspect.action, "inspect");
+    assert.equal(inspect.target?.id, "command:readiness.doctor");
+    assert.equal(inspect.update?.commandDescriptor?.kind, "cli.inspect");
+    assert.equal(inspect.update?.commandDescriptor?.dryRun, true);
+    assert.equal(inspect.diagnostics?.length, 0);
+
+    const addLines: string[] = [];
+    await runCli(["palette", "action", "add-to-reference-set", "command:readiness.doctor", "--output", "json"], (line: string) => {
+      addLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const add = JSON.parse(addLines[0] ?? "{}") as { ok?: boolean; update?: { referenceSets?: readonly { items?: readonly { target?: { id?: string } }[] }[] } };
+    assert.equal(add.ok, true);
+    assert.equal(add.update?.referenceSets?.[0]?.items?.[0]?.target?.id, "command:readiness.doctor");
+
+    const missingLines: string[] = [];
+    await runCli(["palette", "action", "inspect", "missing-target", "--output", "json"], (line: string) => {
+      missingLines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+    const missing = JSON.parse(missingLines[0] ?? "{}") as { ok?: boolean; diagnostics?: readonly { code?: string; targetIds?: readonly string[] }[] };
+    assert.equal(missing.ok, false);
+    assert.equal(missing.diagnostics?.[0]?.code, "CLI_ACTION_TARGET_NOT_FOUND");
+    assert.deepEqual(missing.diagnostics?.[0]?.targetIds, ["missing-target"]);
+  });
 });
 
 class ToolCallingModelGateway implements ModelGateway {
@@ -233,6 +3181,54 @@ class ToolCallingModelGateway implements ModelGateway {
     }
     yield { kind: "tool-call", id: "call-readme", name: "core.file.read", input: { path: "./README.md" } };
     yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class WritingToolModelGateway implements ModelGateway {
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "Write completed." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "tool-call", id: "call-write-app", name: "core.file.write", input: { path: "app.ts", content: "after" } };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class WritingThenCapturingModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+  private writeRequested = false;
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "Write completed." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    const userMessage = [...(request.messages ?? [])].reverse().find((message) => message.role === "user")?.content ?? request.prompt;
+    if (!this.writeRequested && userMessage.includes("write app")) {
+      this.writeRequested = true;
+      yield { kind: "tool-call", id: "call-write-app", name: "core.file.write", input: { path: "app.ts", content: "after" } };
+      yield { kind: "finish", reason: "tool-call" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "delta", text: `Captured ${userMessage}` };
+    yield { kind: "finish", reason: "stop" };
     yield { kind: "done" };
   }
 
@@ -255,6 +3251,165 @@ class StreamingDeltaModelGateway implements ModelGateway {
   }
 }
 
+class CapturingModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    yield { kind: "delta", text: "Captured." };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+function requestSystemMessageIncluding(request: ModelRequest | undefined, content: string) {
+  return request?.messages?.find((message) => message.role === "system" && message.content.includes(content));
+}
+
+function requestUserMessage(request: ModelRequest | undefined, content: string) {
+  return request?.messages?.find((message) => message.role === "user" && message.content === content);
+}
+
+class FakeWebpageAgentPlatform extends NodePlatformRuntime {
+  readonly executedWorkspaces: string[] = [];
+
+  override async runProcess(command: string, args: readonly string[], options: JsonObject = {}): Promise<ProcessResult> {
+    const cwd = typeof options.cwd === "string" ? options.cwd : process.cwd();
+    if (command === "fake-web-agent" && args[0] === "--version") {
+      return {
+        exitCode: 0,
+        stdout: "fake-web-agent 1.0.0",
+        stderr: ""
+      };
+    }
+    if (command === "fake-web-agent" && args[0] === "exec") {
+      this.executedWorkspaces.push(cwd);
+      await this.writeGeneratedWebpage(cwd);
+      return {
+        exitCode: 0,
+        stdout: "created generated-webpage",
+        stderr: ""
+      };
+    }
+    if (command === process.execPath && args.some((arg) => String(arg).replace(/\\/g, "/").endsWith("src/apps/cli/src/index.ts"))) {
+      this.executedWorkspaces.push(cwd);
+      await this.writeGeneratedWebpage(cwd);
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({
+          kind: "prompt.assembled",
+          data: {
+            fingerprint: "assembly-test",
+            sectionCount: 3,
+            excludedSectionCount: 0,
+            budget: { status: "within-budget" },
+            toolPlan: { visibleToolCount: 4 },
+            trace: {
+              sections: [
+                { kind: "task.intent", included: true },
+                { kind: "task.output-contract", included: true },
+                { kind: "tools.policy", included: true }
+              ]
+            }
+          }
+        })}\n`,
+        stderr: ""
+      };
+    }
+    return super.runProcess(command, args, options);
+  }
+
+  private async writeGeneratedWebpage(cwd: string): Promise<void> {
+      const target = join(cwd, "generated-webpage");
+      await mkdir(target, { recursive: true });
+      await writeFile(join(target, "index.html"), [
+        "<!doctype html>",
+        "<html lang=\"en\">",
+        "<head>",
+        "<meta charset=\"utf-8\">",
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+        "<title>DeepSeek CLI</title>",
+        "<link rel=\"stylesheet\" href=\"styles.css\">",
+        "</head>",
+        "<body>",
+        "<main role=\"main\">",
+        "<h1>DeepSeek CLI</h1>",
+        "<button id=\"demo\" aria-label=\"Preview workflow\">Preview</button>",
+        "</main>",
+        "<script src=\"app.js\"></script>",
+        "</body>",
+        "</html>"
+      ].join("\n"), "utf8");
+      await writeFile(join(target, "styles.css"), "body { font-family: system-ui; margin: 0; } main { padding: 2rem; }\n", "utf8");
+      await writeFile(join(target, "app.js"), "document.getElementById('demo')?.addEventListener('click', () => document.body.classList.toggle('ready'));\n", "utf8");
+  }
+}
+
+function hashTextForTest(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+async function withTempCwd<T>(prefix: string, run: () => Promise<T>): Promise<T> {
+  const previous = process.cwd();
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  try {
+    process.chdir(dir);
+    return await run();
+  } finally {
+    process.chdir(previous);
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function withTempReleaseRepo<T>(
+  prefix: string,
+  options: { readonly buildOutput: boolean; readonly acceptanceEvidence: boolean },
+  run: () => Promise<T>
+): Promise<T> {
+  return withTempCwd(prefix, async () => {
+    await mkdir("src/apps/cli/dist", { recursive: true });
+    await mkdir("tests/acceptance/latest", { recursive: true });
+    await writeFile("src/apps/cli/package.json", JSON.stringify({
+      name: "deepseek-agent-cli",
+      version: "0.1.3",
+      type: "module",
+      exports: { ".": "./dist/index.js" },
+      files: ["dist", "README.md"],
+      bin: { deepseek: "dist/index.js" },
+      publishConfig: { access: "public" }
+    }), "utf8");
+    await writeFile("tests/acceptance/acceptance-index.md", "# Acceptance Evidence Index\n", "utf8");
+    if (options.buildOutput) await writeFile("src/apps/cli/dist/index.js", "#!/usr/bin/env node\n", "utf8");
+    for (const file of acceptanceEvidenceFilesForTest()) {
+      if (!options.acceptanceEvidence && file === "typecheck.txt") continue;
+      await writeFile(join("tests/acceptance/latest", file), "ok\n", "utf8");
+    }
+    return run();
+  });
+}
+
+function acceptanceEvidenceFilesForTest(): readonly string[] {
+  return [
+    "openspec-validation.txt",
+    "typecheck.txt",
+    "lint.txt",
+    "test-summary.txt",
+    "dependency-boundaries.txt",
+    "build-cli.txt",
+    "release-verify.txt",
+    "smoke-headless.txt",
+    "reference-hygiene.txt"
+  ];
+}
+
 class ReasoningStreamModelGateway implements ModelGateway {
   async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     yield { kind: "reasoning", text: "plan ", redaction: { class: "internal" } };
@@ -267,5 +3422,89 @@ class ReasoningStreamModelGateway implements ModelGateway {
 
   async countTokens(text: string): Promise<number> {
     return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class CliAskApprovalPolicyEngine implements PolicyEngine {
+  async decide(request: PolicyRequest): Promise<PolicyDecision> {
+    const trace = request.auditEvidence?.trace ?? {
+      traceId: asId<"trace">("trace-cli-approval"),
+      spanId: asId<"span">("span-cli-approval"),
+      correlationId: asId<"correlation">("corr-cli-approval")
+    };
+    const approval: ApprovalRequest = {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      approvalId: "approval:cli-test" as ApprovalId,
+      subject: request.subject,
+      action: request.action,
+      resource: request.resource,
+      metadata: request.metadata,
+      prompt: "Approve CLI tool execution?",
+      decisionOptions: ["allow", "deny", "cancel"],
+      summary: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        title: "Approval required",
+        subject: request.subject,
+        action: request.action,
+        resource: request.resource,
+        capability: request.resource,
+        targetKind: "capability",
+        targetLabel: request.resource,
+        riskSummaries: [{
+          schemaVersion: APPROVAL_SCHEMA_VERSION,
+          kind: "policy",
+          severity: "medium",
+          title: "Headless CLI approval",
+          detail: "Headless CLI execution requires an injected approval decision.",
+          reasonCodes: ["policy.approval.required"],
+          referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+          redaction: { class: "internal", fields: ["detail"] },
+          metadata: {}
+        }],
+        allowedDecisions: ["allow", "deny", "cancel"],
+        referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+        redaction: { class: "internal", fields: ["targetLabel"] },
+        metadata: {}
+      },
+      auditReference: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        traceId: trace.traceId,
+        correlationId: trace.correlationId,
+        policyDecision: "ask",
+        reasonCodes: ["policy.approval.required"],
+        redaction: { class: "internal", fields: ["reasonCodes"] }
+      },
+      trace,
+      compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+    };
+    return {
+      action: "ask",
+      reason: "Approval required by CLI test policy",
+      audit: { policy: "cli-ask-test" },
+      sandboxProfile: "development",
+      approvalRequest: approval,
+      approvalSummary: approval.summary,
+      approval: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        kind: "approval.required",
+        approvalId: approval.approvalId,
+        trace,
+        summary: approval.summary,
+        auditReference: approval.auditReference,
+        redaction: { class: "internal" },
+        compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+      }
+    };
+  }
+}
+
+class AllowAllPolicyEngine implements PolicyEngine {
+  async decide(_request: PolicyRequest): Promise<PolicyDecision> {
+    return {
+      action: "allow",
+      reason: "Allowed by test policy.",
+      audit: { policy: "allow-all-test" },
+      sandboxProfile: "development"
+    };
   }
 }

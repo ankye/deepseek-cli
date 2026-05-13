@@ -8,7 +8,7 @@ import type {
 import { boundedText, defineToolManifest, failure, objectSchema, replay, success } from "../../shared/tool-kit.js";
 import { coreToolIds } from "../../shared/ids.js";
 import type { CoreCodingToolsDependencies } from "../../shared/workspace.js";
-import { editTransaction, publicTransactionEvidence, requireDeps, resolveToolPath, toWorkspaceTransaction } from "../../shared/workspace.js";
+import { editTransaction, invalidateCodeIntelligence, publicTransactionEvidence, requireDeps, resolveToolPath, toWorkspaceTransaction } from "../../shared/workspace.js";
 
 export function defineFileWriteTool(deps: CoreCodingToolsDependencies | undefined) {
   return defineToolManifest(
@@ -31,6 +31,7 @@ async function writeFileTool(input: JsonObject, context: CapabilityExecutionCont
   await deps.platform.writeFile(path.value.path, parsed.content);
   const transaction = editTransaction(context, path.value.path, "full-write", before, parsed.content, true, []);
   const workspaceTransaction = await deps.workspaceState.transact(toWorkspaceTransaction(transaction, before));
+  invalidateCodeIntelligence(deps, path.value.path);
   return success("file.write", [path.value.path], {
     preview: boundedText(parsed.content, parsed.limitBytes),
     metadata: { transaction: publicTransactionEvidence(transaction, workspaceTransaction), checkpoint: workspaceTransaction.checkpoints[0] },

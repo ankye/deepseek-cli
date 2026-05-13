@@ -86,7 +86,9 @@ export class InMemorySkillSystem implements SkillSystem {
   }
 
   async listSummaries(): Promise<readonly SkillSummary[]> {
-    return [...this.skills.values()].map((stored) => summaryFor(stored));
+    return [...this.skills.values()]
+      .map((stored) => summaryFor(stored))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
 
   async loadSkill(name: string): Promise<SkillActivationResult> {

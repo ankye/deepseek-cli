@@ -86,7 +86,7 @@ describe("ecosystem and governance integration", () => {
     });
     assert.equal((await deps.mcp.listTools({ schemaVersion: MCP_SCHEMA_VERSION, namespace: "fake" })).length, 1);
 
-    const diff = await deps.plugins.install({
+    const installResult = await deps.plugins.install({
       id: asId<"plugin">("plugin-one"),
       name: "one",
       version: "1.0.0",
@@ -95,7 +95,8 @@ describe("ecosystem and governance integration", () => {
       permissions: ["capability:read"],
       contributions: { commands: ["help"] }
     });
-    assert.deepEqual(diff.added, ["capability:read"]);
+    assert.deepEqual(installResult.diff.added, ["capability:read"]);
+    assert.equal(installResult.lockEntry.pluginId, "plugin-one");
 
     await deps.extensions.load({
       id: asId<"extension">("extension-one"),

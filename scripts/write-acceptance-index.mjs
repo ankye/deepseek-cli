@@ -16,6 +16,10 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | Package boundaries | \`node scripts/check-boundaries.mjs\` -> \`latest/dependency-boundaries.txt\` | required |
 | Type and contract checks | \`npm run typecheck\`, \`npm run test:contracts\` -> \`latest/typecheck.txt\`, \`latest/contracts.txt\` | required |
 | CLI build artifact | \`npm run build:cli\` -> \`latest/build-cli.txt\` | required |
+| CLI acceptance evidence refresh | \`deepseek diagnostics refresh --output json\` regenerates allowlisted \`latest/*.txt\` evidence before verify | required |
+| CLI task completion evaluation | \`deepseek diagnostics evaluate --dry-run --output json\` plans DeepSeek-owned task-completion comparison evidence | required |
+| CLI release diagnostics gate | \`deepseek diagnostics release --output json\` checks build artifact, acceptance evidence, and package surface | required |
+| CLI release verify decision | \`deepseek diagnostics verify --output json\` summarizes release blockers, warnings, next action, and publish dry-run readiness | required |
 | Headless smoke | \`npm run smoke:headless\` -> \`latest/smoke-headless.txt\` | required |
 | Runtime kernel smoke | \`npx tsx src/apps/cli/src/index.ts run "kernel smoke" --output jsonl\` -> \`latest/runtime-kernel.txt\` | required |
 | Protocol and bus replay | \`npm run test:golden\` -> \`latest/golden-replay.txt\` | required |
@@ -25,6 +29,9 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | Memory/cache/credential/usage/code intelligence | package and integration tests -> \`latest/test-summary.txt\` | required |
 | Session/replay/regression | \`npm run test:golden\`, \`npm run test:versioning\` -> \`latest/golden-replay.txt\`, \`latest/versioning.txt\` | required |
 | Host adapters | \`npm run test:e2e\` -> \`latest/smoke-host-adapters.txt\` | required |
+| Index provider CLI intent safety | \`npm run test:e2e\` / \`tests/e2e/local-readiness-cli.test.ts\` -> \`latest/smoke-host-adapters.txt\` | required |
+| Index provider activation evidence gate | \`npm run test:contracts\` / \`tests/contracts/index-provider-contracts.test.ts\` -> \`latest/contracts.txt\` | required |
+| Index provider text evidence rendering | \`npm run test:e2e\` / \`src/apps/cli/test/cli.test.ts\`, \`tests/e2e/local-readiness-cli.test.ts\` -> \`latest/smoke-host-adapters.txt\` | required |
 | Future capability deferrals | OpenSpec landing map in design.md | deferred by design |
 `;
 

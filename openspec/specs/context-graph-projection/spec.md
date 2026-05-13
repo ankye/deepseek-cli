@@ -99,3 +99,115 @@ ContextGraph projection 必须遵守 policy/sandbox secret decisions，且不得
 - **WHEN** projection emits selected/excluded summaries
 - **THEN** redaction class and audit reason metadata match policy decisions for the same content
 - **中文** 当 projection 发出 selected/excluded summaries 时，redaction class 与 audit reason metadata 必须匹配同一内容的 policy decisions。
+
+### Requirement: Selected CLI References Enter ContextGraph Projection / 选中 CLI 引用进入 ContextGraph Projection
+
+ContextGraph projection SHALL accept selected CLI reference content as typed context candidates only after runtime-owned resolution, policy checks, and platform path normalization.
+
+ContextGraph projection 必须只在 runtime-owned resolution、policy checks 与 platform path normalization 之后，接受 selected CLI reference content 作为 typed context candidates。
+
+#### Scenario: Reference materialization is governed / 引用物化受治理
+
+- **WHEN** a prompt turn contains active CLI file references
+- **THEN** runtime resolves those references through platform workspace path APIs, creates typed `file` candidates, and sends them through context projection before model dispatch
+- **中文** 当 prompt turn 包含 active CLI file references 时，runtime 必须通过 platform workspace path APIs 解析这些 references，创建 typed `file` candidates，并在 model dispatch 前发送给 context projection。
+
+#### Scenario: Unsupported references are evidence-only / 不支持的引用仅作为证据
+
+- **WHEN** a prompt turn contains directory, symbol, diagnostic, diff, message, turn, or tool-evidence references not supported by this slice
+- **THEN** projection evidence records them as unresolved or excluded reference ids without reading content or failing the turn
+- **中文** 当 prompt turn 包含本阶段不支持的 directory、symbol、diagnostic、diff、message、turn 或 tool-evidence references 时，projection evidence 必须将其记录为 unresolved 或 excluded reference ids，不读取内容，也不让 turn 失败。
+
+### Requirement: PageIndex Recall Projection Boundary / PageIndex 回溯投影边界
+
+ContextGraph projection SHALL treat PageIndex as deterministic recall evidence and SHALL NOT materialize PageIndex pages into model-visible context until an explicit projection capability is added.
+
+ContextGraph projection 必须将 PageIndex 视为 deterministic recall evidence，并且在明确增加 projection capability 前，不得将 PageIndex pages 物化为 model-visible context。
+
+#### Scenario: PageIndex is recall truth source / PageIndex 是回溯 Truth Source
+
+- **WHEN** semantic recall or ZVec ranking is introduced later
+- **THEN** every semantic candidate must point back to a deterministic PageIndex page id, session id, and turn id
+- **中文** 当未来引入 semantic recall 或 ZVec ranking 时，每个 semantic candidate 都必须指回确定性的 PageIndex page id、session id 与 turn id。
+
+#### Scenario: Turn page references remain unsupported in this slice / 本片不支持 Turn Page 引用投影
+
+- **WHEN** a prompt turn contains a PageIndex recall target or `turn` reference before turn/page projection is implemented
+- **THEN** projection evidence records it as unsupported or evidence-only without reading transcript content or failing the turn
+- **中文** 当 prompt turn 在 turn/page projection 实现前包含 PageIndex recall target 或 `turn` reference 时，projection evidence 必须将其记录为 unsupported 或 evidence-only，不读取 transcript content，也不让 turn 失败。
+
+### Requirement: PageIndex Turn References Materialize As Summaries / PageIndex Turn 引用物化为 Summary
+
+ContextGraph projection SHALL materialize PageIndex-shaped `turn` references into bounded `summary` context nodes, SHALL preserve explicit recall scope and evidence quality provenance, SHALL include a model-visible evidence usage qualifier, and SHALL leave other unsupported references as evidence-only.
+
+ContextGraph projection 必须将 PageIndex 形态的 `turn` references 物化为有界 `summary` context nodes，必须保留明确的 recall scope 与 evidence quality provenance，必须包含模型可见的 evidence usage qualifier，并将其他 unsupported references 保持为 evidence-only。
+
+#### Scenario: PageIndex turn reference becomes summary node / PageIndex Turn 引用成为 Summary Node
+
+- **WHEN** a prompt turn contains an active `turn` reference with PageIndex page metadata and bounded previews
+- **THEN** runtime projection creates a `summary` candidate node from those previews, runs normal budget/redaction selection, and emits resolved reference evidence
+- **中文** 当 prompt turn 包含带 PageIndex page metadata 与 bounded previews 的 active `turn` reference 时，runtime projection 必须基于这些 previews 创建 `summary` candidate node，运行正常 budget/redaction selection，并发出 resolved reference evidence。
+
+#### Scenario: Non-PageIndex turn reference remains unresolved / 非 PageIndex Turn 引用保持未解析
+
+- **WHEN** a prompt turn contains a `turn` reference without PageIndex page metadata
+- **THEN** projection records it as unsupported or incomplete without reading transcript content or failing the turn
+- **中文** 当 prompt turn 包含没有 PageIndex page metadata 的 `turn` reference 时，projection 必须将其记录为 unsupported 或 incomplete，不读取 transcript content，也不让 turn 失败。
+
+#### Scenario: Projected recall summary preserves prompt boundary / 投影 Recall Summary 保持 Prompt 边界
+
+- **WHEN** projected PageIndex summaries are sent to the model
+- **THEN** they appear in runtime-owned context messages while the user prompt message remains the exact submitted prompt text
+- **中文** 当投影后的 PageIndex summaries 被发送给 model 时，它们必须出现在 runtime-owned context messages 中，而 user prompt message 必须保持用户提交的原样 prompt text。
+
+#### Scenario: Projected recall summary preserves scope provenance / 投影 Recall Summary 保留 Scope 来源
+
+- **WHEN** a projected PageIndex summary is created from a scoped recall reference
+- **THEN** its model-visible summary, node provenance, and replay dependency fingerprint include the recall scope so `session` and `workspace` evidence remain distinguishable
+- **中文** 当投影后的 PageIndex summary 来自带 scope 的 recall reference 时，其模型可见摘要、node provenance 与 replay dependency fingerprint 必须包含 recall scope，使 `session` 与 `workspace` 证据保持可区分。
+
+#### Scenario: Projected recall summary preserves evidence quality / 投影 Recall Summary 保留证据质量
+
+- **WHEN** a projected PageIndex summary is created from a recall reference with evidence quality metadata
+- **THEN** its model-visible summary and node provenance include createdAt, freshness status, matched fields, and deterministic ranking reason without adding raw full transcript content
+- **中文** 当投影后的 PageIndex summary 来自带 evidence quality metadata 的 recall reference 时，其模型可见摘要与 node provenance 必须包含 createdAt、freshness status、matched fields 和 deterministic ranking reason，且不得加入完整原始 transcript content。
+
+#### Scenario: Projected recall summary qualifies historical evidence / 投影 Recall Summary 标注历史证据
+
+- **WHEN** a projected PageIndex summary is materialized into model-visible context
+- **THEN** the summary includes a qualifier telling the model to treat the content as historical recall evidence that may be stale or incomplete, and the qualifier is recorded in provenance and replay fingerprints
+- **中文** 当投影后的 PageIndex summary 被物化进模型可见上下文时，该 summary 必须包含 qualifier，告知模型将内容视为可能过期或不完整的历史 recall evidence，并且该 qualifier 必须记录到 provenance 与 replay fingerprints。
+
+### Requirement: PageIndex Projection Includes Freshness Evidence / PageIndex Projection 包含 Freshness Evidence
+
+ContextGraph projection SHALL include bounded PageIndex freshness evidence in model-visible recall summaries and node provenance.
+
+ContextGraph projection 必须在模型可见的 PageIndex recall summaries 与 node provenance 中包含有界 PageIndex freshness evidence。
+
+#### Scenario: Projected summary explains stale evidence / 投影摘要解释 Stale Evidence
+
+- **WHEN** a PageIndex recall reference carries stale reason or workspace watermark metadata
+- **THEN** the projected model-visible summary includes a compact freshness evidence line and node provenance preserves the same bounded fields
+- **中文** 当 PageIndex recall reference 携带 stale reason 或 workspace watermark metadata 时，投影后的模型可见 summary 必须包含 compact freshness evidence line，并且 node provenance 必须保留相同的有界字段。
+
+#### Scenario: Projection fingerprint includes freshness evidence / Projection Fingerprint 包含 Freshness Evidence
+
+- **WHEN** freshness reason or watermark metadata changes for the same PageIndex reference
+- **THEN** the projected node dependency fingerprint changes even if prompt and assistant previews are unchanged
+- **中文** 当同一个 PageIndex reference 的 freshness reason 或 watermark metadata 改变时，即使 prompt 与 assistant previews 未变化，投影 node dependency fingerprint 也必须改变。
+
+### Requirement: Projection Requires PageIndex Provenance For Semantic Recall / Projection 要求 Semantic Recall 具备 PageIndex Provenance
+
+ContextGraph projection SHALL only materialize semantic recall candidates when they preserve deterministic PageIndex provenance and bounded freshness evidence.
+
+ContextGraph projection 只有在 semantic recall candidates 保留 deterministic PageIndex provenance 与有界 freshness evidence 时，才可以将其物化。
+
+#### Scenario: Semantic recall without provenance remains evidence-only / 无 Provenance 的 Semantic Recall 仅作 Evidence
+- **WHEN** a ZVec or code-index recall candidate lacks PageIndex page id, session id, turn id, or freshness evidence
+- **THEN** projection records the candidate as unresolved or evidence-only without adding it to model-visible context
+- **中文** 当 ZVec 或 code-index recall candidate 缺少 PageIndex page id、session id、turn id 或 freshness evidence 时，projection 必须将该 candidate 记录为 unresolved 或 evidence-only，不得加入模型可见 context。
+
+#### Scenario: Semantic provider status is visible in provenance / Semantic Provider Status 在 Provenance 可见
+- **WHEN** projection materializes a PageIndex-backed semantic recall candidate
+- **THEN** node provenance and replay fingerprints include provider id, provider kind, semantic status, PageIndex page id, and freshness evidence
+- **中文** 当 projection 物化由 PageIndex 支撑的 semantic recall candidate 时，node provenance 与 replay fingerprints 必须包含 provider id、provider kind、semantic status、PageIndex page id 与 freshness evidence。

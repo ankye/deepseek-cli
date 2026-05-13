@@ -14,7 +14,7 @@ describe("code intelligence golden replay", () => {
       schemaVersion: "1.0.0",
       protocol: [],
       bus: [],
-      runtime: [{ kind: "context.projection.completed", sessionId, trace: { traceId: asId<"trace">("trace-ci-golden"), spanId: asId<"span">("span-ci-golden"), correlationId: asId<"correlation">("corr-ci-golden"), sessionId }, data: context.value ?? {} }],
+      runtime: [{ kind: "context.projection.completed", sessionId, createdAt: new Date(0).toISOString(), trace: { traceId: asId<"trace">("trace-ci-golden"), spanId: asId<"span">("span-ci-golden"), correlationId: asId<"correlation">("corr-ci-golden"), sessionId }, data: context.value ?? {} }],
       sessions: [{ sessionId, sequence: 1, kind: "code-intelligence.context", at: new Date(0).toISOString(), payload: context.value ?? {}, redaction: { class: "internal" } }],
       assertions: [{ expectedKind: "code-intelligence.context" }]
     });

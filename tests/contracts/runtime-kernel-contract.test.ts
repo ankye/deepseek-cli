@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { asId } from "@deepseek/platform-contracts";
-import type { CapabilityManifest, SessionEvent } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { ApprovalBroker, ApprovalId, ApprovalRequest, CapabilityManifest, PolicyDecision, PolicyEngine, PolicyRequest, SessionEvent } from "@deepseek/platform-contracts";
 import {
   buildExecutionEnvelope,
   collectRuntimeEvents,
@@ -142,7 +142,7 @@ describe("runtime kernel contracts", () => {
       ok: true,
       value: { envelopeId: context.envelope.invocationId }
     }));
-    const kernel = createRuntimeKernel(deps);
+    const kernel = await createDefaultRuntimeKernel(deps);
     const events = await collectRuntimeEvents(kernel.execute({
       capabilityId: manifest.id,
       caller: "contract-test",
@@ -153,6 +153,73 @@ describe("runtime kernel contracts", () => {
     assert.equal(schedulerCalls, 0);
     assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.code === "KERNEL_POLICY_DENIED"), true);
     assert.equal(events.some((event) => event.kind === "scheduler.queued"), false);
+    await kernel.shutdown();
+  });
+
+  it("routes approval-required work through broker before scheduler submission", async () => {
+    const deps = {
+      ...createDeterministicRuntimeDependencies(),
+      policy: new AskApprovalPolicyEngine()
+    };
+    let schedulerCalls = 0;
+    deps.concurrency.run = async () => {
+      schedulerCalls += 1;
+      throw new Error("should not run before approval");
+    };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const events = await collectRuntimeEvents(kernel.execute({
+      capabilityId: runtimeEchoCapability.id,
+      caller: "contract-test",
+      input: {},
+      timeoutMs: 30_000
+    }));
+
+    assert.equal(schedulerCalls, 0);
+    assert.equal(events.some((event) => event.kind === "approval.required"), true);
+    assert.equal(events.some((event) => event.kind === "approval.denied"), true);
+    assert.equal(events.some((event) => event.kind === "approval.audit-linked"), true);
+    assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.details?.reasonCode === "headless.fail_closed"), true);
+    assert.equal(events.some((event) => event.kind === "scheduler.queued"), false);
+    const denied = events.find((event) => event.kind === "approval.denied");
+    assert.equal(JSON.stringify(denied).includes("pit.headless-trust.fail-closed"), true);
+    await kernel.shutdown();
+  });
+
+  it("continues approval-required work only after an injected broker allow decision", async () => {
+    const approvals: ApprovalBroker = {
+      async requestApproval(request: ApprovalRequest) {
+        return {
+          schemaVersion: APPROVAL_SCHEMA_VERSION,
+          approvalId: request.approvalId,
+          approved: true,
+          decision: "allow",
+          source: "test",
+          reason: "approved by contract test",
+          reasonCode: "test.approved",
+          auditReference: request.auditReference,
+          trace: request.trace,
+          redaction: { class: "internal", fields: ["reason"] },
+          metadata: { referencePitFixtureIds: [] }
+        };
+      }
+    };
+    const deps = {
+      ...createDeterministicRuntimeDependencies(),
+      policy: new AskApprovalPolicyEngine(),
+      approvals
+    };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const events = await collectRuntimeEvents(kernel.execute({
+      capabilityId: runtimeEchoCapability.id,
+      caller: "contract-test",
+      input: { text: "approved" },
+      timeoutMs: 30_000
+    }));
+
+    assert.equal(events.some((event) => event.kind === "approval.required"), true);
+    assert.equal(events.some((event) => event.kind === "approval.decided"), true);
+    assert.equal(events.some((event) => event.kind === "scheduler.queued"), true);
+    assert.equal(events.some((event) => event.kind === "capability.completed"), true);
     await kernel.shutdown();
   });
 
@@ -205,3 +272,76 @@ describe("runtime kernel contracts", () => {
     await kernel.shutdown();
   });
 });
+
+class AskApprovalPolicyEngine implements PolicyEngine {
+  async decide(request: PolicyRequest): Promise<PolicyDecision> {
+    const trace = request.auditEvidence?.trace ?? {
+      traceId: asId<"trace">("trace-approval-kernel-contract"),
+      spanId: asId<"span">("span-approval-kernel-contract"),
+      correlationId: asId<"correlation">("corr-approval-kernel-contract")
+    };
+    const approval: ApprovalRequest = {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      approvalId: "approval:kernel-contract" as ApprovalId,
+      subject: request.subject,
+      action: request.action,
+      resource: request.resource,
+      metadata: request.metadata,
+      prompt: "Approve runtime echo?",
+      decisionOptions: ["allow", "deny", "cancel"],
+      summary: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        title: "Approval required",
+        subject: request.subject,
+        action: request.action,
+        resource: request.resource,
+        capability: request.resource,
+        targetKind: "capability",
+        targetLabel: request.resource,
+        riskSummaries: [{
+          schemaVersion: APPROVAL_SCHEMA_VERSION,
+          kind: "policy",
+          severity: "medium",
+          title: "Approval required",
+          detail: "Contract test requires approval before scheduling.",
+          reasonCodes: ["policy.approval.required"],
+          referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+          redaction: { class: "internal", fields: ["detail"] },
+          metadata: {}
+        }],
+        allowedDecisions: ["allow", "deny", "cancel"],
+        referencePitFixtureIds: ["pit.headless-trust.fail-closed"],
+        redaction: { class: "internal", fields: ["targetLabel"] },
+        metadata: {}
+      },
+      auditReference: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        traceId: trace.traceId,
+        correlationId: trace.correlationId,
+        policyDecision: "ask",
+        reasonCodes: ["policy.approval.required"],
+        redaction: { class: "internal", fields: ["reasonCodes"] }
+      },
+      trace,
+      compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+    };
+    return {
+      action: "ask",
+      reason: "Approval required by contract test policy",
+      audit: { policy: "ask-test" },
+      sandboxProfile: "development",
+      approvalRequest: approval,
+      approvalSummary: approval.summary,
+      approval: {
+        schemaVersion: APPROVAL_SCHEMA_VERSION,
+        kind: "approval.required",
+        approvalId: approval.approvalId,
+        trace,
+        summary: approval.summary,
+        auditReference: approval.auditReference,
+        redaction: { class: "internal" },
+        compatibility: { schemaVersion: APPROVAL_SCHEMA_VERSION }
+      }
+    };
+  }
+}

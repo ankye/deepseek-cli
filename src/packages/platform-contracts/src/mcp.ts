@@ -1,6 +1,7 @@
 import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadata, SerializableResult, TraceContext } from "./common.js";
 import type { CredentialRef, McpServerId, SessionId } from "./ids.js";
 import type { TrustStatus } from "./capability.js";
+import type { ExtensionCredentialAuthorizationEvidence, ExtensionCredentialRequirement } from "./extension-auth.js";
 
 export const MCP_SCHEMA_VERSION = "1.0.0";
 
@@ -27,6 +28,7 @@ export interface McpToolDeclaration extends JsonObject {
   readonly permissions: readonly string[];
   readonly timeoutMs?: number;
   readonly redaction?: RedactionMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
   readonly metadata?: JsonObject;
 }
 
@@ -38,6 +40,7 @@ export interface McpResourceDeclaration extends JsonObject {
   readonly permissions: readonly string[];
   readonly cachePolicy: McpResourceCachePolicy;
   readonly redaction?: RedactionMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
   readonly metadata?: JsonObject;
 }
 
@@ -46,6 +49,7 @@ export interface McpPromptDeclaration extends JsonObject {
   readonly description?: string;
   readonly argumentsSchema?: JsonObject;
   readonly redaction?: RedactionMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
   readonly metadata?: JsonObject;
 }
 
@@ -62,6 +66,7 @@ export interface McpServerManifest extends JsonObject {
   readonly timeoutMs: number;
   readonly enabled?: boolean;
   readonly credentialRef?: CredentialRef;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
   readonly tools?: readonly McpToolDeclaration[];
   readonly resources?: readonly McpResourceDeclaration[];
   readonly prompts?: readonly McpPromptDeclaration[];
@@ -88,6 +93,7 @@ export interface McpServerSummary extends JsonObject {
   readonly promptCount: number;
   readonly compatibility: CompatibilityMetadata;
   readonly redaction: RedactionMetadata;
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpToolSummary extends JsonObject {
@@ -106,6 +112,8 @@ export interface McpToolSummary extends JsonObject {
   readonly redaction: RedactionMetadata;
   readonly provenance: JsonObject;
   readonly compatibility: CompatibilityMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpResourceSummary extends JsonObject {
@@ -123,6 +131,8 @@ export interface McpResourceSummary extends JsonObject {
   readonly redaction: RedactionMetadata;
   readonly provenance: JsonObject;
   readonly compatibility: CompatibilityMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpPromptSummary extends JsonObject {
@@ -137,6 +147,8 @@ export interface McpPromptSummary extends JsonObject {
   readonly redaction: RedactionMetadata;
   readonly provenance: JsonObject;
   readonly compatibility: CompatibilityMetadata;
+  readonly credentialRequirements?: readonly ExtensionCredentialRequirement[];
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpValidationResult extends JsonObject {
@@ -199,6 +211,7 @@ export interface McpToolCallResult extends JsonObject {
   readonly audit: JsonObject;
   readonly compatibility: CompatibilityMetadata;
   readonly replayFingerprint: string;
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpResourceReadResult extends JsonObject {
@@ -224,6 +237,7 @@ export interface McpResourceReadResult extends JsonObject {
   readonly audit: JsonObject;
   readonly compatibility: CompatibilityMetadata;
   readonly replayFingerprint: string;
+  readonly auth?: ExtensionCredentialAuthorizationEvidence;
 }
 
 export interface McpHandlerContext extends JsonObject {

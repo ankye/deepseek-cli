@@ -7,166 +7,166 @@ TAP version 13
     # Subtest: rejects stale restores consistently across writable fake platforms
     ok 1 - rejects stale restores consistently across writable fake platforms
       ---
-      duration_ms: 4.8575
+      duration_ms: 2.5409
       type: 'test'
       ...
     1..1
 ok 1 - checkpoint undo platform matrix
   ---
-  duration_ms: 5.829
+  duration_ms: 3.0884
   type: 'suite'
   ...
 # Subtest: code intelligence platform matrix
     # Subtest: indexes supported files without live IDE dependencies across fake platforms
     ok 1 - indexes supported files without live IDE dependencies across fake platforms
       ---
-      duration_ms: 5.929
+      duration_ms: 3.2884
       type: 'test'
       ...
     1..1
 ok 2 - code intelligence platform matrix
   ---
-  duration_ms: 6.876
+  duration_ms: 3.8205
   type: 'suite'
   ...
 # Subtest: context projection matrix
     # Subtest: covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
     ok 1 - covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
       ---
-      duration_ms: 6.5746
+      duration_ms: 4.3754
       type: 'test'
       ...
     1..1
 ok 3 - context projection matrix
   ---
-  duration_ms: 7.8439
+  duration_ms: 5.3785
   type: 'suite'
   ...
 # Subtest: fake platform matrix
     # Subtest: covers macOS, Windows, Linux, WSL, CI, and remote host modes
     ok 1 - covers macOS, Windows, Linux, WSL, CI, and remote host modes
       ---
-      duration_ms: 3.4158
+      duration_ms: 1.9299
       type: 'test'
       ...
     # Subtest: covers config paths, workspace metadata paths, and atomic write behavior
     ok 2 - covers config paths, workspace metadata paths, and atomic write behavior
       ---
-      duration_ms: 1.8954
+      duration_ms: 1.0946
       type: 'test'
       ...
     # Subtest: covers path rejection, WSL translation, search fallback, and unavailable providers
     ok 3 - covers path rejection, WSL translation, search fallback, and unavailable providers
       ---
-      duration_ms: 0.7584
+      duration_ms: 0.4443
       type: 'test'
       ...
     # Subtest: covers core tool path, search, process, and output bounding behavior across the fake matrix
     ok 4 - covers core tool path, search, process, and output bounding behavior across the fake matrix
       ---
-      duration_ms: 18.7161
+      duration_ms: 13.7206
       type: 'test'
       ...
     1..4
 ok 4 - fake platform matrix
   ---
-  duration_ms: 25.8573
+  duration_ms: 17.9007
   type: 'suite'
   ...
 # Subtest: hook system matrix
     # Subtest: covers trust, disabled, malformed, ordering, timeout, and failure policies
     ok 1 - covers trust, disabled, malformed, ordering, timeout, and failure policies
       ---
-      duration_ms: 15.7613
+      duration_ms: 5.6651
       type: 'test'
       ...
     1..1
 ok 5 - hook system matrix
   ---
-  duration_ms: 17.4991
+  duration_ms: 6.5266
   type: 'suite'
   ...
 # Subtest: live-agent-tool-execution preflight matrix
     # Subtest: rejects parent traversal on every platform
     ok 1 - rejects parent traversal on every platform
       ---
-      duration_ms: 2.4025
+      duration_ms: 1.2858
       type: 'test'
       ...
     # Subtest: rejects null bytes on every platform
     ok 2 - rejects null bytes on every platform
       ---
-      duration_ms: 0.6701
+      duration_ms: 0.3809
       type: 'test'
       ...
     # Subtest: rejects absolute paths on every platform
     ok 3 - rejects absolute paths on every platform
       ---
-      duration_ms: 0.4957
+      duration_ms: 0.3588
       type: 'test'
       ...
     # Subtest: normalises mixed separators into the platform-native shape without rejecting
     ok 4 - normalises mixed separators into the platform-native shape without rejecting
       ---
-      duration_ms: 1.797
+      duration_ms: 1.0353
       type: 'test'
       ...
     1..4
 ok 6 - live-agent-tool-execution preflight matrix
   ---
-  duration_ms: 7.3382
+  duration_ms: 3.9125
   type: 'suite'
   ...
 # Subtest: MCP gateway matrix
     # Subtest: covers trust, disabled, malformed, transport, target, timeout, and redaction modes
     ok 1 - covers trust, disabled, malformed, transport, target, timeout, and redaction modes
       ---
-      duration_ms: 22.0343
+      duration_ms: 14.8496
       type: 'test'
       ...
     1..1
 ok 7 - MCP gateway matrix
   ---
-  duration_ms: 23.4424
+  duration_ms: 15.6947
   type: 'suite'
   ...
 # Subtest: observability privacy matrix
     # Subtest: covers deterministic privacy modes
     ok 1 - covers deterministic privacy modes
       ---
-      duration_ms: 4.9234
+      duration_ms: 2.1941
       type: 'test'
       ...
     1..1
 ok 8 - observability privacy matrix
   ---
-  duration_ms: 6.1034
+  duration_ms: 2.7043
   type: 'suite'
   ...
 # Subtest: secret sandbox platform matrix
     # Subtest: covers deterministic sandbox decisions across fake platform modes
     ok 1 - covers deterministic sandbox decisions across fake platform modes
       ---
-      duration_ms: 4.7136
+      duration_ms: 3.2346
       type: 'test'
       ...
     1..1
 ok 9 - secret sandbox platform matrix
   ---
-  duration_ms: 5.5334
+  duration_ms: 3.7448
   type: 'suite'
   ...
 # Subtest: skill system matrix
     # Subtest: covers trust, disabled, malformed, summary, activation, and projection modes
     ok 1 - covers trust, disabled, malformed, summary, activation, and projection modes
       ---
-      duration_ms: 3.0988
+      duration_ms: 1.8782
       type: 'test'
       ...
     1..1
 ok 10 - skill system matrix
   ---
-  duration_ms: 3.9894
+  duration_ms: 2.4081
   type: 'suite'
   ...
 1..10
@@ -177,4 +177,4 @@ ok 10 - skill system matrix
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 925.2406
+# duration_ms 411.3557

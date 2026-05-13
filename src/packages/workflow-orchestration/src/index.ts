@@ -17,6 +17,8 @@ import type {
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 
+const DETERMINISTIC_EVENT_CREATED_AT = new Date(0).toISOString();
+
 export interface WorkflowTemplate {
   readonly name: string;
   readonly version: string;
@@ -60,6 +62,7 @@ export class SingleTurnWorkflowOrchestrator implements WorkflowOrchestrator {
       sessionId: invocation.sessionId,
       taskId: invocation.taskId,
       ...(invocation.ownerAgentId ? { agentId: invocation.ownerAgentId } : {}),
+      createdAt: DETERMINISTIC_EVENT_CREATED_AT,
       trace: this.trace(invocation.sessionId, invocation.workflowId),
       data: {
         workflowId: invocation.workflowId,
@@ -91,6 +94,7 @@ export class SingleTurnWorkflowOrchestrator implements WorkflowOrchestrator {
       kind: "workflow.step",
       sessionId: request.sessionId,
       taskId: graph.taskId,
+      createdAt: DETERMINISTIC_EVENT_CREATED_AT,
       trace: {
         traceId: asId<"trace">(`trace-${graph.id}`),
         spanId: asId<"span">(`span-${graph.id}`),

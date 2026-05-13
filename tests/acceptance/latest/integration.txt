@@ -3,267 +3,374 @@
 > tsx --test "tests/integration/**/*.test.ts"
 
 TAP version 13
+# Subtest: chat SIGINT cancellation
+    # Subtest: first SIGINT cancels active turn and leaves REPL alive
+    ok 1 - first SIGINT cancels active turn and leaves REPL alive
+      ---
+      duration_ms: 40.4308
+      type: 'test'
+      ...
+    # Subtest: /cancel on idle prints nothing-to-cancel notice
+    ok 2 - /cancel on idle prints nothing-to-cancel notice
+      ---
+      duration_ms: 3.425
+      type: 'test'
+      ...
+    # Subtest: agent.loop.cancelled is emitted when runtime receives aborted signal
+    ok 3 - agent.loop.cancelled is emitted when runtime receives aborted signal
+      ---
+      duration_ms: 24.9332
+      type: 'test'
+      ...
+    1..3
+ok 1 - chat SIGINT cancellation
+  ---
+  duration_ms: 70.1919
+  type: 'suite'
+  ...
 # Subtest: checkpoint undo runtime integration
     # Subtest: records checkpoint evidence for governed edits and supports undo through workspace state
     ok 1 - records checkpoint evidence for governed edits and supports undo through workspace state
       ---
-      duration_ms: 28.6804
+      duration_ms: 19.5647
       type: 'test'
       ...
     1..1
-ok 1 - checkpoint undo runtime integration
+ok 2 - checkpoint undo runtime integration
   ---
-  duration_ms: 30.0845
+  duration_ms: 20.4113
   type: 'suite'
   ...
 # Subtest: code intelligence context integration
     # Subtest: feeds diagnostic context nodes into context projection
     ok 1 - feeds diagnostic context nodes into context projection
       ---
-      duration_ms: 8.4234
+      duration_ms: 6.486
       type: 'test'
       ...
-    1..1
-ok 2 - code intelligence context integration
+    # Subtest: auto-enriches projection from workspace file without a manual contextNodes call
+    ok 2 - auto-enriches projection from workspace file without a manual contextNodes call
+      ---
+      duration_ms: 1.0202
+      type: 'test'
+      ...
+    1..2
+ok 3 - code intelligence context integration
   ---
-  duration_ms: 9.8208
+  duration_ms: 8.6179
   type: 'suite'
   ...
 # Subtest: context projection runtime integration
     # Subtest: projects context before kernel-backed execution
     ok 1 - projects context before kernel-backed execution
       ---
-      duration_ms: 26.4867
+      duration_ms: 18.8931
       type: 'test'
       ...
     # Subtest: fails closed before kernel execution when projection exceeds hard budget
     ok 2 - fails closed before kernel execution when projection exceeds hard budget
       ---
-      duration_ms: 2.2754
+      duration_ms: 1.4394
       type: 'test'
       ...
     1..2
-ok 3 - context projection runtime integration
+ok 4 - context projection runtime integration
   ---
-  duration_ms: 30.2925
+  duration_ms: 21.4064
   type: 'suite'
   ...
 # Subtest: core coding tools runtime integration
     # Subtest: executes the minimal read-edit-test loop through governed runtime events
     ok 1 - executes the minimal read-edit-test loop through governed runtime events
       ---
-      duration_ms: 51.309
+      duration_ms: 35.3178
       type: 'test'
       ...
     # Subtest: prevents denied write tools from reaching scheduler
     ok 2 - prevents denied write tools from reaching scheduler
       ---
-      duration_ms: 9.5775
+      duration_ms: 7.7581
       type: 'test'
       ...
     1..2
-ok 4 - core coding tools runtime integration
+ok 5 - core coding tools runtime integration
   ---
-  duration_ms: 62.4608
+  duration_ms: 44.2064
   type: 'suite'
   ...
 # Subtest: ecosystem and governance integration
     # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
     ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
       ---
-      duration_ms: 10.6861
+      duration_ms: 18.8362
       type: 'test'
       ...
     # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
     ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
       ---
-      duration_ms: 6.2435
+      duration_ms: 3.8562
       type: 'test'
       ...
     1..2
-ok 5 - ecosystem and governance integration
+ok 6 - ecosystem and governance integration
   ---
-  duration_ms: 18.5605
+  duration_ms: 23.6444
+  type: 'suite'
+  ...
+# Subtest: edit invalidation flushes code-intelligence index
+    # Subtest: write → diagnostics(v1); edit → diagnostics(v2) reflects the new content
+    ok 1 - write → diagnostics(v1); edit → diagnostics(v2) reflects the new content
+      ---
+      duration_ms: 23.5223
+      type: 'test'
+      ...
+    1..1
+ok 7 - edit invalidation flushes code-intelligence index
+  ---
+  duration_ms: 24.3111
   type: 'suite'
   ...
 # Subtest: hook system integration
     # Subtest: records observe-only hook evidence without mutating owner subsystems
     ok 1 - records observe-only hook evidence without mutating owner subsystems
       ---
-      duration_ms: 8.9479
+      duration_ms: 6.8155
       type: 'test'
       ...
     1..1
-ok 6 - hook system integration
+ok 8 - hook system integration
   ---
-  duration_ms: 10.297
+  duration_ms: 7.7495
+  type: 'suite'
+  ...
+# Subtest: CLI loads user hooks from .deepseek/hooks.json
+    # Subtest: registers a user hook defined in .deepseek/hooks.json and invokes it during a run
+    ok 1 - registers a user hook defined in .deepseek/hooks.json and invokes it during a run
+      ---
+      duration_ms: 126.7912
+      type: 'test'
+      ...
+    # Subtest: ignores missing .deepseek/hooks.json silently
+    ok 2 - ignores missing .deepseek/hooks.json silently
+      ---
+      duration_ms: 5.5309
+      type: 'test'
+      ...
+    1..2
+ok 9 - CLI loads user hooks from .deepseek/hooks.json
+  ---
+  duration_ms: 133.8424
   type: 'suite'
   ...
 # Subtest: live CLI dependency factory resolves against real filesystem
     # Subtest: core.file.read resolves a fixture file through the real NodePlatformRuntime
     ok 1 - core.file.read resolves a fixture file through the real NodePlatformRuntime
       ---
-      duration_ms: 38.8098
+      duration_ms: 103.3921
       type: 'test'
       ...
     # Subtest: returns a dependency bundle whose platform is a real NodePlatformRuntime
     ok 2 - returns a dependency bundle whose platform is a real NodePlatformRuntime
       ---
-      duration_ms: 0.2963
+      duration_ms: 3.4103
       type: 'test'
       ...
     # Subtest: leaves deterministic dependencies in place for non-platform concerns
     ok 3 - leaves deterministic dependencies in place for non-platform concerns
       ---
-      duration_ms: 0.1779
+      duration_ms: 3.3042
       type: 'test'
       ...
     1..3
-ok 7 - live CLI dependency factory resolves against real filesystem
+ok 10 - live CLI dependency factory resolves against real filesystem
   ---
-  duration_ms: 40.6305
+  duration_ms: 111.0225
   type: 'suite'
   ...
 # Subtest: MCP gateway integration
     # Subtest: records governed MCP evidence without mutating owner subsystems
     ok 1 - records governed MCP evidence without mutating owner subsystems
       ---
-      duration_ms: 7.8481
+      duration_ms: 13.7202
       type: 'test'
       ...
     1..1
-ok 8 - MCP gateway integration
+ok 11 - MCP gateway integration
   ---
-  duration_ms: 9.1679
+  duration_ms: 15.7163
+  type: 'suite'
+  ...
+# Subtest: MCP real transport opt-in
+    # Subtest: fails closed without --enable-real-mcp
+    ok 1 - fails closed without --enable-real-mcp
+      ---
+      duration_ms: 8.3631
+      type: 'test'
+      ...
+    # Subtest: connects and calls the echo tool with --enable-real-mcp
+    ok 2 - connects and calls the echo tool with --enable-real-mcp
+      ---
+      duration_ms: 49.2921
+      type: 'test'
+      ...
+    1..2
+ok 12 - MCP real transport opt-in
+  ---
+  duration_ms: 58.7589
   type: 'suite'
   ...
 # Subtest: minimal chat CLI runtime integration
     # Subtest: renders scripted chat prompts from the runtime-owned agent loop
     ok 1 - renders scripted chat prompts from the runtime-owned agent loop
       ---
-      duration_ms: 14.6972
+      duration_ms: 15.4673
       type: 'test'
       ...
     1..1
-ok 9 - minimal chat CLI runtime integration
+ok 13 - minimal chat CLI runtime integration
   ---
-  duration_ms: 15.9251
+  duration_ms: 16.2861
   type: 'suite'
   ...
 # Subtest: observability privacy runtime integration
     # Subtest: captures runtime events as redacted canonical diagnostic evidence
     ok 1 - captures runtime events as redacted canonical diagnostic evidence
       ---
-      duration_ms: 24.3407
+      duration_ms: 19.474
       type: 'test'
       ...
     1..1
-ok 10 - observability privacy runtime integration
+ok 14 - observability privacy runtime integration
   ---
-  duration_ms: 25.6501
+  duration_ms: 20.3126
   type: 'suite'
   ...
 # Subtest: provider tool intent preflight integration
     # Subtest: repairs normalized provider tool-call paths before governed execution
     ok 1 - repairs normalized provider tool-call paths before governed execution
       ---
-      duration_ms: 5.4272
+      duration_ms: 3.1378
       type: 'test'
       ...
     1..1
-ok 11 - provider tool intent preflight integration
+ok 15 - provider tool intent preflight integration
   ---
-  duration_ms: 6.684
+  duration_ms: 3.999
   type: 'suite'
   ...
 # Subtest: runtime integration pipeline
     # Subtest: records bus, session, and observability state for a kernel-backed turn
     ok 1 - records bus, session, and observability state for a kernel-backed turn
       ---
-      duration_ms: 22.7427
+      duration_ms: 15.2045
       type: 'test'
       ...
     # Subtest: connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
     ok 2 - connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
       ---
-      duration_ms: 9.7586
+      duration_ms: 5.0596
       type: 'test'
       ...
     # Subtest: streams scheduler timeout events through kernel.execute and closes workflow once
     ok 3 - streams scheduler timeout events through kernel.execute and closes workflow once
       ---
-      duration_ms: 11.9296
+      duration_ms: 10.9038
       type: 'test'
       ...
     1..3
-ok 12 - runtime integration pipeline
+ok 16 - runtime integration pipeline
   ---
-  duration_ms: 45.9439
+  duration_ms: 32.2408
   type: 'suite'
   ...
 # Subtest: secret sandbox policy runtime integration
     # Subtest: rewrites raw secret input before scheduler execution
     ok 1 - rewrites raw secret input before scheduler execution
       ---
-      duration_ms: 17.4845
+      duration_ms: 11.0975
       type: 'test'
       ...
     # Subtest: denies read-only filesystem writes before scheduler execution
     ok 2 - denies read-only filesystem writes before scheduler execution
       ---
-      duration_ms: 8.7407
+      duration_ms: 9.3355
       type: 'test'
       ...
     # Subtest: passes process test metadata through policy, scheduler, sandbox, bus, and session events
     ok 3 - passes process test metadata through policy, scheduler, sandbox, bus, and session events
       ---
-      duration_ms: 10.6262
+      duration_ms: 8.2577
       type: 'test'
       ...
     1..3
-ok 13 - secret sandbox policy runtime integration
+ok 17 - secret sandbox policy runtime integration
   ---
-  duration_ms: 38.4161
+  duration_ms: 29.6558
+  type: 'suite'
+  ...
+# Subtest: session persistence across CLI invocations
+    # Subtest: resumes a session written by a prior CLI run from the same persistent directory
+    ok 1 - resumes a session written by a prior CLI run from the same persistent directory
+      ---
+      duration_ms: 48.2492
+      type: 'test'
+      ...
+    # Subtest: emits a resume hint in text output after a one-shot run
+    ok 2 - emits a resume hint in text output after a one-shot run
+      ---
+      duration_ms: 3.351
+      type: 'test'
+      ...
+    # Subtest: includes resumeCommand in JSON one-shot summary
+    ok 3 - includes resumeCommand in JSON one-shot summary
+      ---
+      duration_ms: 2.7849
+      type: 'test'
+      ...
+    1..3
+ok 18 - session persistence across CLI invocations
+  ---
+  duration_ms: 55.3832
   type: 'suite'
   ...
 # Subtest: session resume and fork runtime integration
     # Subtest: appends resumed turns to the selected session id
     ok 1 - appends resumed turns to the selected session id
       ---
-      duration_ms: 14.3037
+      duration_ms: 12.7396
       type: 'test'
       ...
     # Subtest: executes forked child sessions through the governed kernel path
     ok 2 - executes forked child sessions through the governed kernel path
       ---
-      duration_ms: 15.4898
+      duration_ms: 7.5402
       type: 'test'
       ...
     1..2
-ok 14 - session resume and fork runtime integration
+ok 19 - session resume and fork runtime integration
   ---
-  duration_ms: 31.1996
+  duration_ms: 20.934
   type: 'suite'
   ...
 # Subtest: skill context projection integration
     # Subtest: feeds trusted skill context nodes into the context engine
     ok 1 - feeds trusted skill context nodes into the context engine
       ---
-      duration_ms: 6.3467
+      duration_ms: 4.2217
       type: 'test'
       ...
     1..1
-ok 15 - skill context projection integration
+ok 20 - skill context projection integration
   ---
-  duration_ms: 7.5332
+  duration_ms: 4.9589
   type: 'suite'
   ...
-1..15
-# tests 25
-# suites 15
-# pass 25
+1..20
+# tests 37
+# suites 20
+# pass 37
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 1623.1972
+# duration_ms 915.9937

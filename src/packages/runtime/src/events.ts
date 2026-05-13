@@ -9,6 +9,8 @@ import type {
 import { redactJsonSecrets } from "@deepseek/policy-sandbox";
 import { stableHash } from "./trace.js";
 
+const DETERMINISTIC_EVENT_CREATED_AT = new Date(0).toISOString();
+
 export async function collectRuntimeEvents(iterable: AsyncIterable<RuntimeEvent>): Promise<readonly RuntimeEvent[]> {
   const events: RuntimeEvent[] = [];
   for await (const event of iterable) {
@@ -37,6 +39,7 @@ export function projectionRuntimeEvent(
     kind,
     sessionId,
     ...(agentId ? { agentId } : {}),
+    createdAt: DETERMINISTIC_EVENT_CREATED_AT,
     trace,
     data: redactJsonSecrets(data) as JsonObject,
     ...(error ? { error } : {})
@@ -57,6 +60,7 @@ export function agentLoopEvent(
     sessionId,
     turnId,
     ...(agentId ? { agentId } : {}),
+    createdAt: DETERMINISTIC_EVENT_CREATED_AT,
     trace,
     data: redactJsonSecrets(data) as JsonObject,
     ...(error ? { error } : {})
@@ -69,7 +73,7 @@ export async function recordRuntimeAdapterEvent(deps: RuntimeDependencies, event
     sessionId: event.sessionId,
     sequence: events.length + 1,
     kind: event.kind,
-    at: new Date(0).toISOString(),
+    at: event.createdAt,
     payload: event.data,
     redaction: { class: "internal" }
   });
@@ -78,7 +82,7 @@ export async function recordRuntimeAdapterEvent(deps: RuntimeDependencies, event
     schemaVersion: "1.0.0",
     id: `bus-${stableHash(`${event.kind}:${event.sessionId}:${events.length + 1}`)}`,
     type: "event",
-    createdAt: new Date(0).toISOString(),
+    createdAt: event.createdAt,
     trace: event.trace,
     redaction: { class: "internal" },
     compatibility: { schemaVersion: "1.0.0" },
@@ -95,7 +99,7 @@ export async function recordRuntimeAdapterEvent(deps: RuntimeDependencies, event
   });
   await deps.observability.emit({
     kind: event.kind === "context.projection.rejected" ? "audit" : "trace",
-    at: new Date(0).toISOString(),
+    at: event.createdAt,
     name: event.kind,
     fields: event.data
   });
