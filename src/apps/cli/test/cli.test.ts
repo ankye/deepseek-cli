@@ -2617,6 +2617,7 @@ describe("cli host adapter", () => {
     const summary = await collectCliEvaluation({
       mode: "smoke",
       dryRun: true,
+      live: false,
       baselineId: "codex",
       compareBaselineIds: [],
       allowExternalBaseline: true,
@@ -2643,6 +2644,7 @@ describe("cli host adapter", () => {
     const summary = await collectCliEvaluation({
       mode: "full",
       dryRun: false,
+      live: false,
       baselineId: "codex",
       compareBaselineIds: ["codex"],
       allowExternalBaseline: true,
@@ -2701,6 +2703,7 @@ describe("cli host adapter", () => {
     const summary = await collectCliEvaluation({
       mode: "full",
       dryRun: false,
+      live: false,
       baselineId: "deepseek-cli",
       compareBaselineIds: ["deepseek-cli"],
       allowExternalBaseline: false,
@@ -2720,6 +2723,97 @@ describe("cli host adapter", () => {
     assert.equal(webpageRun?.metrics.promptAssemblyVisibleToolCount, 4);
     assert.equal(webpageRun?.metrics.promptAssemblyGapReason, "post-assembly-model-failure");
     assert.equal(webpageRun?.diagnostics.some((item) => item.code === "CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING"), false);
+  });
+
+  it("propagates opt-in live DeepSeek webpage execution with write-capable tool projection", async () => {
+    const platform = new FakeWebpageAgentPlatform();
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      live: true,
+      baselineId: "deepseek-cli",
+      compareBaselineIds: ["deepseek-cli"],
+      allowExternalBaseline: false,
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const deepseekCommand = platform.executedCommands.find((command) => command.command === process.execPath);
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+
+    assert.equal(webpageRun?.outcome, "solved");
+    assert.equal(deepseekCommand?.args.includes("--live"), true);
+    assert.equal(deepseekCommand?.args.includes("--tool-projection"), true);
+    assert.equal(deepseekCommand?.args.includes("read-write"), true);
+    assert.equal(deepseekCommand?.args.includes("--timeout-ms"), true);
+    assert.equal(deepseekCommand?.args.some((arg) => arg.includes("Use the available local file tools to write the files")), true);
+    assert.equal(JSON.stringify(summary).includes("DEEPSEEK_API_KEY"), false);
+  });
+
+  it("passes live DeepSeek credentials from a local env file to the isolated child process without logging the secret", async () => {
+    await withTempCwd("deepseek-cli-eval-env-", async () => {
+      await writeFile(".env", "DEEPSEEK_API_KEY=fixture-eval-secret\n", "utf8");
+      await mkdir("tests/evaluation", { recursive: true });
+      await writeFile("tests/evaluation/task-catalog.json", JSON.stringify({
+        catalogVersion: "test-catalog",
+        tasks: [{
+          taskId: "eval.webpage.generation",
+          title: "Generate webpage",
+          category: "webpage-generation",
+          fixtureId: "fixture.web",
+          workspaceSnapshotId: "snapshot.web",
+          promptDigest: "sha256:web",
+          promptSummary: "Create local webpage files.",
+          allowedCapabilityProfile: "local-create-web-assets",
+          timeBudgetMs: 1000,
+          checkCommands: ["node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"],
+          scoringRubricId: "rubric.web",
+          mode: "full"
+        }]
+      }), "utf8");
+      const platform = new FakeWebpageAgentPlatform();
+      const summary = await collectCliEvaluation({
+        mode: "full",
+        dryRun: false,
+        live: true,
+        baselineId: "deepseek-cli",
+        compareBaselineIds: ["deepseek-cli"],
+        allowExternalBaseline: false,
+        baselineArgs: [],
+        executeTaskId: "eval.webpage.generation",
+        extraArgs: [],
+        platform
+      });
+      const deepseekCommand = platform.executedCommands.find((command) => command.command === process.execPath);
+
+      assert.equal(deepseekCommand?.env?.DEEPSEEK_API_KEY, "fixture-eval-secret");
+      assert.equal(JSON.stringify(summary).includes("fixture-eval-secret"), false);
+    });
+  });
+
+  it("accepts diagnostics evaluate --live without unsupported-argument diagnostics", async () => {
+    const lines: string[] = [];
+    await runCli([
+      "diagnostics",
+      "evaluate",
+      "--live",
+      "--full",
+      "--dry-run",
+      "--compare-baseline",
+      "deepseek-cli",
+      "--output",
+      "json"
+    ], (line: string) => {
+      lines.push(line);
+    });
+    const parsed = JSON.parse(lines[0] ?? "{}") as {
+      status?: string;
+      evaluation?: { diagnostics?: readonly { code?: string }[] };
+    };
+
+    assert.equal(parsed.status, "pass");
+    assert.equal(parsed.evaluation?.diagnostics?.some((item) => item.code === "CLI_EVALUATION_INVALID_ARGS"), false);
   });
 
   it("renders diagnostics verify blockers as JSONL", async () => {
@@ -3276,9 +3370,11 @@ function requestUserMessage(request: ModelRequest | undefined, content: string) 
 
 class FakeWebpageAgentPlatform extends NodePlatformRuntime {
   readonly executedWorkspaces: string[] = [];
+  readonly executedCommands: { readonly command: string; readonly args: readonly string[]; readonly cwd: string; readonly env?: JsonObject }[] = [];
 
   override async runProcess(command: string, args: readonly string[], options: JsonObject = {}): Promise<ProcessResult> {
     const cwd = typeof options.cwd === "string" ? options.cwd : process.cwd();
+    this.executedCommands.push({ command, args: [...args], cwd, ...(isJsonObject(options.env) ? { env: options.env } : {}) });
     if (command === "fake-web-agent" && args[0] === "--version") {
       return {
         exitCode: 0,
@@ -3355,6 +3451,10 @@ function hashTextForTest(value: string): string {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function withTempCwd<T>(prefix: string, run: () => Promise<T>): Promise<T> {

@@ -1,4 +1,5 @@
 import { extname, join } from "node:path";
+import { deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
 import type {
   CliEvaluationBaselineAggregate,
   CliEvaluationBaselineDefinition,
@@ -17,6 +18,7 @@ import type {
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
+import { webpageTaskPrompt } from "./webpage-task.js";
 
 interface CatalogFile extends JsonObject {
   readonly catalogVersion?: string;
@@ -41,6 +43,7 @@ interface EvaluationEventRecorder {
 export interface CliEvaluationOptions {
   readonly mode: CliEvaluationMode;
   readonly dryRun: boolean;
+  readonly live: boolean;
   readonly baselineId: string;
   readonly compareBaselineIds: readonly string[];
   readonly allowExternalBaseline: boolean;
@@ -293,7 +296,7 @@ async function executeWebpageTask(
   events.record("prompt_written", { path: platform.resolvePath(workspaceRoot, "TASK.md") });
 
   const started = Date.now();
-  const command = baselineCommandForExecution(baseline.baselineId, options, workspaceRoot, webpageTaskPrompt(task));
+  const command = await baselineCommandForExecution(platform, baseline.baselineId, options, workspaceRoot, webpageTaskPrompt(task));
   if (!command) {
     return {
       ...plannedRun(task, baseline, false),
@@ -308,7 +311,11 @@ async function executeWebpageTask(
 
   events.record("prompt_sent", { adapter: baseline.baselineId });
   events.record("command_started", { command: command.command, argCount: command.args.length });
-  const runResult = await platform.runProcess(command.command, command.args, { cwd: workspaceRoot, timeoutMs: task.timeBudgetMs });
+  const runResult = await platform.runProcess(command.command, command.args, {
+    cwd: workspaceRoot,
+    timeoutMs: task.timeBudgetMs,
+    ...(command.env ? { env: command.env } : {})
+  });
   events.record("command_finished", { exitCode: runResult.exitCode, stdoutBytes: byteLength(runResult.stdout), stderrBytes: byteLength(runResult.stderr) });
   const promptAssembly = baseline.baselineId === "deepseek-cli" ? promptAssemblyMetricsFromJsonl(runResult.stdout) : { available: false, gapReason: "not-applicable" as const };
   const checkCommand = task.checkCommands[0] ?? "node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage";
@@ -407,25 +414,33 @@ async function executeWebpageTask(
   };
 }
 
-function baselineCommandForExecution(
+async function baselineCommandForExecution(
+  platform: PlatformRuntime,
   baselineId: string,
   options: CliEvaluationOptions,
   workspaceRoot: string,
   prompt: string
-): { readonly command: string; readonly args: readonly string[] } | undefined {
+): Promise<{ readonly command: string; readonly args: readonly string[]; readonly env?: JsonObject } | undefined> {
   if (baselineId === "deepseek-cli") {
+    const args = [
+      join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
+      "--tsconfig",
+      join(process.cwd(), "tsconfig.json"),
+      join(process.cwd(), "src/apps/cli/src/index.ts"),
+      "run",
+      prompt,
+      "--output",
+      "jsonl",
+      "--timeout-ms",
+      String(15 * 60 * 1000)
+    ];
+    if (options.live) {
+      args.push("--live", "--tool-projection", "read-write");
+    }
     return {
       command: process.execPath,
-      args: [
-        join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
-        "--tsconfig",
-        join(process.cwd(), "tsconfig.json"),
-        join(process.cwd(), "src/apps/cli/src/index.ts"),
-        "run",
-        prompt,
-        "--output",
-        "jsonl"
-      ]
+      args,
+      ...(options.live ? { env: await liveCredentialEnv(platform) } : {})
     };
   }
   if (baselineId === "codex") {
@@ -466,23 +481,8 @@ function baselineCommandForExecution(
   return undefined;
 }
 
-function webpageTaskPrompt(task: CliEvaluationTaskDefinition): string {
-  return [
-    "Create a polished responsive product webpage for a developer CLI evaluation.",
-    "",
-    "Write all artifacts under ./generated-webpage in the current working directory.",
-    "Required files and behavior:",
-    "- Include a local HTML entry, preferably generated-webpage/index.html.",
-    "- Include viewport metadata.",
-    "- Include local CSS via a .css file or inline style.",
-    "- Include local JavaScript or an interaction hook such as a button, form, or event listener.",
-    "- Include accessible structure such as h1, main, aria-label, or role=\"main\".",
-    "- Do not use remote scripts, CDN URLs, external fonts, image hotlinks, or network dependencies.",
-    "- Keep the code maintainable; prefer separate HTML, CSS, and JS files over dumping everything into one file.",
-    "",
-    `Task id: ${task.taskId}`,
-    `Prompt summary: ${task.promptSummary}`
-  ].join("\n");
+async function liveCredentialEnv(platform: PlatformRuntime): Promise<JsonObject> {
+  return Object.fromEntries(Object.entries(await deepSeekLiveCredentialProcessEnv(platform)).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0));
 }
 
 async function isolatedWorkspaceRoot(platform: PlatformRuntime, runId: string): Promise<string> {

@@ -1,4 +1,4 @@
-import type { BackgroundTaskManager, BackgroundTaskOutput, BackgroundTaskSummary, ModelCredentialProvider, ModelProviderTransport, RuntimeDependencies } from "@deepseek/platform-contracts";
+import type { BackgroundTaskManager, BackgroundTaskOutput, BackgroundTaskSummary, ModelCredentialProvider, ModelProviderTransport, PolicyDecision, PolicyEngine, PolicyRequest, RuntimeDependencies } from "@deepseek/platform-contracts";
 import { InMemoryAgentManager } from "@deepseek/agent-management";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
@@ -26,7 +26,7 @@ import { InMemoryCacheManager, InMemoryMemoryManager } from "@deepseek/memory-ca
 import { DeterministicMockModelGateway } from "@deepseek/model-gateway";
 import { DeterministicToolIntentPreflight } from "@deepseek/tool-intent-preflight";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
-import { DefaultPolicyEngine, DevelopmentSandboxRuntime, HeadlessApprovalBroker } from "@deepseek/policy-sandbox";
+import { DefaultPolicyEngine, DevelopmentSandboxRuntime, HeadlessApprovalBroker, selectSandboxDecision } from "@deepseek/policy-sandbox";
 import { createDefaultPromptAssembler } from "@deepseek/prompt-assembly";
 import { InMemoryRuntimeMessageBus } from "@deepseek/runtime-message-bus";
 import { InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
@@ -166,6 +166,7 @@ export interface LiveCliDependencyOptions {
   readonly transport?: ModelProviderTransport;
   readonly timeoutMs?: number;
   readonly sessionsDirectory?: string;
+  readonly allowWorkspaceWrites?: boolean;
 }
 
 export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}): RuntimeDependencies {
@@ -191,7 +192,29 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
     workspaceState: new InMemoryWorkspaceStateManager(platform),
     codeIntelligence: new DeterministicCodeIntelligenceService(platform),
     models: new DeepSeekOpenAIProvider(modelOptions),
+    policy: options.allowWorkspaceWrites ? new WorkspaceWritePolicyEngine() : base.policy,
     sessions,
     backgroundTasks: new NodeBackgroundTaskManager()
   };
+}
+
+class WorkspaceWritePolicyEngine implements PolicyEngine {
+  private readonly fallback = new DefaultPolicyEngine();
+
+  async decide(request: PolicyRequest): Promise<PolicyDecision> {
+    if (request.metadata.sideEffect === "write" && request.resourceScope?.kind === "filesystem") {
+      const sandbox = selectSandboxDecision(request);
+      if (sandbox.action !== "allow") return this.fallback.decide(request);
+      return {
+        action: "allow",
+        reason: "Live CLI policy allows workspace-scoped file writes.",
+        audit: request.auditEvidence ?? { policy: "live-cli-workspace-write" },
+        sandboxProfile: sandbox.profile,
+        sandbox: { ...sandbox, reasonCodes: [...sandbox.reasonCodes, "policy.live-cli.workspace-write.allow"] },
+        ...(request.secret ? { secret: request.secret } : {}),
+        ...(request.auditEvidence ? { auditEvidence: request.auditEvidence } : {})
+      };
+    }
+    return this.fallback.decide(request);
+  }
 }

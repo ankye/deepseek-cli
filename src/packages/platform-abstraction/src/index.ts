@@ -441,8 +441,10 @@ export class NodePlatformRuntime implements PlatformRuntime {
       };
     }
     return new Promise((resolvePromise) => {
+      const scopedEnv = isStringRecord(options.env) ? options.env : {};
       const child = spawn(command, [...args], {
         cwd: typeof options.cwd === "string" ? options.cwd : undefined,
+        env: Object.keys(scopedEnv).length > 0 ? { ...process.env, ...scopedEnv } : process.env,
         shell: false
       });
       const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : undefined;
@@ -985,6 +987,10 @@ function providerMetadata(
     diagnostics,
     redaction: { class: "internal" }
   };
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
 function diagnostic(code: string, severity: PlatformDiagnostic["severity"], message: string, details: JsonObject = {}): PlatformDiagnostic {

@@ -108,6 +108,10 @@ describe("core coding tool executors", () => {
     const write = await invoke(coreToolIds.fileWrite, { path: "app.ts", content: "one two one", workspaceRoot }, { platform, workspaceState });
     assert.equal(write.ok, true);
 
+    const nestedWrite = await invoke(coreToolIds.fileWrite, { path: "generated-webpage/index.html", content: "<h1>ok</h1>", workspaceRoot }, { platform, workspaceState });
+    assert.equal(nestedWrite.ok, true);
+    assert.equal(await platform.readFile(`${workspaceRoot}/generated-webpage/index.html`), "<h1>ok</h1>");
+
     const rejected = await invoke(coreToolIds.fileEdit, { path: "app.ts", expected: "one", replacement: "three", workspaceRoot }, { platform, workspaceState });
     assert.equal(rejected.ok, false);
     assert.equal(rejected.error?.code, "EDIT_PRECONDITION_FAILED");
@@ -116,7 +120,7 @@ describe("core coding tool executors", () => {
     const edited = await invoke(coreToolIds.fileEdit, { path: "app.ts", expected: "two", replacement: "three", workspaceRoot }, { platform, workspaceState });
     assert.equal(edited.ok, true);
     assert.equal(await platform.readFile(`${workspaceRoot}/app.ts`), "one three one");
-    assert.equal(workspaceState.records().length, 2);
+    assert.equal(workspaceState.records().length, 3);
     const checkpoint = edited.value?.evidence.metadata.checkpoint as { checkpointId?: string; beforeHash?: string; afterHash?: string } | undefined;
     assert.equal(typeof checkpoint?.checkpointId, "string");
     assert.notEqual(checkpoint?.beforeHash, checkpoint?.afterHash);
@@ -156,6 +160,10 @@ describe("core coding tool executors", () => {
     const plan = await invoke(coreToolIds.todoPlan, { items: [{ id: "1", title: "ship", status: "completed" }] }, { platform });
     assert.equal(plan.ok, true);
     assert.equal(plan.value?.evidence.metadata.count, 1);
+
+    const repairedPlan = await invoke(coreToolIds.todoPlan, { items: [{ description: "write html", done: false }] }, { platform });
+    assert.equal(repairedPlan.ok, true);
+    assert.match(repairedPlan.value?.evidence.preview?.text ?? "", /pending: write html/);
   });
 
   it("reports platform-unavailable process diagnostics", async () => {

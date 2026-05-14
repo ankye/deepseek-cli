@@ -17,7 +17,8 @@ export async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, r
         workspaceRoot: options.workspaceRoot,
         credentials: new CredentialAuthModelCredentialProvider(await createDeepSeekCredentialAuthServiceFromEnv()),
         transport: new OpenAIModelProviderTransport(),
-        timeoutMs: 90_000
+        timeoutMs: 90_000,
+        allowWorkspaceWrites: options.toolProjection === "read-write" || options.toolProjection === "all"
       })
     : createCliSessionDependenciesBase();
   await loadUserHooks(options.workspaceRoot, deps, new NodePlatformRuntime()).catch((error: unknown) => {

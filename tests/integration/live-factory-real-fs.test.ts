@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import type {
   JsonObject,
   ModelGateway,
@@ -77,4 +79,41 @@ describe("live CLI dependency factory resolves against real filesystem", () => {
     assert.equal(typeof deps.sessions.create, "function");
     assert.equal(typeof deps.policy.decide, "function");
   });
+
+  it("allows workspace writes only when explicitly requested", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "deepseek-live-write-"));
+    try {
+      const defaultDeps = createLiveCliDependencies({ workspaceRoot });
+      const defaultRun = await runWriteTurn(defaultDeps, workspaceRoot);
+      assert.equal(defaultRun.events.some((event) => event.kind === "execution.rejected"), true);
+      assert.equal(defaultRun.events.some((event) => event.kind === "capability.completed"), false);
+
+      const writeDeps = createLiveCliDependencies({ workspaceRoot, allowWorkspaceWrites: true });
+      const writeRun = await runWriteTurn(writeDeps, workspaceRoot);
+      assert.equal(writeRun.events.some((event) => event.kind === "capability.completed"), true);
+      assert.equal(await readFile(join(workspaceRoot, "generated-webpage", "index.html"), "utf8"), "<h1>Live write</h1>\n");
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
 });
+
+async function runWriteTurn(deps: ReturnType<typeof createLiveCliDependencies>, workspaceRoot: string) {
+  const runtimeDeps = { ...deps, models: new SingleToolCallModelGateway("core.file.write", { path: "generated-webpage/index.html", content: "<h1>Live write</h1>\n" }) };
+  await registerRuntimeCoreTools(runtimeDeps, workspaceRoot);
+  const kernel = await createDefaultRuntimeKernel(runtimeDeps);
+  try {
+    return {
+      events: await collectRuntimeEvents(runAgentLoop(runtimeDeps, kernel, {
+        prompt: "write webpage file through live factory",
+        caller: "integration.live-factory.test",
+        workspaceRoot,
+        outputMode: "jsonl",
+        profile: defaultDeepSeekProfile,
+        toolProjection: "read-write"
+      }))
+    };
+  } finally {
+    await kernel.shutdown();
+  }
+}

@@ -209,6 +209,7 @@ async function evaluateDiagnostics(options: CliOptions): Promise<CliDiagnosticsR
   const evaluation = await collectCliEvaluation({
     mode: options.diagnosticsInput?.full === true ? "full" : "smoke",
     dryRun: options.diagnosticsInput?.dryRun === true,
+    live: options.live === true,
     baselineId: typeof options.diagnosticsInput?.baseline === "string" ? options.diagnosticsInput.baseline : "deepseek-cli",
     compareBaselineIds: Array.isArray(options.diagnosticsInput?.compareBaselines)
       ? options.diagnosticsInput.compareBaselines.filter((item): item is string => typeof item === "string")

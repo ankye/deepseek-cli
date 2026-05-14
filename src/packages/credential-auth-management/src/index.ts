@@ -12,10 +12,12 @@ import type {
   ModelCredentialProvider,
   ModelCredentialValue,
   ModelRequest,
+  PlatformRuntime,
   SerializableResult,
   StoredCredentialReference
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
+import { join } from "node:path";
 
 export type DeepSeekCredentialEnv = Readonly<Record<"DEEPSEEK_API_KEY" | "DEEPSEEK_TOKEN", string | undefined>>;
 
@@ -168,6 +170,36 @@ export async function createDeepSeekCredentialAuthServiceFromEnv(env: Readonly<R
   return service;
 }
 
+export async function deepSeekLiveCredentialProcessEnv(platform: Pick<PlatformRuntime, "readFile">, cwd = process.cwd(), env: Readonly<Record<string, string | undefined>> = process.env): Promise<DeepSeekCredentialEnv> {
+  const envFile = await readDeepSeekCredentialEnvFile(platform, join(cwd, ".env"));
+  return {
+    DEEPSEEK_API_KEY: firstNonEmpty(env.DEEPSEEK_API_KEY, envFile.DEEPSEEK_API_KEY),
+    DEEPSEEK_TOKEN: firstNonEmpty(env.DEEPSEEK_TOKEN, envFile.DEEPSEEK_TOKEN)
+  };
+}
+
+async function readDeepSeekCredentialEnvFile(platform: Pick<PlatformRuntime, "readFile">, path: string): Promise<DeepSeekCredentialEnv> {
+  try {
+    const text = await platform.readFile(path);
+    const values: Record<string, string | undefined> = {};
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const index = trimmed.indexOf("=");
+      if (index <= 0) continue;
+      const key = trimmed.slice(0, index).trim();
+      if (key !== "DEEPSEEK_API_KEY" && key !== "DEEPSEEK_TOKEN") continue;
+      values[key] = unquoteEnvValue(trimmed.slice(index + 1).trim());
+    }
+    return {
+      DEEPSEEK_API_KEY: firstNonEmpty(values.DEEPSEEK_API_KEY),
+      DEEPSEEK_TOKEN: firstNonEmpty(values.DEEPSEEK_TOKEN)
+    };
+  } catch {
+    return { DEEPSEEK_API_KEY: undefined, DEEPSEEK_TOKEN: undefined };
+  }
+}
+
 export function credentialRefForScope(scope: CredentialScope): CredentialRef {
   if (scope.provider === "deepseek" && scope.profile === "default" && !scope.workspace) return defaultDeepSeekCredentialRef;
   return asId<"credentialRef">(`credential-${scope.provider}-${scope.profile}${scope.workspace ? `-${scope.workspace}` : ""}`);
@@ -223,4 +255,11 @@ function hasValue(value: string | undefined): boolean {
 
 function firstNonEmpty(...values: readonly (string | undefined)[]): string | undefined {
   return values.find(hasValue)?.trim();
+}
+
+function unquoteEnvValue(value: string): string {
+  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
 }

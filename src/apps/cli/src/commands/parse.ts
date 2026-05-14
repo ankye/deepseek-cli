@@ -11,12 +11,13 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
   const output = parseOutputMode(args);
   const timeoutMs = parsePositiveNumberFlag(args, "--timeout-ms");
   const live = args.includes("--live");
+  const toolProjection = parseToolProjection(args);
   const first = args[0];
   if (!first || first === "help" || first === "--help" || first === "-h") {
     return { command: "help", prompt: "", output, live };
   }
   if (first === "run") {
-    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}) };
+    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}), ...(toolProjection ? { toolProjection } : {}) };
   }
   if (first === "chat") {
     const sessionId = readFlagValue(args, "--session");
@@ -82,6 +83,7 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       prompt: "",
       output,
       live,
+      ...(toolProjection ? { toolProjection } : {}),
       diagnosticsInput: parseDiagnosticsInput(diagnosticsCommand, args)
     };
   }
@@ -131,7 +133,7 @@ export function cliUsageLines(): readonly string[] {
   return [
     "DeepSeek CLI",
     "Usage:",
-    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
+    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--tool-projection read-only|read-write|all] [--timeout-ms <ms>]",
     "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
@@ -148,7 +150,7 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek palette action <action> <target-id> [--output text|json|jsonl]",
     "  deepseek revert preview --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
     "  deepseek revert apply --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
-    "  deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate [--baseline <id>] [--full] [--dry-run] [--output text|json|jsonl]",
+    "  deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate [--baseline <id>] [--full] [--dry-run] [--live] [--output text|json|jsonl]",
     "  deepseek tools-smoke [--output text|jsonl]",
     "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]"
   ];
@@ -288,6 +290,7 @@ function extraDiagnosticsArgs(args: readonly string[], knownBooleanFlags: Readon
     if (
       value === "--output" ||
       value === "--max-records" ||
+      value === "--tool-projection" ||
       value === "--baseline" ||
       value === "--compare-baseline" ||
       value === "--baseline-command" ||
@@ -300,6 +303,7 @@ function extraDiagnosticsArgs(args: readonly string[], knownBooleanFlags: Readon
       continue;
     }
     if (value === "--allow-external-baseline") continue;
+    if (value === "--live") continue;
     if (value === "--external" || value === "--fake-secret" || knownBooleanFlags.has(value)) continue;
     extras.push(value);
   }
@@ -317,6 +321,12 @@ function parseOutputMode(args: readonly string[]): AgentLoopOutputMode {
   const index = args.indexOf("--output");
   const value = index >= 0 ? args[index + 1] : undefined;
   return value === "json" || value === "jsonl" || value === "text" ? value : defaultOutputMode;
+}
+
+function parseToolProjection(args: readonly string[]): CliOptions["toolProjection"] {
+  const value = readFlagValue(args, "--tool-projection");
+  if (value === "read-only" || value === "read-write" || value === "all") return value;
+  return undefined;
 }
 
 function parsePositiveNumberFlag(args: readonly string[], name: string): number | undefined {
@@ -348,7 +358,7 @@ function promptFromArgs(args: readonly string[]): string {
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (!value) continue;
-    if (value === "--output" || value === "--timeout-ms") {
+    if (value === "--output" || value === "--timeout-ms" || value === "--tool-projection") {
       index += 1;
       continue;
     }

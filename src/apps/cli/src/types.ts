@@ -54,6 +54,7 @@ export interface CliOptions {
   readonly indexProviderId?: string;
   readonly indexProviderStatus?: string;
   readonly indexProviderScope?: "workspace" | "user";
+  readonly toolProjection?: "read-only" | "read-write" | "all";
 }
 
 export type CliWrite = (line: string) => void | Promise<void>;
@@ -63,6 +64,7 @@ export type CliInputStream = AsyncIterable<CliInputChunk> | Iterable<CliInputChu
 export interface CliRuntimeFactoryOptions {
   readonly live: boolean;
   readonly workspaceRoot: string;
+  readonly toolProjection?: CliOptions["toolProjection"];
 }
 
 export interface CliRunOptions {

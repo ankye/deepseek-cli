@@ -13,7 +13,7 @@ export async function runOneShotCommand(
   runOptions: CliRunOptions
 ): Promise<void> {
   const workspaceRoot = process.cwd();
-  const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot }, runOptions);
+  const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot, ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}) }, runOptions);
   try {
     const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
       prompt: options.prompt,
@@ -22,6 +22,7 @@ export async function runOneShotCommand(
       caller: "cli.run",
       profile: defaultDeepSeekProfile,
       live: options.live,
+      ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
     }, write, writeInline, bufferedInline, undefined, terminalProfile);
     await renderFinalJsonIfNeeded(options.output, events, write);
