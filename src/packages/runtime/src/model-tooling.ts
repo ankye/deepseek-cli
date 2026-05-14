@@ -40,12 +40,18 @@ export function toSafeToolName(capabilityId: string): string {
 }
 
 export function resolveCapabilityId(providerToolName: string, manifests: readonly CapabilityManifest[]): string {
+  const normalizedProviderToolName = normalizeProviderToolName(providerToolName);
   for (const manifest of manifests) {
     const id = String(manifest.id);
     if (id === providerToolName) return id;
     if (toSafeToolName(id) === providerToolName) return id;
+    if (normalizeProviderToolName(id) === normalizedProviderToolName) return id;
   }
   return providerToolName;
+}
+
+function normalizeProviderToolName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
 }
 
 export function providerMetadata(request: AgentLoopRequest): ModelProviderEventMetadata {

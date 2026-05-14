@@ -232,6 +232,27 @@ describe("agent loop typed tool feedback", () => {
     assert.equal(feedback?.status, "success");
     await kernel.shutdown();
   });
+
+  it("resolves mixed separator tool-call names returned by the provider back to the real capability id", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "mixed separator name\n");
+    const loopDeps = { ...deps, models: new SingleToolCallModelGateway("core.file_read", { path: "README.md" }) };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "mixed separator name",
+      caller: "runtime.safe-name.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const intent = events.find((event) => event.kind === "model.tool.intent");
+    assert.equal((intent?.data as JsonObject).name, "core.file.read");
+    const feedback = readFeedback(events);
+    assert.equal(feedback?.status, "success");
+    await kernel.shutdown();
+  });
 });
 
 function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {

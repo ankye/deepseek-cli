@@ -176,6 +176,7 @@ export async function* runAgentLoop(
     }
     iterations += 1;
     let iterationReasoning = "";
+    let reasoningPersistedForIteration = false;
     const availableCapabilities = await deps.capabilities.listModelVisible();
     const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits);
     if (assembly.status === "rejected") {
@@ -351,8 +352,8 @@ export async function* runAgentLoop(
         await recordRuntimeAdapterEvent(deps, intentEvent);
         yield intentEvent;
         const persistedReasoning = iterationReasoning;
-        iterationReasoning = "";
-        if (persistedReasoning.length > 0) {
+        if (persistedReasoning.length > 0 && !reasoningPersistedForIteration) {
+          reasoningPersistedForIteration = true;
           const persistedEvent = agentLoopEvent("model.reasoning.persisted", sessionId, turnId, trace, {
             iteration: iterations,
             byteLength: Buffer.byteLength(persistedReasoning, "utf8"),
