@@ -187,6 +187,34 @@ describe("cli host adapter", () => {
     assert.equal(lines.join("\n").includes("sk-live-secret-value"), false);
   });
 
+  it("disables reasoning chunks for live one-shot runs to avoid event backpressure", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const capturedRequests: ModelRequest[] = [];
+    const runtimeDeps = {
+      ...deps,
+      models: new CaptureModelRequestGateway(capturedRequests)
+    };
+    await registerRuntimeCoreTools(runtimeDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(runtimeDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["run", "生成 website", "--output", "jsonl", "--live"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: runtimeDeps, kernel })
+      }
+    );
+
+    assert.equal(capturedRequests[0]?.reasoning?.enabled, false);
+    assert.equal(lines.some((line) => line.includes("agent.loop.completed")), true);
+    await kernel.shutdown("cli-test-live-reasoning-disabled");
+  });
+
   it("renders one-shot final JSON summaries", async () => {
     const lines: string[] = [];
     await runCli(["run", "summary", "--output", "json"], (line: string) => {
@@ -1382,9 +1410,9 @@ describe("cli host adapter", () => {
     assert.equal(explain?.freshnessEvidence?.currentWorkspaceCheckpointWatermark, 1);
     assert.equal(referenceItem?.target?.metadata?.freshnessStatus, "stale");
     assert.equal(referenceItem?.target?.metadata?.freshnessEvidence?.reason, "workspace-checkpoint-watermark-advanced");
-    assert.equal(finalRequest?.messages?.[0]?.content.includes("Source: scope=workspace"), true);
-    assert.equal(finalRequest?.messages?.[0]?.content.includes("freshness=stale"), true);
-    assert.equal(finalRequest?.messages?.[0]?.content.includes("Freshness evidence: reason=workspace-checkpoint-watermark-advanced scope=workspace-checkpoint-watermark workspaceCheckpointWatermark=0 currentWorkspaceCheckpointWatermark=1"), true);
+    assert.equal(finalRequest?.messages?.some((message) => message.role === "system" && message.content.includes("Source: scope=workspace")), true);
+    assert.equal(finalRequest?.messages?.some((message) => message.role === "system" && message.content.includes("freshness=stale")), true);
+    assert.equal(finalRequest?.messages?.some((message) => message.role === "system" && message.content.includes("Freshness evidence: reason=workspace-checkpoint-watermark-advanced scope=workspace-checkpoint-watermark workspaceCheckpointWatermark=0 currentWorkspaceCheckpointWatermark=1")), true);
     assert.equal(secondLines.join("\n").includes("\u001b["), false);
     await firstKernel.shutdown("cli-workspace-pageindex-watermark-first");
     await secondKernel.shutdown("cli-workspace-pageindex-watermark-second");
@@ -2669,6 +2697,13 @@ describe("cli host adapter", () => {
     assert.equal(webpageRun?.metrics.generatedCssFileCount, 1);
     assert.equal(webpageRun?.metrics.generatedJsFileCount, 1);
     assert.equal((webpageRun?.metrics.codeStructureScore ?? 0) >= 0.85, true);
+    assert.equal(webpageRun?.metrics.evidencePlanPresent, true);
+    assert.equal(webpageRun?.metrics.evidenceManifestStatus, "passed");
+    assert.equal(webpageRun?.metrics.evidenceItemCount, 3);
+    assert.equal(webpageRun?.metrics.evidenceSourceCoverageRate, 1);
+    assert.equal(webpageRun?.metrics.claimGroundingRate, 1);
+    assert.equal(webpageRun?.metrics.unsupportedClaimCount, 0);
+    assert.equal(webpageRun?.metrics.hallucinatedCommandCount, 0);
     assert.equal(aggregate?.executedRunCount, 1);
     assert.equal(aggregate?.solvedRunCount, 1);
     assert.equal(aggregate?.successRate, 1);
@@ -2678,6 +2713,7 @@ describe("cli host adapter", () => {
     assert.deepEqual(webpageRun?.instrumentationEvents.map((event) => event.kind), [
       "run_started",
       "workspace_created",
+      "evidence_written",
       "prompt_written",
       "prompt_sent",
       "command_started",
@@ -2722,7 +2758,32 @@ describe("cli host adapter", () => {
     assert.equal(webpageRun?.metrics.promptAssemblyBudgetStatus, "within-budget");
     assert.equal(webpageRun?.metrics.promptAssemblyVisibleToolCount, 4);
     assert.equal(webpageRun?.metrics.promptAssemblyGapReason, "post-assembly-model-failure");
+    assert.equal(webpageRun?.metrics.evidenceManifestStatus, "passed");
     assert.equal(webpageRun?.diagnostics.some((item) => item.code === "CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING"), false);
+  });
+
+  it("does not solve structurally valid webpages without evidence grounding", async () => {
+    const platform = new FakeWebpageAgentPlatform({ omitEvidenceManifest: true });
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      live: false,
+      baselineId: "codex",
+      compareBaselineIds: ["codex"],
+      allowExternalBaseline: true,
+      codexCommand: "fake-web-agent",
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+
+    assert.equal(webpageRun?.outcome, "invalid");
+    assert.equal(webpageRun?.checks[0]?.status, "fail");
+    assert.equal(webpageRun?.metrics.evidenceManifestStatus, "missing");
+    assert.equal(webpageRun?.metrics.evidenceSourceCoverageRate, 0);
+    assert.equal(webpageRun?.diagnostics.some((item) => item.code === "CLI_EVALUATION_WEBPAGE_MISSING_EVIDENCE_MANIFEST"), true);
   });
 
   it("propagates opt-in live DeepSeek webpage execution with write-capable tool projection", async () => {
@@ -3372,6 +3433,10 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
   readonly executedWorkspaces: string[] = [];
   readonly executedCommands: { readonly command: string; readonly args: readonly string[]; readonly cwd: string; readonly env?: JsonObject }[] = [];
 
+  constructor(private readonly behavior: { readonly omitEvidenceManifest?: boolean } = {}) {
+    super();
+  }
+
   override async runProcess(command: string, args: readonly string[], options: JsonObject = {}): Promise<ProcessResult> {
     const cwd = typeof options.cwd === "string" ? options.cwd : process.cwd();
     this.executedCommands.push({ command, args: [...args], cwd, ...(isJsonObject(options.env) ? { env: options.env } : {}) });
@@ -3434,6 +3499,8 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
         "<body>",
         "<main role=\"main\">",
         "<h1>DeepSeek CLI</h1>",
+        "<p>Contract-first local coding agent platform with a governed runtime kernel and thin host adapters.</p>",
+        "<code>npx tsx src/apps/cli/src/index.ts init</code>",
         "<button id=\"demo\" aria-label=\"Preview workflow\">Preview</button>",
         "</main>",
         "<script src=\"app.js\"></script>",
@@ -3442,6 +3509,126 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
       ].join("\n"), "utf8");
       await writeFile(join(target, "styles.css"), "body { font-family: system-ui; margin: 0; } main { padding: 2rem; }\n", "utf8");
       await writeFile(join(target, "app.js"), "document.getElementById('demo')?.addEventListener('click', () => document.body.classList.toggle('ready'));\n", "utf8");
+      if (this.behavior.omitEvidenceManifest) return;
+      await writeFile(join(target, "evidence.json"), JSON.stringify({
+        schemaVersion: "1.0.0",
+        manifestId: "evidence-manifest:test-webpage",
+        artifactId: "generated-webpage",
+        artifactKind: "webpage",
+        status: "passed",
+        generatedAt: "1970-01-01T00:00:00.000Z",
+        sourceCoverage: [
+          {
+            schemaVersion: "1.0.0",
+            sourceGroup: "readme",
+            covered: true,
+            itemCount: 1,
+            factClasses: ["product-copy", "command", "architecture"],
+            fingerprints: ["sha256:readme"],
+            missingFactClasses: [],
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["fingerprints"] }
+          },
+          {
+            schemaVersion: "1.0.0",
+            sourceGroup: "package-metadata",
+            covered: true,
+            itemCount: 1,
+            factClasses: ["package", "executable"],
+            fingerprints: ["sha256:cli-package"],
+            missingFactClasses: [],
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["fingerprints"] }
+          },
+          {
+            schemaVersion: "1.0.0",
+            sourceGroup: "command-index",
+            covered: true,
+            itemCount: 1,
+            factClasses: ["command"],
+            fingerprints: ["sha256:command-index"],
+            missingFactClasses: [],
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["fingerprints"] }
+          }
+        ],
+        evidenceItems: [
+          {
+            schemaVersion: "1.0.0",
+            evidenceId: "evidence:readme",
+            sourceGroup: "readme",
+            sourcePath: "README.md",
+            sourceLabel: "Repository README",
+            factClasses: ["product-copy", "command", "architecture"],
+            preview: "DeepSeek CLI is a contract-first platform with thin host adapters.",
+            fingerprint: "sha256:readme",
+            freshness: { status: "current", observedAt: "1970-01-01T00:00:00.000Z" },
+            trace: {},
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["preview"] }
+          },
+          {
+            schemaVersion: "1.0.0",
+            evidenceId: "evidence:cli-package",
+            sourceGroup: "package-metadata",
+            sourcePath: "src/apps/cli/package.json",
+            sourceLabel: "CLI package metadata",
+            factClasses: ["package", "executable"],
+            preview: "name deepseek-agent-cli, bin deepseek",
+            fingerprint: "sha256:cli-package",
+            freshness: { status: "current", observedAt: "1970-01-01T00:00:00.000Z" },
+            trace: {},
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["preview"] }
+          },
+          {
+            schemaVersion: "1.0.0",
+            evidenceId: "evidence:command-index",
+            sourceGroup: "command-index",
+            sourcePath: "docs/reference/command-index.md",
+            sourceLabel: "Command index",
+            factClasses: ["command"],
+            preview: "npx tsx src/apps/cli/src/index.ts init",
+            fingerprint: "sha256:command-index",
+            freshness: { status: "current", observedAt: "1970-01-01T00:00:00.000Z" },
+            trace: {},
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["preview"] }
+          }
+        ],
+        claimGroundings: [
+          {
+            schemaVersion: "1.0.0",
+            claimId: "claim:platform",
+            claimPreview: "Contract-first local coding agent platform with a governed runtime kernel and thin host adapters.",
+            claimFingerprint: "claim:platform",
+            factClass: "product-copy",
+            certainty: "verified",
+            evidenceIds: ["evidence:readme"],
+            outputScope: "generated-webpage/index.html",
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["claimPreview"] }
+          },
+          {
+            schemaVersion: "1.0.0",
+            claimId: "claim:init-command",
+            claimPreview: "npx tsx src/apps/cli/src/index.ts init",
+            claimFingerprint: "claim:init-command",
+            factClass: "command",
+            certainty: "verified",
+            evidenceIds: ["evidence:readme", "evidence:command-index"],
+            outputScope: "generated-webpage/index.html",
+            compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+            redaction: { class: "internal", fields: ["claimPreview"] }
+          }
+        ],
+        assumptions: [],
+        unsupportedClaims: [],
+        unsupportedClaimCount: 0,
+        trace: {},
+        compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
+        redaction: { class: "internal", fields: ["evidenceItems.preview", "claimGroundings.claimPreview"] }
+      }, null, 2), "utf8");
   }
 }
 
@@ -3515,6 +3702,21 @@ class ReasoningStreamModelGateway implements ModelGateway {
     yield { kind: "reasoning", text: "plan ", redaction: { class: "internal" } };
     yield { kind: "reasoning", text: "first ", redaction: { class: "internal" } };
     yield { kind: "reasoning", text: "step.", redaction: { class: "internal" } };
+    yield { kind: "delta", text: "ok" };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class CaptureModelRequestGateway implements ModelGateway {
+  constructor(private readonly requests: ModelRequest[]) {}
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
     yield { kind: "delta", text: "ok" };
     yield { kind: "finish", reason: "stop" };
     yield { kind: "done" };

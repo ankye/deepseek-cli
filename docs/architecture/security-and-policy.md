@@ -36,6 +36,7 @@ raw secret 值不得出现在：
 - snapshots / 快照
 - assertion messages / 断言消息
 - CLI or VSCode output / CLI 或 VSCode 输出
+- evidence manifests or generated artifact checker diagnostics / evidence manifests 或生成产物 checker diagnostics
 
 Secret-like values are classified as API keys, bearer tokens, private key blocks, environment credentials, credential references, redaction classes, or generic secrets.
 
@@ -91,6 +92,18 @@ The default failure mode is fail closed.
 If the runtime cannot prove that metadata is complete, redacted, scoped, and allowed, the work does not enter the scheduler.
 
 如果 runtime 无法证明 metadata 完整、已脱敏、有范围、且被允许，该工作不得进入 scheduler。
+
+## Evidence Security Boundary / 证据安全边界
+
+Evidence-first behavior must improve factual reliability without becoming a privacy leak.
+
+Evidence-first 必须提升事实可靠性，但不能变成隐私泄漏通道。
+
+- Evidence items use source references, bounded previews, fingerprints, fact classes, freshness metadata, and redaction metadata. / evidence item 使用 source references、有界 previews、fingerprints、fact classes、freshness metadata 与 redaction metadata。
+- Secret-like files or values are excluded or redacted before becoming prompt-visible evidence. / 疑似 secret 的文件或值在成为模型可见 evidence 前必须排除或脱敏。
+- The user prompt remains exact; runtime-owned evidence is added as separate prompt sections so provenance and responsibility stay visible. / 用户 prompt 保持精确；runtime-owned evidence 作为独立 prompt sections 注入，使 provenance 与责任边界清晰。
+- Generated artifact manifests must not contain raw private content; they should carry source paths, claim grounding records, assumptions, unsupported claim counts, and redaction metadata. / 生成产物 manifest 不得包含 raw private content；应承载 source paths、claim grounding records、assumptions、unsupported claim counts 与 redaction metadata。
+- Unsupported strict project claims, hallucinated commands, or ungrounded package names should fail closed in checkers and diagnostics. / 未支持的严格项目声明、幻觉命令或未接地 package name 应在 checker 与 diagnostics 中 fail closed。
 
 ## Checkpoint And Undo / Checkpoint 与 Undo
 

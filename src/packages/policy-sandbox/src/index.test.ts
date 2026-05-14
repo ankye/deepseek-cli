@@ -42,6 +42,12 @@ describe("secret and sandbox policy helpers", () => {
     assert.deepEqual(redactJsonSecrets({ model }), { model });
   });
 
+  it("does not classify product copy mentioning credential packages as a secret", () => {
+    const copy = "Governance packages include config, credential-auth-management, and usage-budget-management.";
+
+    assert.equal(classifySecretText(copy).detected, false);
+  });
+
   it("redacts nested JSON values and credential-like fields", () => {
     const redacted = redactJsonSecrets({
       apiKey: "plain-value",

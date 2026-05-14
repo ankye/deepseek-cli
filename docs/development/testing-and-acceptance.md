@@ -53,6 +53,33 @@ deepseek diagnostics verify --output json
 | Matrix tests / 矩阵测试 | `npm run test:matrix` | Platform and scenario matrix behavior. / 平台与场景矩阵行为。 |
 | E2E tests / E2E | `npm run test:e2e` | CLI and VSCode host adapters consume runtime events correctly. / CLI 与 VSCode host 正确消费 runtime events。 |
 
+## Evidence-First Artifact Gate / Evidence-First 产物门禁
+
+Generated artifacts that make project or product claims must be evaluated as factual outputs, not only as files that exist.
+
+包含项目或产品声明的生成产物必须按事实输出验收，而不能只检查文件是否存在。
+
+For webpage/product-site generation, run:
+
+网页/产品站生成后运行：
+
+```bash
+node scripts/check-webpage-generation.mjs website
+```
+
+The checker requires an evidence manifest and rejects unsupported strict claims:
+
+checker 要求 evidence manifest，并拒绝未支持的严格声明：
+
+- `evidence.json` exists and uses the supported schema. / `evidence.json` 存在且使用受支持 schema。
+- Required sources such as `README.md`, `src/apps/cli/package.json`, and `docs/reference/command-index.md` are covered. / 覆盖 `README.md`、`src/apps/cli/package.json` 与 `docs/reference/command-index.md` 等必要来源。
+- Claim grounding rate is complete for strict claims. / 严格声明的 claim grounding rate 完整。
+- Unsupported claim count and hallucinated command count are zero. / unsupported claim count 与 hallucinated command count 为 0。
+
+This gate is the first concrete evidence-first artifact gate. Broader report and competitive-evaluation gates should follow the same pattern: source coverage, claim certainty, unsupported-claim rejection, and redacted manifests.
+
+这是第一个具体 evidence-first 产物门禁。后续报告与竞品评估门禁应沿用同一模式：source coverage、claim certainty、unsupported-claim rejection 与脱敏 manifest。
+
 ## Recovery Regression / 恢复回归
 
 Checkpoint and undo changes must cover:

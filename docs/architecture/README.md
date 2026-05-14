@@ -10,6 +10,7 @@ This volume explains the DeepSeek CLI platform architecture for engineers workin
 | --- | --- |
 | [System Overview](system-overview.md) | Overall platform shape and layer boundaries. / 整体平台形态与分层边界。 |
 | [Execution Model](execution-model.md) | Runtime turn lifecycle, execution envelope, and policy/scheduler handoff. / runtime turn 生命周期、execution envelope、policy/scheduler 交接。 |
+| [Execution Model](execution-model.md#evidence-first-turn-phase--evidence-first-回合阶段) | Evidence-first turn phase and prompt assembly phase. / evidence-first 回合阶段与 prompt assembly 阶段。 |
 | [Orchestration And Scheduling](orchestration-and-scheduling.md) | Workflow graph, scheduler, agent manager, task events, and multi-agent direction. / workflow graph、scheduler、agent manager、task events、多 Agent 方向。 |
 | [Capability Model](capability-model.md) | How tools, commands, skills, hooks, MCP, plugins, workflows, and subagents enter the platform. / 工具、命令、skills、hooks、MCP、plugins、workflows、subagents 如何进入平台。 |
 | [Security And Policy](security-and-policy.md) | Secret redaction, sandbox, platform matrix, fail-closed behavior. / secret 脱敏、sandbox、平台矩阵、fail-closed 行为。 |
@@ -22,9 +23,11 @@ This volume explains the DeepSeek CLI platform architecture for engineers workin
 1. Runtime owns execution. Hosts render events. / runtime 负责执行，host 渲染事件。
 2. Contracts precede implementation. / 契约先于实现。
 3. Every executable capability goes through one envelope. / 每个可执行能力走同一个 envelope。
-4. Policy and sandbox gate work before scheduling. / policy 与 sandbox 在调度前门禁。
-5. Platform differences live in `platform-abstraction`. / 平台差异归 `platform-abstraction`。
-6. Tests and lint enforce architecture. / 测试和 lint 强制架构。
+4. Fact-sensitive output is evidence-first by default. / 事实敏感输出默认 evidence-first。
+5. Prompt assembly is deterministic and replayable. / prompt assembly 必须确定性且可回放。
+6. Policy and sandbox gate work before scheduling. / policy 与 sandbox 在调度前门禁。
+7. Platform differences live in `platform-abstraction`. / 平台差异归 `platform-abstraction`。
+8. Tests and lint enforce architecture. / 测试和 lint 强制架构。
 
 ## Related OpenSpec Specs / 相关 OpenSpec Specs
 
@@ -37,3 +40,4 @@ This volume explains the DeepSeek CLI platform architecture for engineers workin
 - `openspec/specs/policy-sandbox/spec.md`
 - `openspec/specs/secret-sandbox-hardening/spec.md`
 - `openspec/specs/platform-abstraction/spec.md`
+- `openspec/changes/evidence-first-agent-workflow/specs/evidence-first-agent-workflow/spec.md`

@@ -9,6 +9,8 @@ The execution model is the contract that keeps hosts, models, tools, policies, s
 ```mermaid
 sequenceDiagram
   participant Host
+  participant Evidence
+  participant Prompt
   participant Context
   participant Runtime
   participant Policy
@@ -18,8 +20,12 @@ sequenceDiagram
   participant Bus
 
   Host->>Runtime: request
+  Runtime->>Evidence: classify fact sensitivity
+  Evidence-->>Runtime: classification + evidence plan + selected evidence
   Runtime->>Context: project context
   Context-->>Runtime: redacted projection
+  Runtime->>Prompt: assemble exact prompt + evidence + tools
+  Prompt-->>Runtime: messages + fingerprint + budget report
   Runtime->>Runtime: build execution envelope
   Runtime->>Policy: policy request
   Policy-->>Runtime: decision
@@ -30,6 +36,33 @@ sequenceDiagram
   Runtime->>Bus: publish replayable event
   Bus-->>Host: render event
 ```
+
+## Evidence-First Turn Phase / Evidence-First 回合阶段
+
+Fact-sensitive turns add a mandatory runtime-owned phase before model dispatch. This phase is not a user prompt convention; it is part of the execution model.
+
+事实敏感 turn 会在模型调用前增加一个 runtime-owned 必经阶段。这个阶段不是用户 prompt 约定，而是执行模型的一部分。
+
+1. Classify the turn as casual, speculative, or fact-sensitive. / 将 turn 分类为 casual、speculative 或 fact-sensitive。
+2. For fact-sensitive tasks, create an `EvidencePlan` that names required fact classes, source groups, freshness policy, redaction policy, and stop conditions. / 对事实敏感任务创建 `EvidencePlan`，声明 required fact classes、source groups、freshness policy、redaction policy 与 stop conditions。
+3. Select bounded local `EvidenceItem` records from README, package metadata, command index, product docs, OpenSpec, source files, and tests where relevant. / 从 README、package metadata、command index、product docs、OpenSpec、source files 与 tests 中选择有界 `EvidenceItem`。
+4. Emit `evidence.classified`, `evidence.plan.created`, and `evidence.selected` events with redaction metadata. / 发出带脱敏 metadata 的 `evidence.classified`、`evidence.plan.created` 与 `evidence.selected` events。
+5. Pass the evidence context to `prompt-assembly` while preserving the exact user prompt as the user message. / 将 evidence context 传给 `prompt-assembly`，同时保留精确用户 prompt 作为 user message。
+
+The current implementation makes generated webpage/product artifacts evidence-checkable first. Broader deterministic claim extraction and unsupported-claim retry remain planned rollout work.
+
+当前实现先让生成网页/产品产物可证据验收。更广泛的确定性 claim extraction 与 unsupported-claim retry 仍属于后续 rollout 工作。
+
+## Prompt Assembly Phase / Prompt Assembly 阶段
+
+`@deepseek/prompt-assembly` is the only package that weaves model-visible prompt sections for the runtime agent loop.
+
+`@deepseek/prompt-assembly` 是 runtime agent loop 组装模型可见 prompt sections 的唯一 package。
+
+- Inputs are DTOs from `@deepseek/platform-contracts`: exact prompt, history, context projection, evidence-first context, available tools, tool policy, profile, and budget. / 输入来自 `@deepseek/platform-contracts` DTO：精确 prompt、history、context projection、evidence-first context、available tools、tool policy、profile 与 budget。
+- Providers contribute sections such as exact user task, evidence-first operating rules, evidence plan, selected evidence, unsupported-claim policy, projected context, PageIndex recall, tool-result continuity, skills, code intelligence, and webpage output contracts. / provider 贡献 exact user task、evidence-first operating rules、evidence plan、selected evidence、unsupported-claim policy、projected context、PageIndex recall、tool-result continuity、skills、code intelligence 与 webpage output contracts 等 sections。
+- The assembler orders sections deterministically, applies budget rules, projects visible tools, and emits fingerprints/replay evidence without persisting raw unbounded prompt content. / assembler 确定性排序、执行预算规则、投影可见工具，并输出 fingerprint/replay evidence，不持久化无界 prompt 原文。
+- Runtime emits `prompt.assembled` before model dispatch so hosts and golden tests can observe prompt structure without owning prompt logic. / runtime 在模型调用前发出 `prompt.assembled`，让 host 与 golden tests 可观测 prompt 结构，但不拥有 prompt 逻辑。
 
 ## Projection Cache Tiers / Projection 缓存的两级存储
 
@@ -107,6 +140,10 @@ runtime events 是 host 和测试的集成边界。
 | Event kind / 事件类型 | Meaning / 含义 |
 | --- | --- |
 | `context.projection.*` | Context projection started/completed/degraded/rejected. / 上下文投影开始、完成、降级、拒绝。 |
+| `evidence.classified` | Task evidence sensitivity and required fact classes. / 任务证据敏感度与 required fact classes。 |
+| `evidence.plan.created` | Runtime-created evidence plan before model dispatch. / 模型调用前 runtime 创建的 evidence plan。 |
+| `evidence.selected` | Bounded selected evidence summary and source coverage. / 有界已选证据摘要与 source coverage。 |
+| `prompt.assembled` | Prompt sections, budget, tool projection, and replay fingerprint. / prompt sections、budget、tool projection 与 replay fingerprint。 |
 | `kernel.request.accepted` | Runtime accepted a request. / runtime 接受请求。 |
 | `workflow.opened` / `workflow.closed` | Workflow lifecycle. / workflow 生命周期。 |
 | `execution.envelope.created` | Envelope was built and persisted. / envelope 已构建并持久化。 |

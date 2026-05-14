@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId, type EvidenceManifest } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
 import { InMemoryMcpGateway } from "@deepseek/mcp-gateway";
@@ -196,5 +196,82 @@ describe("versioning checks", () => {
     const unsupported = await mcp.callTool({ schemaVersion: "999.0.0", serverId: asId<"mcpServer">("mcp-compat"), name: "lookup", caller: "test", input: {} });
     assert.equal(unsupported.status, "rejected");
     assert.equal(unsupported.diagnostics.some((item) => item.code === "MCP_SCHEMA_VERSION_UNSUPPORTED"), true);
+  });
+
+  it("requires schemaVersion on evidence-first manifests and unsupported claim diagnostics", () => {
+    const manifest: EvidenceManifest = {
+      schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+      manifestId: "evidence-manifest:compat",
+      artifactId: "generated-webpage",
+      artifactKind: "webpage",
+      status: "passed",
+      generatedAt: "1970-01-01T00:00:00.000Z",
+      sourceCoverage: [{
+        schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+        sourceGroup: "package-metadata",
+        covered: true,
+        itemCount: 1,
+        factClasses: ["package"],
+        fingerprints: ["sha256:package-json"],
+        missingFactClasses: [],
+        compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+        redaction: { class: "internal", fields: ["fingerprints"] }
+      }],
+      evidenceItems: [{
+        schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+        evidenceId: "evidence:package-json",
+        sourceGroup: "package-metadata",
+        sourcePath: "src/apps/cli/package.json",
+        sourceLabel: "CLI package metadata",
+        factClasses: ["package"],
+        preview: "name deepseek-agent-cli",
+        fingerprint: "sha256:package-json",
+        freshness: { status: "current" },
+        trace: {},
+        compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+        redaction: { class: "internal", fields: ["preview"] }
+      }],
+      claimGroundings: [{
+        schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+        claimId: "claim:package",
+        claimPreview: "Package name is deepseek-agent-cli.",
+        claimFingerprint: "claim:package",
+        factClass: "package",
+        certainty: "verified",
+        evidenceIds: ["evidence:package-json"],
+        outputScope: "generated-webpage/index.html",
+        compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+        redaction: { class: "internal", fields: ["claimPreview"] }
+      }],
+      assumptions: [],
+      unsupportedClaims: [{
+        schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+        diagnosticId: "unsupported:command",
+        code: "unsupported-command",
+        severity: "error",
+        claimFingerprint: "claim:npx-deepseek-cli-init",
+        claimPreview: "npx deepseek-cli init",
+        missingFactClass: "command",
+        artifactId: "generated-webpage",
+        remediationHint: "Use evidence-backed commands.",
+        compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+        redaction: { class: "internal", fields: ["claimPreview", "remediationHint"] }
+      }],
+      unsupportedClaimCount: 1,
+      trace: {},
+      compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+      redaction: { class: "internal", fields: ["evidenceItems.preview", "claimGroundings.claimPreview"] }
+    };
+
+    assert.deepEqual(requireSchemaVersion(manifest), []);
+    assert.ok(manifest.evidenceItems[0]);
+    assert.ok(manifest.claimGroundings[0]);
+    assert.ok(manifest.unsupportedClaims[0]);
+    assert.deepEqual(requireSchemaVersion(manifest.evidenceItems[0]), []);
+    assert.deepEqual(requireSchemaVersion(manifest.claimGroundings[0]), []);
+    assert.deepEqual(requireSchemaVersion(manifest.unsupportedClaims[0]), []);
+    const missingSchema = { ...manifest } as { schemaVersion?: string };
+    delete missingSchema.schemaVersion;
+    assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
   });
 });

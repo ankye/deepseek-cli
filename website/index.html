@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepSeek CLI — Evidence-First AI Engineering Runtime</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-content">
+      <div class="badge-row">
+        <span class="badge badge-version">v0.1.3</span>
+        <span class="badge badge-preview">Preview</span>
+        <span class="badge badge-mit">MIT</span>
+      </div>
+      <h1 class="hero-title">
+        <span class="hero-icon">🧠</span>
+        DeepSeek CLI
+      </h1>
+      <p class="hero-subtitle">
+        Future-Ready AI Engineering Runtime for Local Coding Agents
+      </p>
+      <p class="hero-subtitle-zh">
+        面向未来的本地 Coding Agent AI 工程运行时
+      </p>
+      <div class="hero-meta">
+        <span>TypeScript 5.8</span>
+        <span class="meta-sep">·</span>
+        <span>Node.js 22+</span>
+        <span class="meta-sep">·</span>
+        <span>Win · macOS · Linux · WSL</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- What Is This -->
+    <section class="section" id="what">
+      <div class="container">
+        <h2 class="section-title">🤔 What Is This? / 这是什么？</h2>
+        <p class="section-lead">
+          DeepSeek CLI is <strong>not</strong> a single CLI script. It is a <strong>contract-first platform</strong> — one governed runtime kernel that serves every host surface.
+        </p>
+        <p class="section-lead-zh">
+          DeepSeek CLI <strong>不是</strong>一个单体脚本，而是一套<strong>契约先行平台</strong> — 一个受治理 runtime kernel 服务所有 host 端。
+        </p>
+        <div class="kernel-diagram">
+          <div class="kernel-core">Runtime Kernel</div>
+          <div class="kernel-arrow">⬇</div>
+          <div class="kernel-hosts">
+            <span class="host-item">Terminal CLI</span>
+            <span class="host-item">VSCode Extension</span>
+            <span class="host-item">Local Server / SDK</span>
+            <span class="host-item">Native Host</span>
+            <span class="host-item">Browser Bridge</span>
+          </div>
+          <p class="kernel-tagline">One kernel. One protocol. Many hosts. / 一个内核，一套协议，多端适配。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Package & Install -->
+    <section class="section section-alt" id="package">
+      <div class="container">
+        <h2 class="section-title">📦 Package / 包信息</h2>
+        <div class="info-grid">
+          <div class="info-card">
+            <span class="info-label">Package Name</span>
+            <span class="info-value"><code>deepseek-agent-cli</code></span>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Bin Name</span>
+            <span class="info-value"><code>deepseek</code></span>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Version</span>
+            <span class="info-value">0.1.3</span>
+          </div>
+          <div class="info-card">
+            <span class="info-label">License</span>
+            <span class="info-value">MIT</span>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Type</span>
+            <span class="info-value">ES Module</span>
+          </div>
+          <div class="info-card">
+            <span class="info-label">Publish</span>
+            <span class="info-value">Public (npm)</span>
+          </div>
+        </div>
+        <div class="install-box">
+          <p class="install-hint">Install and publish status are intentionally not marketed here because the selected local evidence does not prove a completed npm release.</p>
+          <p class="install-hint">The verified package identity is the package metadata above: package <code>deepseek-agent-cli</code> with binary <code>deepseek</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="section" id="architecture">
+      <div class="container">
+        <h2 class="section-title">🏗️ Architecture / 架构</h2>
+        <p class="section-lead">
+          DeepSeek is built as a <strong>contract-first, multi-host platform</strong>. Every request enters the same governed pipeline regardless of source.
+        </p>
+        <div class="arch-layers">
+          <div class="arch-layer" style="--layer-color: #6366f1;">
+            <span class="layer-icon">🖥️</span>
+            <span class="layer-name">Hosts</span>
+            <span class="layer-desc">cli · vscode-extension</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #8b5cf6;">
+            <span class="layer-icon">📜</span>
+            <span class="layer-name">Contracts</span>
+            <span class="layer-desc">platform-contracts (DTOs, envelopes, interfaces)</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #a855f7;">
+            <span class="layer-icon">📡</span>
+            <span class="layer-name">Protocol</span>
+            <span class="layer-desc">communication-protocol · runtime-message-bus</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #d946ef;">
+            <span class="layer-icon">⚙️</span>
+            <span class="layer-name">Runtime</span>
+            <span class="layer-desc">runtime · session-store</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #ec4899;">
+            <span class="layer-icon">🧩</span>
+            <span class="layer-name">Capability</span>
+            <span class="layer-desc">capability-registry · core-coding-tools · command-system · skill-system · hook-system · mcp-gateway · plugin-system</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #f43f5e;">
+            <span class="layer-icon">🎭</span>
+            <span class="layer-name">Orchestration</span>
+            <span class="layer-desc">workflow-orchestration · concurrency-orchestration · agent-management · tool-intent-preflight</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #e11d48;">
+            <span class="layer-icon">🛡️</span>
+            <span class="layer-name">Governance</span>
+            <span class="layer-desc">policy-sandbox · platform-abstraction · config · credential-auth-management · usage-budget-management</span>
+          </div>
+          <div class="arch-layer" style="--layer-color: #be123c;">
+            <span class="layer-icon">🤖</span>
+            <span class="layer-name">AI / Context</span>
+            <span class="layer-desc">model-gateway · context-engine · memory-cache-management · code-intelligence</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Commands -->
+    <section class="section section-alt" id="commands">
+      <div class="container">
+        <h2 class="section-title">⚡ Core Commands / 核心命令</h2>
+        <p class="section-lead">
+          The CLI parser exposes these command groups and subcommand families, verified from source and command-index evidence:
+        </p>
+        <div class="cmd-groups">
+          <div class="cmd-group">
+            <h3 class="cmd-group-title">🤖 Agent Loop</h3>
+            <div class="cmd-item"><code>run</code> one-shot agent loop tasks with text, JSON, or JSONL output modes.</div>
+            <div class="cmd-item"><code>chat</code> interactive turns with optional session resume.</div>
+            <div class="cmd-item"><code>session</code> resume and fork workflows.</div>
+          </div>
+          <div class="cmd-group">
+            <h3 class="cmd-group-title">🩺 Diagnostics & Readiness</h3>
+            <div class="cmd-item"><code>diagnostics</code> bundle, release, doctor, verify, refresh, and evaluate flows.</div>
+            <div class="cmd-item"><code>readiness</code> family: init, config, auth, doctor, privacy, verify-install.</div>
+          </div>
+          <div class="cmd-group">
+            <h3 class="cmd-group-title">🧩 Extension & MCP</h3>
+            <div class="cmd-item"><code>extension</code> list, plugin, skill, auth scopes, and MCP testing surfaces.</div>
+            <div class="cmd-item"><code>mcp</code> manifest testing with optional real-MCP execution.</div>
+          </div>
+          <div class="cmd-group">
+            <h3 class="cmd-group-title">🔍 Index & Revert</h3>
+            <div class="cmd-item"><code>index-provider</code> status and provider preference controls for pageindex, zvec, and code-index.</div>
+            <div class="cmd-item"><code>revert</code> preview and apply workflows scoped by request, turn, session, or path.</div>
+          </div>
+          <div class="cmd-group">
+            <h3 class="cmd-group-title">🎨 Palette</h3>
+            <div class="cmd-item"><code>palette</code> list, keymap, and action surfaces for terminal workflows.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidence-First -->
+    <section class="section" id="evidence-first">
+      <div class="container">
+        <h2 class="section-title">🔎 Evidence-First Product Guarantee</h2>
+        <p class="section-lead">
+          DeepSeek CLI's <strong>evidence-first</strong> guarantee means that for fact-sensitive tasks — repository facts, product copy, commands, architecture, roadmap, release state, or evaluation — the workflow must gather local project evidence before producing factual output.
+        </p>
+        <div class="evidence-flow">
+          <div class="ev-step">
+            <div class="ev-step-num">1</div>
+            <div class="ev-step-content">
+              <h4>Evidence Plan</h4>
+              <p>Why evidence is required, candidate sources, required fact classes, minimum source coverage, stop conditions.</p>
+            </div>
+          </div>
+          <div class="ev-step">
+            <div class="ev-step-num">2</div>
+            <div class="ev-step-content">
+              <h4>Evidence Discovery</h4>
+              <p>Inspect local project sources (README, package.json, source code, docs, OpenSpecs, tests) with bounded previews and fingerprints.</p>
+            </div>
+          </div>
+          <div class="ev-step">
+            <div class="ev-step-num">3</div>
+            <div class="ev-step-content">
+              <h4>Claim Classification</h4>
+              <p>Every factual claim is classified as <span class="tag tag-verified">verified</span>, <span class="tag tag-inferred">inferred</span>, <span class="tag tag-assumption">assumption</span>, or <span class="tag tag-unsupported">unsupported</span>.</p>
+            </div>
+          </div>
+          <div class="ev-step">
+            <div class="ev-step-num">4</div>
+            <div class="ev-step-content">
+              <h4>Grounded Output</h4>
+              <p>Generated artifacts, product pages, release notes, and evaluation reports link claims to evidence. Unsupported claims are removed or marked.</p>
+            </div>
+          </div>
+        </div>
+        <div class="evidence-note">
+          <p>This very webpage was built using the evidence-first workflow. See <code>website/evidence.json</code> for the full evidence manifest, claim groundings, and assumptions.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section class="section section-alt" id="roadmap">
+      <div class="container">
+        <h2 class="section-title">🗺️ Product Roadmap / 产品路线图</h2>
+        <p class="section-lead">
+          DeepSeek follows a <strong>CLI-first product route</strong>: make the terminal CLI the first polished daily-use surface, then promote proven workflows to other hosts through shared protocol events.
+        </p>
+        <div class="roadmap-principles">
+          <div class="principle">
+            <span class="principle-icon">🥇</span>
+            <div>
+              <strong>CLI is the default near-term product surface</strong>
+              <p>Interaction, approvals, diagnostics, extension management, and release readiness.</p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-icon">🔌</span>
+            <div>
+              <strong>Non-CLI hosts stay as adapter skeletons</strong>
+              <p>Until the corresponding CLI workflow passes acceptance gates.</p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-icon">📋</span>
+            <div>
+              <strong>Promotion requires evidence</strong>
+              <p>CLI smoke evidence, protocol fixtures, policy/audit traces, deterministic tests, and documented CLI behavior.</p>
+            </div>
+          </div>
+          <div class="principle">
+            <span class="principle-icon">🏛️</span>
+            <div>
+              <strong>CLI UX consumes shared runtime</strong>
+              <p>CLI polish must not bypass runtime ownership — it consumes shared runtime events, command results, readiness results, and policy decisions.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Principles -->
+    <section class="section" id="principles">
+      <div class="container">
+        <h2 class="section-title">🏛️ Platform Principles / 平台原则</h2>
+        <div class="principles-grid">
+          <div class="principle-card">
+            <div class="principle-card-icon">🏛️</div>
+            <h3>One Kernel, Many Hosts</h3>
+            <p>CLI · VSCode · Server · SDK are thin adapters over the same runtime.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-card-icon">📨</div>
+            <h3>One Execution Envelope</h3>
+            <p>Every action (tool, skill, hook, MCP, plugin, subagent) enters one governed pipeline.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-card-icon">📡</div>
+            <h3>One Protocol Stream</h3>
+            <p>All hosts consume the same event stream — no surface-specific state machines.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-card-icon">🌍</div>
+            <h3>One Platform Abstraction</h3>
+            <p>macOS · Linux · Windows · WSL · CI · Remote degrade predictably.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-card-icon">🧪</div>
+            <h3>One Quality System</h3>
+            <p>Architecture lint → contract tests → golden replay → platform matrix → e2e.</p>
+          </div>
+          <div class="principle-card">
+            <div class="principle-card-icon">🔎</div>
+            <h3>Evidence-First Output</h3>
+            <p>Project facts, commands, product copy, reports, and generated artifacts must be grounded before acceptance.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidence Footer -->
+    <section class="section section-evidence" id="evidence-footer">
+      <div class="container">
+        <h2 class="section-title">📋 Evidence Manifest</h2>
+        <p>This page was generated using the evidence-first workflow. All claims are grounded in local project evidence.</p>
+        <div class="evidence-stats">
+          <div class="stat">
+            <span class="stat-value">8</span>
+            <span class="stat-label">Sources Inspected</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">0.86</span>
+            <span class="stat-label">Source Coverage</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">20</span>
+            <span class="stat-label">Verified Claims</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">0</span>
+            <span class="stat-label">Unsupported Claims</span>
+          </div>
+        </div>
+        <p class="evidence-cta">See <a href="evidence.json" target="_blank">evidence.json</a> for the complete evidence manifest, claim groundings, and assumptions.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>DeepSeek CLI · Evidence-backed local product page</p>
+      <p class="footer-meta">MIT License · Built with evidence-first methodology</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { JsonObject, PromptAssemblyInput, PromptSection } from "@deepseek/platform-contracts";
-import { asId } from "@deepseek/platform-contracts";
+import type { EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection } from "@deepseek/platform-contracts";
+import { EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
 describe("prompt assembly", () => {
@@ -48,6 +48,24 @@ describe("prompt assembly", () => {
     assert.equal(result.sections.some((section) => section.kind === "context.skill" && section.included), true);
     assert.equal(result.sections.some((section) => section.kind === "context.code-intelligence" && section.included), true);
     assert.equal(result.messages.some((message) => message.content.includes("Semantic recall evidence")), true);
+  });
+
+  it("weaves evidence-first sections without mutating the exact user prompt", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "生成 website 到 @website 目录",
+      mode: "webpage-generation",
+      evidenceFirst: evidenceFirstContext()
+    }));
+
+    assert.equal(result.status, "assembled");
+    assert.equal(result.messages.at(-1)?.role, "user");
+    assert.equal(result.messages.at(-1)?.content, "生成 website 到 @website 目录");
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Evidence-first operating rules:")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Selected local project evidence:")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("evidence.json")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("website/index.html")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("generated-webpage/index.html")), false);
   });
 
   it("records budget exclusions", async () => {
@@ -124,7 +142,14 @@ function providerRegistration(id: string, priority: number, content: string, req
   };
 }
 
-function input(options: { readonly prompt: string; readonly contextContent?: string; readonly projectionNodes?: readonly NonNullable<PromptAssemblyInput["contextProjection"]>["selectedNodes"][number][]; readonly hardLimitTokens?: number }): PromptAssemblyInput {
+function input(options: {
+  readonly prompt: string;
+  readonly contextContent?: string;
+  readonly projectionNodes?: readonly NonNullable<PromptAssemblyInput["contextProjection"]>["selectedNodes"][number][];
+  readonly hardLimitTokens?: number;
+  readonly mode?: PromptAssemblyInput["mode"];
+  readonly evidenceFirst?: EvidenceFirstRuntimeContext;
+}): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
   ] : []);
@@ -133,7 +158,7 @@ function input(options: { readonly prompt: string; readonly contextContent?: str
     sessionId: asId<"session">("session-prompt-assembly"),
     turnId: asId<"turn">("turn-prompt-assembly"),
     prompt: options.prompt,
-    mode: "coding",
+    mode: options.mode ?? "coding",
     caller: "test",
     workspaceRoot: "/workspace",
     profile: {
@@ -147,6 +172,7 @@ function input(options: { readonly prompt: string; readonly contextContent?: str
       correlationId: asId<"correlation">("corr-prompt-assembly")
     },
     history: [{ role: "user", content: options.prompt }],
+    ...(options.evidenceFirst ? { evidenceFirst: options.evidenceFirst } : {}),
     ...(selectedNodes.length > 0 ? {
       contextProjection: {
         schemaVersion: "1.0.0",
@@ -174,6 +200,90 @@ function input(options: { readonly prompt: string; readonly contextContent?: str
     toolPolicy: "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
+function evidenceFirstContext(): EvidenceFirstRuntimeContext {
+  const classification: EvidenceTaskClassification = {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    classificationId: "evidence-classification:test",
+    sensitivity: "fact-sensitive" as const,
+    intents: ["product", "generated-artifact"] as const,
+    factClasses: ["package", "command", "product-copy"] as const,
+    evidenceRequired: true,
+    reason: "test",
+    trace: {},
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["reason"] }
+  };
+  const plan: NonNullable<EvidenceFirstRuntimeContext["plan"]> = {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    planId: "evidence-plan:test",
+    classificationId: classification.classificationId,
+    requiredFactClasses: classification.factClasses,
+    candidateSourceGroups: [{
+      sourceGroup: "package-metadata" as const,
+      required: true,
+      factClasses: ["package", "executable"] as const,
+      minimumItemCount: 1
+    }],
+    minimumSourceCoverage: 1,
+    freshnessPolicy: "local-current-worktree",
+    redactionPolicy: "bounded-previews-and-fingerprints",
+    stopConditions: ["unsupported strict command"],
+    trace: {},
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["stopConditions"] }
+  };
+  const evidenceItem: EvidenceItem = {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    evidenceId: "evidence:package-json",
+    sourceGroup: "package-metadata" as const,
+    sourcePath: "src/apps/cli/package.json",
+    sourceLabel: "CLI package metadata",
+    factClasses: ["package", "executable"] as const,
+    preview: "name deepseek-agent-cli, bin deepseek",
+    fingerprint: "fnv1a:test",
+    freshness: { status: "current" as const },
+    trace: {},
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["preview"] }
+  };
+  const coverage: EvidenceSourceCoverage = {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    sourceGroup: "package-metadata" as const,
+    covered: true,
+    itemCount: 1,
+    factClasses: ["package", "executable"] as const,
+    fingerprints: ["fnv1a:test"],
+    missingFactClasses: [],
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["fingerprints"] }
+  };
+  return {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    classification,
+    plan,
+    selectedEvidence: [evidenceItem],
+    sourceCoverage: [coverage],
+    summary: {
+      schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+      summaryId: "evidence-summary:test",
+      classification,
+      plan,
+      manifestStatus: "missing",
+      evidenceItemCount: 1,
+      sourceCoverageRate: 1,
+      claimGroundingRate: 0,
+      unsupportedClaimCount: 0,
+      assumptionCount: 0,
+      hallucinatedCommandCount: 0,
+      trace: {},
+      compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+      redaction: { class: "internal", fields: ["classification.reason"] }
+    },
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal", fields: ["selectedEvidence.preview"] }
   };
 }
 

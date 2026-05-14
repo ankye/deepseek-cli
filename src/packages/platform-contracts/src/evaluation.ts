@@ -1,4 +1,5 @@
 import type { JsonObject, RedactionMetadata } from "./common.js";
+import type { EvidenceManifestStatus } from "./evidence-first.js";
 import type { ReadinessStatus } from "./readiness.js";
 
 export const CLI_TASK_EVALUATION_SCHEMA_VERSION = "1.0.0";
@@ -94,6 +95,14 @@ export interface CliEvaluationRunMetrics extends JsonObject {
   readonly promptAssemblyVisibleToolCount?: number;
   readonly promptAssemblyFingerprint?: string;
   readonly promptAssemblyGapReason?: "missing-output-contract" | "dropped-context" | "insufficient-tool-visibility" | "provider-readiness-failure" | "post-assembly-model-failure" | "not-applicable";
+  readonly evidencePlanPresent?: boolean;
+  readonly evidenceItemCount?: number;
+  readonly evidenceSourceCoverageRate?: number;
+  readonly claimGroundingRate?: number;
+  readonly unsupportedClaimCount?: number;
+  readonly assumptionCount?: number;
+  readonly hallucinatedCommandCount?: number;
+  readonly evidenceManifestStatus?: EvidenceManifestStatus;
   readonly redaction: RedactionMetadata;
 }
 

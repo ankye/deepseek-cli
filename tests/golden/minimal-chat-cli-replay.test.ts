@@ -11,6 +11,7 @@ const canonicalAgentLoopKinds = [
   "agent.loop.started",
   "turn.started",
   "hooks.invoked",
+  "evidence.classified",
   "context.projection.started",
   "context.memory.collected",
   "context.projection.completed",

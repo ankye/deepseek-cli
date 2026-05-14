@@ -4,6 +4,7 @@ import { asId } from "@deepseek/platform-contracts";
 import { DeterministicToolIntentPreflight, deepSeekToolIntentProfile, normalizeWorkspacePath, prepareProviderIntent } from "../src/index.js";
 
 const visible = [asId<"capability">("core.file.read")];
+const searchVisible = [asId<"capability">("core.search.text")];
 const deepseek = asId<"modelProvider">("provider-deepseek");
 
 describe("tool intent preflight", () => {
@@ -103,6 +104,26 @@ describe("tool intent preflight", () => {
     assert.equal(result.provider?.matched, true);
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-arguments-unwrapped"), true);
+  });
+
+  it("normalizes DeepSeek search aliases to the visible search capability", async () => {
+    const preflight = new DeterministicToolIntentPreflight();
+    const result = await preflight.check({
+      providerId: deepseek,
+      intent: {
+        name: "core_file_search",
+        source: "model",
+        input: { pattern: "deepseek" }
+      },
+      workspaceRoot: "/repo",
+      platform: "linux",
+      modelVisibleCapabilities: searchVisible
+    });
+
+    assert.equal(result.status, "repaired");
+    assert.equal(result.capabilityId, "core.search.text");
+    assert.deepEqual(result.repaired?.input, { pattern: "deepseek" });
+    assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
   });
 
   it("rejects invalid provider argument JSON before execution", () => {

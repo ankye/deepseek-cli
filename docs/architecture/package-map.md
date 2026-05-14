@@ -20,6 +20,7 @@ This page maps packages to architectural ownership. It is a developer reference 
 | `communication-protocol` | Host/runtime protocol codec and routing. / host/runtime 协议 codec 与路由。 |
 | `runtime-message-bus` | Internal replayable event bus. / 内部可 replay event bus。 |
 | `session-store` | Session event persistence, resume, fork. / session event 持久化、resume、fork。 |
+| `workspace-state-management` | Workspace identity, write checkpoints, undo, request revert, and redacted rollback evidence. / workspace identity、写入 checkpoint、undo、request revert 与脱敏 rollback evidence。 |
 
 ## Capability Packages / 能力包
 
@@ -58,7 +59,9 @@ This page maps packages to architectural ownership. It is a developer reference 
 | Package / 包 | Responsibility / 职责 |
 | --- | --- |
 | `model-gateway` | DeepSeek provider boundary and OpenAI-compatible transport normalization. / DeepSeek provider 边界与 OpenAI-compatible transport 归一化。 |
+| `prompt-assembly` | Provider-neutral prompt sections, deterministic ordering, budget enforcement, tool projection, and replay evidence. / provider-neutral prompt section、确定性排序、预算门禁、tool projection 与 replay evidence。 |
 | `context-engine` | ContextGraph projection, redaction, budgets, cache metadata. / ContextGraph 投影、脱敏、预算、缓存 metadata。 |
+| `index-provider` | PageIndex-first recall diagnostics; ZVec and code-index activation remain evidence-gated and deferred until implementation evidence exists. / PageIndex-first recall 诊断；ZVec 与 code-index activation 在实现证据出现前保持 evidence-gated 与 deferred。 |
 | `memory-cache-management` | Memory/cache contracts and future governance. / memory/cache 契约与未来治理。 |
 | `code-intelligence` | Diagnostics, symbols, references, code evidence. / diagnostics、symbols、references、code evidence。 |
 
@@ -81,4 +84,7 @@ When unsure where code belongs, answer these questions:
 2. Is it a contract used across packages? Put it in `platform-contracts`. / 是否是跨包契约？放 `platform-contracts`。
 3. Does it execute work? It needs a capability manifest and runtime envelope. / 是否执行工作？需要 capability manifest 和 runtime envelope。
 4. Does it decide permission, platform, secret, budget, or sandbox? Put it in governance packages. / 是否决策权限、平台、secret、预算或 sandbox？放治理包。
-5. Is it test-only behavior? Put it in tests or `testing-regression`, not runtime. / 是否只用于测试？放 tests 或 `testing-regression`，不要放 runtime。
+5. Does it assemble model-visible instructions, selected evidence, or tool visibility without executing side effects? Put it in `prompt-assembly`. / 是否组装模型可见指令、已选证据或工具可见性，且不执行副作用？放 `prompt-assembly`。
+6. Does it manage recall provider activation or PageIndex/ZVec/code-index diagnostics? Put it in `index-provider`; keep semantic providers deferred until activation evidence exists. / 是否管理 recall provider activation 或 PageIndex/ZVec/code-index diagnostics？放 `index-provider`；semantic provider 在 activation evidence 存在前保持 deferred。
+7. Does it create rollback checkpoints, undo, or request-scoped revert evidence? Put it in `workspace-state-management`. / 是否创建 rollback checkpoint、undo 或 request-scoped revert evidence？放 `workspace-state-management`。
+8. Is it test-only behavior? Put it in tests or `testing-regression`, not runtime. / 是否只用于测试？放 tests 或 `testing-regression`，不要放 runtime。

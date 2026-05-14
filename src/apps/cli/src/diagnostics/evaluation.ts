@@ -1,4 +1,4 @@
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import { deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
 import type {
   CliEvaluationBaselineAggregate,
@@ -17,22 +17,14 @@ import type {
 } from "@deepseek/platform-contracts";
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
+import { generatedArtifactMetrics } from "./generated-artifacts.js";
 import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
+import { checkerDiagnostics, evidenceManifestStatus, parseCheckerOutput, webpageProjectEvidence } from "./webpage-evidence.js";
 import { webpageTaskPrompt } from "./webpage-task.js";
 
 interface CatalogFile extends JsonObject {
   readonly catalogVersion?: string;
   readonly tasks?: readonly JsonObject[];
-}
-
-interface GeneratedArtifactMetrics {
-  readonly fileCount: number;
-  readonly htmlFileCount: number;
-  readonly cssFileCount: number;
-  readonly jsFileCount: number;
-  readonly byteTotal: number;
-  readonly largestFileBytes: number;
-  readonly structureScore: number;
 }
 
 interface EvaluationEventRecorder {
@@ -292,6 +284,9 @@ async function executeWebpageTask(
   events.record("workspace_created", { workspaceRoot });
   const generatedDir = platform.resolvePath(workspaceRoot, "generated-webpage");
   await platform.ensureDirectory(generatedDir);
+  const projectEvidencePath = platform.resolvePath(workspaceRoot, "PROJECT-EVIDENCE.md");
+  await platform.writeFile(projectEvidencePath, await webpageProjectEvidence(platform));
+  events.record("evidence_written", { path: projectEvidencePath, purpose: "webpage-project-evidence" });
   await platform.writeFile(platform.resolvePath(workspaceRoot, "TASK.md"), webpageTaskPrompt(task));
   events.record("prompt_written", { path: platform.resolvePath(workspaceRoot, "TASK.md") });
 
@@ -322,6 +317,7 @@ async function executeWebpageTask(
   events.record("checker_started", { command: checkCommand });
   const checkerResult = await platform.runProcess(process.execPath, [join(process.cwd(), "scripts/check-webpage-generation.mjs"), generatedDir], { cwd: process.cwd(), timeoutMs: 60_000 });
   events.record("checker_finished", { exitCode: checkerResult.exitCode, stdoutBytes: byteLength(checkerResult.stdout), stderrBytes: byteLength(checkerResult.stderr) });
+  const checkerOutput = parseCheckerOutput(checkerResult.stdout);
   events.record("artifact_scan_started", { generatedDir });
   const artifactMetrics = await generatedArtifactMetrics(platform, generatedDir);
   events.record("artifact_scan_finished", {
@@ -399,6 +395,14 @@ async function executeWebpageTask(
       ...(promptAssembly.budgetStatus ? { promptAssemblyBudgetStatus: promptAssembly.budgetStatus } : {}),
       ...(promptAssembly.visibleToolCount !== undefined ? { promptAssemblyVisibleToolCount: promptAssembly.visibleToolCount } : {}),
       ...(promptAssembly.gapReason ? { promptAssemblyGapReason: promptAssembly.gapReason } : {}),
+      evidencePlanPresent: true,
+      evidenceItemCount: checkerOutput?.evidence?.evidenceItemCount ?? 0,
+      evidenceSourceCoverageRate: checkerOutput?.evidence?.sourceCoverageRate ?? 0,
+      claimGroundingRate: checkerOutput?.evidence?.claimGroundingRate ?? 0,
+      unsupportedClaimCount: checkerOutput?.evidence?.unsupportedClaimCount ?? 0,
+      assumptionCount: checkerOutput?.evidence?.assumptionCount ?? 0,
+      hallucinatedCommandCount: checkerOutput?.evidence?.hallucinatedCommandCount ?? 0,
+      evidenceManifestStatus: evidenceManifestStatus(checkerOutput),
       recoveryUsed: correctionCount > 0,
       redaction: { class: "internal", fields: ["estimatedCostUsd"] }
     },
@@ -406,10 +410,11 @@ async function executeWebpageTask(
     diagnostics: [
       ...(commandFailed ? [diagnostic("CLI_EVALUATION_BASELINE_COMMAND_FAILED", "warn", `${baseline.baselineId} exited with code ${runResult.exitCode}.`)] : []),
       ...(checkPassed ? [] : [diagnostic("CLI_EVALUATION_WEBPAGE_CHECK_FAILED", "warn", `${baseline.baselineId} generated webpage failed local artifact checks.`)]),
+      ...checkerDiagnostics(checkerOutput, diagnostic),
       ...(baseline.baselineId === "deepseek-cli" && !promptAssembly.available ? [diagnostic("CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING", "warn", "DeepSeek CLI run did not expose prompt assembly evidence.")] : []),
       ...(baseline.baselineId === "deepseek-cli" && !checkPassed && promptAssembly.gapReason && promptAssembly.gapReason !== "not-applicable" ? [diagnostic(`CLI_EVALUATION_PROMPT_ASSEMBLY_${promptAssembly.gapReason.toUpperCase().replace(/-/g, "_")}`, "warn", `DeepSeek CLI webpage failure categorized as ${promptAssembly.gapReason}.`)] : [])
     ],
-    evidencePaths: [workspaceRoot, generatedDir, platform.resolvePath(workspaceRoot, "baseline-output.txt")],
+    evidencePaths: [workspaceRoot, generatedDir, projectEvidencePath, platform.resolvePath(workspaceRoot, "baseline-output.txt")],
     redaction: { class: "internal", fields: ["task.promptDigest", "checks.command", "checks.evidencePath", "checks.stdoutPreview", "checks.stderrPreview", "instrumentationEvents.metadata", "evidencePaths", "diagnostics.metadata"] }
   };
 }
@@ -487,33 +492,6 @@ async function liveCredentialEnv(platform: PlatformRuntime): Promise<JsonObject>
 
 async function isolatedWorkspaceRoot(platform: PlatformRuntime, runId: string): Promise<string> {
   return platform.createTempDirectory(`${sanitizePathSegment(runId)}-`);
-}
-
-async function generatedArtifactMetrics(platform: PlatformRuntime, root: string): Promise<GeneratedArtifactMetrics> {
-  const files = await platform.findFiles("", root).catch(() => []);
-  const sizes = await Promise.all(files.map(async (file) => Buffer.byteLength(await platform.readFile(file).catch(() => ""), "utf8")));
-  const byteTotal = sizes.reduce((sum, value) => sum + value, 0);
-  const largestFileBytes = sizes.reduce((max, value) => Math.max(max, value), 0);
-  const htmlFileCount = files.filter((file) => extname(file).toLowerCase() === ".html").length;
-  const cssFileCount = files.filter((file) => extname(file).toLowerCase() === ".css").length;
-  const jsFileCount = files.filter((file) => extname(file).toLowerCase() === ".js").length;
-  const largestRatio = byteTotal > 0 ? largestFileBytes / byteTotal : 1;
-  const structureScore = roundRatio(
-    (htmlFileCount > 0 ? 0.25 : 0) +
-    (cssFileCount > 0 ? 0.2 : 0) +
-    (jsFileCount > 0 ? 0.2 : 0) +
-    (files.length >= 3 ? 0.2 : files.length >= 2 ? 0.1 : 0) +
-    (byteTotal > 0 && largestRatio <= 0.85 ? 0.15 : 0)
-  );
-  return {
-    fileCount: files.length,
-    htmlFileCount,
-    cssFileCount,
-    jsFileCount,
-    byteTotal,
-    largestFileBytes,
-    structureScore
-  };
 }
 
 function sanitizePathSegment(value: string): string {

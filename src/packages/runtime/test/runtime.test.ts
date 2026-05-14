@@ -76,6 +76,7 @@ describe("headless runtime", () => {
       "agent.loop.started",
       "turn.started",
       "hooks.invoked",
+      "evidence.classified",
       "context.projection.started",
       "context.memory.collected",
       "context.projection.completed",
@@ -91,6 +92,60 @@ describe("headless runtime", () => {
       "agent.loop.completed"
     ]);
     assert.equal(events.at(-1)?.data.status, "completed");
+    await kernel.shutdown();
+  });
+
+  it("runs evidence discovery before fact-sensitive model dispatch and preserves prompt boundary", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new CapturingModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await loopDeps.platform.writeFile("/workspace/README.md", "DeepSeek CLI repository evidence\n");
+    await loopDeps.platform.writeFile("/workspace/src/apps/cli/package.json", JSON.stringify({ name: "deepseek-agent-cli", bin: { deepseek: "dist/index.js" } }));
+    await loopDeps.platform.writeFile("/workspace/src/apps/cli/README.md", "DeepSeek CLI host adapter\n");
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const prompt = "生成 DeepSeek CLI 产品 website 到 @website 目录";
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt,
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const kinds = events.map((event) => event.kind);
+    assert.equal(kinds.indexOf("evidence.classified") < kinds.indexOf("model.requested"), true);
+    assert.equal(kinds.indexOf("evidence.plan.created") < kinds.indexOf("model.requested"), true);
+    assert.equal(kinds.indexOf("evidence.selected") < kinds.indexOf("model.requested"), true);
+    const classification = events.find((event) => event.kind === "evidence.classified")?.data as { evidenceRequired?: boolean; sensitivity?: string } | undefined;
+    assert.equal(classification?.evidenceRequired, true);
+    assert.equal(classification?.sensitivity, "fact-sensitive");
+    const userMessage = gateway.requests[0]?.messages?.find((message) => message.role === "user");
+    assert.equal(userMessage?.content, prompt);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("Selected local project evidence:")), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("deepseek-agent-cli")), true);
+    await kernel.shutdown();
+  });
+
+  it("classifies speculative tasks without mandatory evidence discovery", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new CapturingModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "头脑风暴一个虚构 CLI 名字",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const classification = events.find((event) => event.kind === "evidence.classified")?.data as { evidenceRequired?: boolean; sensitivity?: string } | undefined;
+    assert.equal(classification?.evidenceRequired, false);
+    assert.equal(classification?.sensitivity, "speculative");
+    assert.equal(events.some((event) => event.kind === "evidence.plan.created"), false);
+    assert.equal(events.some((event) => event.kind === "evidence.selected"), false);
     await kernel.shutdown();
   });
 

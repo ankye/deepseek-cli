@@ -90,7 +90,7 @@ export function classifySecretText(text: string, redaction: RedactionMetadata = 
     if (matches.length === 0) continue;
     return secretClassification(candidate.kind, candidate.exposure, candidate.reasonCode, matches.length, stableFingerprint(matches[0]?.[0] ?? text), "secret");
   }
-  if (/\b(?:api[_-]?key|password|credential)\b/i.test(text)) {
+  if (hasBareSecretKeywordRisk(text)) {
     return secretClassification("generic-secret", "unsafe", "secret.keyword", 1, stableFingerprint(text), "secret");
   }
   return secretClassification("none", "none", "secret.none", 0, undefined, redaction.class);
@@ -571,6 +571,12 @@ function redactUnknown(value: unknown, key: string): unknown {
     return result;
   }
   return value;
+}
+
+function hasBareSecretKeywordRisk(text: string): boolean {
+  if (!/\b(?:api[_-]?key|password|credential)\b/i.test(text)) return false;
+  if (/credential-auth-management/i.test(text)) return false;
+  return /(?:^|[\s"'`{[,;])(?:api[_-]?key|password|credential)(?:\s*[:=]|["'`}\],;])/i.test(text);
 }
 
 function stringifyForClassification(value: unknown): string {

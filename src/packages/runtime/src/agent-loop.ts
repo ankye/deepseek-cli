@@ -23,6 +23,7 @@ import { asId } from "@deepseek/platform-contracts";
 import { createToolResultEvidence, createToolResultEvidenceCacheEntry } from "@deepseek/memory-cache-management";
 import { projectAgentLoopContext, projectionEventData } from "./context-projection.js";
 import { kernelError, toolIntentError } from "./errors.js";
+import { createEvidenceFirstRuntimeContext, evidenceFirstEventData } from "./evidence-first.js";
 import { agentLoopEvent, collectRuntimeEvents, lastRuntimeEvent, recordRuntimeAdapterEvent } from "./events.js";
 import {
   boundedModelText,
@@ -60,6 +61,7 @@ export async function* runAgentLoop(
   let terminalEmitted = false;
   const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
   let contextProjection: ContextProjectionResult | undefined;
+  let evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined;
   const signal = control.signal;
 
   const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
@@ -150,6 +152,37 @@ export async function* runAgentLoop(
     return;
   }
 
+  evidenceFirst = await createEvidenceFirstRuntimeContext(deps, request, sessionId, turnId, trace);
+  const classified = agentLoopEvent("evidence.classified", sessionId, turnId, trace, evidenceFirst.classification, request.agentId);
+  await recordRuntimeAdapterEvent(deps, classified);
+  yield classified;
+  if (evidenceFirst.plan) {
+    const planCreated = agentLoopEvent("evidence.plan.created", sessionId, turnId, trace, evidenceFirst.plan, request.agentId);
+    await recordRuntimeAdapterEvent(deps, planCreated);
+    yield planCreated;
+  }
+  if (evidenceFirst.classification.evidenceRequired) {
+    const selected = agentLoopEvent("evidence.selected", sessionId, turnId, trace, {
+      schemaVersion: evidenceFirst.schemaVersion,
+      selectedEvidenceCount: evidenceFirst.selectedEvidence.length,
+      sourceCoverage: evidenceFirst.sourceCoverage,
+      summary: evidenceFirst.summary,
+      evidenceItems: evidenceFirst.selectedEvidence.map((item) => ({
+        evidenceId: item.evidenceId,
+        sourceGroup: item.sourceGroup,
+        sourcePath: item.sourcePath,
+        sourceLabel: item.sourceLabel,
+        factClasses: item.factClasses,
+        fingerprint: item.fingerprint,
+        freshness: item.freshness,
+        redaction: item.redaction
+      })),
+      redaction: { class: "internal", fields: ["evidenceItems"] }
+    }, request.agentId);
+    await recordRuntimeAdapterEvent(deps, selected);
+    yield selected;
+  }
+
   const projectionStream = projectAgentLoopContext(deps, request, sessionId, turnId, trace);
   let projectionStep = await projectionStream.next();
   while (!projectionStep.done) {
@@ -178,7 +211,7 @@ export async function* runAgentLoop(
     let iterationReasoning = "";
     let reasoningPersistedForIteration = false;
     const availableCapabilities = await deps.capabilities.listModelVisible();
-    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits);
+    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits, evidenceFirst);
     if (assembly.status === "rejected") {
       diagnostics.push(...assembly.diagnostics);
       const error = assembly.diagnostics[0] ?? kernelError("KERNEL_ENVELOPE_INVALID", "Prompt assembly rejected model dispatch");
@@ -203,6 +236,7 @@ export async function* runAgentLoop(
         sectionCount: assembly.sections.length,
         budgetStatus: assembly.budget.status
       },
+      ...(evidenceFirst ? { evidenceFirst: evidenceFirstEventData(evidenceFirst) } : {}),
       ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {})
     });
     if (modelBeforeResult.status === "blocked") {
@@ -233,6 +267,7 @@ export async function* runAgentLoop(
         sectionCount: assembly.sections.length,
         budgetStatus: assembly.budget.status
       },
+      ...(evidenceFirst ? { evidenceFirst: evidenceFirstEventData(evidenceFirst) } : {}),
       ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {}),
       ...(request.referenceContext ? { referenceContext: referenceContextSummary(request) } : {})
     }, request.agentId);

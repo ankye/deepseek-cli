@@ -50,7 +50,7 @@ export interface DeepSeekOpenAIProviderOptions {
 
 export class DeterministicMockModelGateway implements ModelGateway {
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
-    yield { kind: "delta", text: `DeepSeek mock response: ${request.prompt}` };
+    yield { kind: "delta", text: `DeepSeek mock response: ${lastUserMessageContent(request)}` };
     yield {
       kind: "usage",
       inputTokens: await this.countTokens(request.prompt, request.profile),
@@ -71,6 +71,12 @@ export class DeterministicMockModelGateway implements ModelGateway {
   async verify(request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
     return verifyByStreaming(this, request);
   }
+}
+
+function lastUserMessageContent(request: ModelRequest): string {
+  const messages = request.messages ?? [];
+  const user = [...messages].reverse().find((message) => message.role === "user");
+  return user?.content ?? request.prompt;
 }
 
 export class DeepSeekModelGatewaySkeleton implements ModelGateway {

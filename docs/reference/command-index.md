@@ -15,6 +15,12 @@ npm test
 node scripts/check-boundaries.mjs
 ```
 
+## Generated Artifacts / 生成产物
+
+```bash
+node scripts/check-webpage-generation.mjs website
+```
+
 ## Test Layers / 测试层
 
 ```bash
@@ -35,6 +41,14 @@ npx tsx src/apps/cli/src/index.ts run "smoke" --output jsonl
 npx tsx src/apps/cli/src/index.ts chat --output jsonl
 npx tsx src/apps/cli/src/index.ts init
 npx tsx src/apps/cli/src/index.ts doctor --fake-live --output json
+```
+
+## Diagnostics And Evaluation / 诊断与评估
+
+```bash
+npx tsx src/apps/cli/src/index.ts diagnostics refresh --dry-run --output json
+npx tsx src/apps/cli/src/index.ts diagnostics evaluate --dry-run --output json
+npx tsx src/apps/cli/src/index.ts diagnostics evaluate --baseline codex --allow-external-baseline --baseline-command codex --baseline-arg --version --dry-run --output json
 ```
 
 ## OpenSpec / OpenSpec

@@ -1,0 +1,288 @@
+{
+  "schemaVersion": "1.0.0",
+  "artifactId": "deepseek-cli-product-website",
+  "generatedAt": "2026-05-14T13:34:28.000+08:00",
+  "sourceCoverage": [
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "readme",
+      "covered": true,
+      "itemCount": 1,
+      "factClasses": ["docs", "product-copy", "command", "package", "architecture"],
+      "fingerprints": ["sha256:hddf2aba7"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "package-metadata",
+      "covered": true,
+      "itemCount": 1,
+      "factClasses": ["package", "executable", "install", "release"],
+      "fingerprints": ["sha256:h1e7202f1"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "command-index",
+      "covered": true,
+      "itemCount": 1,
+      "factClasses": ["command", "executable", "docs"],
+      "fingerprints": ["sha256:ha5ad627b"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "product-docs",
+      "covered": true,
+      "itemCount": 2,
+      "factClasses": ["docs", "feature", "product-copy", "roadmap"],
+      "fingerprints": ["sha256:hf33cd80e", "sha256:h3f011b2f"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "source",
+      "covered": true,
+      "itemCount": 1,
+      "factClasses": ["command", "code", "executable"],
+      "fingerprints": ["sha256:h98ae0f3b"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "sourceGroup": "openspec",
+      "covered": true,
+      "itemCount": 2,
+      "factClasses": ["architecture", "docs", "product-copy"],
+      "fingerprints": ["sha256:h11064062", "sha256:h49f9a009"],
+      "missingFactClasses": [],
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["fingerprints"] }
+    }
+  ],
+  "evidenceItems": [
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:readme",
+      "sourceGroup": "readme",
+      "sourcePath": "README.md",
+      "sourceLabel": "Repository README",
+      "factClasses": ["docs", "product-copy", "command", "package", "architecture"],
+      "preview": "DeepSeek CLI is a contract-first platform with one governed runtime kernel and thin host adapters.",
+      "fingerprint": "sha256:hddf2aba7",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:cli-package",
+      "sourceGroup": "package-metadata",
+      "sourcePath": "src/apps/cli/package.json",
+      "sourceLabel": "CLI package metadata",
+      "factClasses": ["package", "executable", "install", "release"],
+      "preview": "name deepseek-agent-cli, version 0.1.3, license MIT, bin deepseek -> dist/index.js",
+      "fingerprint": "sha256:h1e7202f1",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:cli-readme",
+      "sourceGroup": "product-docs",
+      "sourcePath": "src/apps/cli/README.md",
+      "sourceLabel": "CLI README",
+      "factClasses": ["docs", "feature", "command", "product-copy"],
+      "preview": "Describes the CLI framework preview and local CLI usage.",
+      "fingerprint": "sha256:hf33cd80e",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:command-index",
+      "sourceGroup": "command-index",
+      "sourcePath": "docs/reference/command-index.md",
+      "sourceLabel": "Command index",
+      "factClasses": ["command", "executable", "docs"],
+      "preview": "Documents development and CLI command surfaces.",
+      "fingerprint": "sha256:ha5ad627b",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:roadmap",
+      "sourceGroup": "product-docs",
+      "sourcePath": "docs/product/product-roadmap.md",
+      "sourceLabel": "Product roadmap",
+      "factClasses": ["roadmap", "product-copy", "feature"],
+      "preview": "Defines the CLI-first route and promotion gates.",
+      "fingerprint": "sha256:h3f011b2f",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:cli-parser",
+      "sourceGroup": "source",
+      "sourcePath": "src/apps/cli/src/commands/parse.ts",
+      "sourceLabel": "CLI command parser",
+      "factClasses": ["command", "code", "executable"],
+      "preview": "Defines run, chat, session, mcp, index-provider, diagnostics, extension, palette, revert, and readiness commands.",
+      "fingerprint": "sha256:h98ae0f3b",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:evidence-design",
+      "sourceGroup": "openspec",
+      "sourcePath": "openspec/changes/evidence-first-agent-workflow/design.md",
+      "sourceLabel": "Evidence-first design",
+      "factClasses": ["architecture", "product-copy", "docs"],
+      "preview": "Defines evidence-first workflow, claim classes, and generated artifact evidence manifests.",
+      "fingerprint": "sha256:h11064062",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "evidenceId": "evidence:evidence-spec",
+      "sourceGroup": "openspec",
+      "sourcePath": "openspec/changes/evidence-first-agent-workflow/specs/evidence-first-agent-workflow/spec.md",
+      "sourceLabel": "Evidence-first spec",
+      "factClasses": ["architecture", "docs", "product-copy"],
+      "preview": "Requires evidence discovery, manifests, claim grounding, strict command/package validation, and assumptions.",
+      "fingerprint": "sha256:h49f9a009",
+      "freshness": { "status": "current", "observedAt": "2026-05-14T13:34:28.000+08:00" },
+      "trace": {},
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["preview"] }
+    }
+  ],
+  "claimGroundings": [
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:package-name",
+      "claimPreview": "Package name is deepseek-agent-cli.",
+      "claimFingerprint": "claim:package-name",
+      "factClass": "package",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:cli-package"],
+      "outputScope": "website/index.html#package",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:bin-name",
+      "claimPreview": "Bin name is deepseek.",
+      "claimFingerprint": "claim:bin-name",
+      "factClass": "executable",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:cli-package"],
+      "outputScope": "website/index.html#package",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:version",
+      "claimPreview": "Current local package version is 0.1.3.",
+      "claimFingerprint": "claim:version",
+      "factClass": "release",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:cli-package"],
+      "outputScope": "website/index.html#package",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:architecture",
+      "claimPreview": "DeepSeek CLI is a contract-first platform with one governed runtime kernel and thin host adapters.",
+      "claimFingerprint": "claim:architecture",
+      "factClass": "product-copy",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:readme"],
+      "outputScope": "website/index.html#what",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:cli-first",
+      "claimPreview": "DeepSeek follows a CLI-first product route before promoting workflows to other hosts.",
+      "claimFingerprint": "claim:cli-first",
+      "factClass": "roadmap",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:roadmap"],
+      "outputScope": "website/index.html#roadmap",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:evidence-first",
+      "claimPreview": "Fact-sensitive tasks require evidence discovery before factual output.",
+      "claimFingerprint": "claim:evidence-first",
+      "factClass": "product-copy",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:evidence-design", "evidence:evidence-spec", "evidence:readme"],
+      "outputScope": "website/index.html#evidence-first",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "claimId": "claim:commands",
+      "claimPreview": "CLI command groups include run, chat, session, mcp, index-provider, diagnostics, extension, palette, revert, and readiness.",
+      "claimFingerprint": "claim:commands",
+      "factClass": "command",
+      "certainty": "verified",
+      "evidenceIds": ["evidence:cli-parser", "evidence:command-index"],
+      "outputScope": "website/index.html#commands",
+      "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+      "redaction": { "class": "internal", "fields": ["claimPreview"] }
+    }
+  ],
+  "assumptions": [
+    {
+      "claim": "Preview positioning is inferred from version 0.1.3 and CLI framework preview wording.",
+      "reason": "The generated page uses preview labeling but does not claim general availability or published release status.",
+      "evidenceIds": ["evidence:cli-package", "evidence:cli-readme"]
+    }
+  ],
+  "unsupportedClaims": [],
+  "unsupportedClaimCount": 0,
+  "trace": {},
+  "compatibility": { "schemaVersion": "1.0.0", "minReaderVersion": "1.0.0" },
+  "redaction": {
+    "class": "internal",
+    "fields": ["evidenceItems.preview", "claimGroundings.claimPreview"]
+  }
+}

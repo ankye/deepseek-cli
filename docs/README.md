@@ -63,6 +63,8 @@ OpenSpec 仍是正式需求来源。Docs 负责解释如何理解和执行这些
 | Area / 领域 | Status / 状态 |
 | --- | --- |
 | System architecture / 系统架构 | Covered by architecture volume. / 由架构卷覆盖。 |
+| Evidence-first workflow / 证据优先工作流 | Covered by architecture execution model and OpenSpec change. / 由架构执行模型与 OpenSpec change 覆盖。 |
+| Prompt assembly / Prompt 组装 | Covered by architecture package map and `@deepseek/prompt-assembly` README. / 由架构包地图与 `@deepseek/prompt-assembly` README 覆盖。 |
 | Orchestration and scheduling / 编排与调度 | Covered by dedicated architecture doc. / 有专门架构文档。 |
 | Capability system / 能力系统 | Covered by capability model doc. / 由能力模型文档覆盖。 |
 | Security, policy, sandbox / 安全、策略、沙箱 | Covered by security doc and OpenSpec specs. / 由安全文档和 OpenSpec specs 覆盖。 |

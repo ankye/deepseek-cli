@@ -24,7 +24,8 @@ export async function assemblePromptForIteration(
   messages: readonly ModelChatMessage[],
   contextProjection: ContextProjectionResult | undefined,
   availableCapabilities: readonly CapabilityManifest[],
-  limits: AgentLoopLimits
+  limits: AgentLoopLimits,
+  evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined
 ): Promise<PromptAssemblyResult> {
   const assembler = deps.promptAssembler ?? createDefaultPromptAssembler();
   return assembler.assemble({
@@ -42,6 +43,7 @@ export async function assemblePromptForIteration(
     trace,
     history: messages,
     ...(contextProjection ? { contextProjection } : {}),
+    ...(evidenceFirst ? { evidenceFirst } : {}),
     ...(request.referenceContext ? { referenceContext: request.referenceContext } : {}),
     availableTools: availableCapabilities,
     toolPolicy: toolProjectionPolicy(request),

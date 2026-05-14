@@ -325,17 +325,24 @@ function createReplayEvidence(input: {
   return {
     schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION,
     packageVersion: input.packageVersion,
-    inputFingerprint: stableHash(JSON.stringify({
-      schemaVersion: input.input.schemaVersion,
-      sessionId: input.input.sessionId,
-      turnId: input.input.turnId,
-      prompt: input.input.prompt,
-      mode: input.input.mode,
-      profile: input.input.profile,
-      toolPolicy: input.input.toolPolicy,
-      budget: input.input.budget,
-      contextFingerprint: input.input.contextProjection?.replayFingerprint
-    })),
+      inputFingerprint: stableHash(JSON.stringify({
+        schemaVersion: input.input.schemaVersion,
+        sessionId: input.input.sessionId,
+        turnId: input.input.turnId,
+        prompt: input.input.prompt,
+        mode: input.input.mode,
+        profile: input.input.profile,
+        toolPolicy: input.input.toolPolicy,
+        budget: input.input.budget,
+        contextFingerprint: input.input.contextProjection?.replayFingerprint,
+        evidenceFirst: input.input.evidenceFirst
+          ? {
+              summaryId: input.input.evidenceFirst.summary.summaryId,
+              classificationId: input.input.evidenceFirst.classification.classificationId,
+              evidenceFingerprints: input.input.evidenceFirst.selectedEvidence.map((item) => item.fingerprint)
+            }
+          : undefined
+      })),
     registryFingerprint: input.registryFingerprint,
     sectionOrderFingerprint: stableHash(input.included.map((section) => `${section.id}:${section.evidenceFingerprint}`).join("|")),
     budgetFingerprint: stableHash(JSON.stringify({

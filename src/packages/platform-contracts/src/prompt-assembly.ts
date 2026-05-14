@@ -1,6 +1,7 @@
 import type { CapabilityManifest } from "./capability.js";
 import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadata, TraceContext } from "./common.js";
 import type { ContextProjectionResult } from "./context.js";
+import type { EvidenceFirstRuntimeContext } from "./evidence-first.js";
 import type { AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
 import type { ModelChatMessage, ModelProfile, ModelReasoningOptions, ModelToolChoice } from "./model.js";
 import type { AgentId, SessionId, TurnId } from "./ids.js";
@@ -165,6 +166,7 @@ export interface PromptAssemblyInput {
   readonly trace: TraceContext;
   readonly history: readonly ModelChatMessage[];
   readonly contextProjection?: ContextProjectionResult;
+  readonly evidenceFirst?: EvidenceFirstRuntimeContext;
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly availableTools: readonly CapabilityManifest[];
   readonly toolPolicy: AgentLoopToolProjection;
