@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { OBSERVABILITY_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import type { ApprovalLifecycleRecord, ApprovalId } from "@deepseek/platform-contracts";
-import { defaultPrivacySettings, InMemoryObservabilitySink, redactObservabilityArtifact } from "./index.js";
+import { InMemoryUsageBudgetManager } from "@deepseek/usage-budget-management";
+import { createTraceBudgetEvidence, defaultPrivacySettings, InMemoryObservabilitySink, redactObservabilityArtifact } from "./index.js";
 import { getReferencePitFixture } from "@deepseek/testing-regression";
 
 const secret = "sk-live-1234567890";
@@ -186,6 +187,34 @@ describe("observability privacy sink", () => {
     assert.equal(denied.privacyDecision.action, "deny-export");
     assert.equal(denied.records.length, 0);
     assert.equal(JSON.stringify(denied).includes(secret), false);
+  });
+
+  it("creates observability.trace-budget evidence from redacted traces and usage totals", async () => {
+    const sessionId = asId<"session">("session-trace-budget");
+    const sink = new InMemoryObservabilitySink();
+    const usage = new InMemoryUsageBudgetManager({ maxInputTokens: 100 });
+    await usage.record({ sessionId, inputTokens: 70, outputTokens: 10, costMicros: 200, elapsedMs: 5 });
+    await sink.emit({
+      kind: "usage",
+      at: new Date(0).toISOString(),
+      name: "usage.secret",
+      fields: { token: secret, inputTokens: 70 }
+    });
+
+    const evidence = await createTraceBudgetEvidence(sink, usage, {
+      sessionId,
+      reason: `budget ${secret}`,
+      proposedUsage: { inputTokens: 40 }
+    });
+    const serialized = JSON.stringify(evidence);
+
+    assert.equal(evidence.familyId, "observability.trace-budget");
+    assert.equal(evidence.status, "degraded");
+    assert.equal(evidence.budgetAllowed, false);
+    assert.equal(evidence.budgetHardLimit, "usage.inputTokens");
+    assert.equal(evidence.usageTotal.inputTokens, 70);
+    assert.equal(serialized.includes(secret), false);
+    assert.match(evidence.replayFingerprint, /^observability\.trace-budget:h[0-9a-f]+$/);
   });
 });
 

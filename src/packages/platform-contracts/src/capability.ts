@@ -2,6 +2,7 @@ import type { JsonObject, SerializableResult, TraceContext } from "./common.js";
 import type { CapabilityId } from "./ids.js";
 import type { ExecutionEnvelope } from "./runtime.js";
 import type { ResourceScope, SandboxAuditEvidence, SandboxRequirement, SecretRedactionDecision } from "./security.js";
+import type { CapabilityToolFamilyMetadata, ToolFamilyProjectionFilter } from "./tool-family.js";
 
 export type SideEffectLevel = "none" | "read" | "write" | "network" | "process";
 export type TrustStatus = "trusted" | "workspace" | "untrusted" | "quarantined";
@@ -21,6 +22,7 @@ export interface CapabilityManifest {
   readonly timeoutMs?: number;
   readonly replayPolicy?: JsonObject;
   readonly projection?: JsonObject;
+  readonly toolFamily?: CapabilityToolFamilyMetadata;
   readonly compatibility?: JsonObject;
   readonly secretExposure?: SecretRedactionDecision;
   readonly resourceScope?: ResourceScope;
@@ -51,7 +53,7 @@ export interface CapabilityRegistry {
   register(manifest: CapabilityManifest, executor?: CapabilityExecutor): Promise<void>;
   get(id: CapabilityId): Promise<CapabilityManifest | undefined>;
   listHostVisible(): Promise<readonly CapabilityManifest[]>;
-  listModelVisible(): Promise<readonly CapabilityManifest[]>;
+  listModelVisible(filter?: ToolFamilyProjectionFilter): Promise<readonly CapabilityManifest[]>;
   resolveExecutable(id: CapabilityId): Promise<CapabilityExecutorBinding | undefined>;
   execute(id: CapabilityId, input: JsonObject, context?: CapabilityExecutionContext): Promise<SerializableResult>;
 }

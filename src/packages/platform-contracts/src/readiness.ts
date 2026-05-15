@@ -2,6 +2,7 @@ import type { JsonObject, RedactionMetadata } from "./common.js";
 import type { CommandId, CredentialRef } from "./ids.js";
 import type { IndexProviderDiagnosticsSummary } from "./index-provider.js";
 import type { ModelLiveVerificationResult } from "./model.js";
+import type { PackageScorecardReleaseAdvisory } from "./package-scorecard.js";
 
 export const DIAGNOSTICS_READINESS_SCHEMA_VERSION = "1.0.0";
 
@@ -65,6 +66,7 @@ export interface DiagnosticsReleaseReadinessEvidence extends JsonObject {
   readonly packageSurface: ReleasePackageSurface;
   readonly verification: ReleaseVerificationEvidence;
   readonly supportBundle: SupportBundlePolicyEvidence;
+  readonly packageScorecardAdvisory?: PackageScorecardReleaseAdvisory;
   readonly checks: readonly ReadinessCheck[];
   readonly redaction: RedactionMetadata;
 }

@@ -2,7 +2,7 @@
 
 Command: npm run acceptance:index
 Exit Code: 0
-Duration Ms: 410
+Duration Ms: 250
 
 ## stdout
 

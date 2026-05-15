@@ -587,7 +587,7 @@ export function groundStrictClaims(
   const claimGroundings = claims.map((claim) => {
     const matchingEvidence = context.selectedEvidence.filter((item) => item.factClasses.includes(claim.factClass) && item.preview.toLowerCase().includes(claim.value.toLowerCase()));
     const inferredEvidence = matchingEvidence.length === 0 && !strictDirectEvidenceRequired(claim.factClass)
-      ? context.selectedEvidence.filter((item) => item.factClasses.includes(claim.factClass) && hasTokenOverlap(item.preview, claim.value))
+      ? context.selectedEvidence.filter((item) => hasTokenOverlap(item.preview, claim.value))
       : [];
     const supportEvidence = matchingEvidence.length > 0 ? matchingEvidence : inferredEvidence;
     const certainty = matchingEvidence.length > 0 ? "verified" : inferredEvidence.length > 0 ? "inferred" : claim.assumption ? "assumption" : "unsupported";

@@ -126,6 +126,32 @@ describe("tool intent preflight", () => {
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
   });
 
+  it("normalizes DeepSeek aliases for every core tool family", () => {
+    const aliases = [
+      ["core_shell_run", "core.shell.run"],
+      ["core_shell_output", "core.shell.output"],
+      ["core_shell_kill", "core.shell.kill"],
+      ["core_git_status", "core.git.status"],
+      ["core_git_diff", "core.git.diff"],
+      ["core_test_run", "core.test.run"],
+      ["core_todo_plan", "core.todo.plan"],
+      ["core_web_fetch", "core.web.fetch"],
+      ["core_web_search", "core.web.search"],
+      ["core_agent_spawn", "core.agent.spawn"],
+      ["core_agent_continue", "core.agent.continue"],
+      ["core_agent_stop", "core.agent.stop"],
+      ["core_hook_list", "core.hook.list"],
+      ["core_skill_list", "core.skill.list"],
+      ["core_skill_activate", "core.skill.activate"]
+    ] as const;
+
+    for (const [alias, expected] of aliases) {
+      const prepared = prepareProviderIntent({ name: alias, source: "model", input: {} }, deepSeekToolIntentProfile);
+      assert.equal(prepared.intent.name, expected);
+      assert.equal(prepared.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
+    }
+  });
+
   it("rejects invalid provider argument JSON before execution", () => {
     const prepared = prepareProviderIntent(
       {

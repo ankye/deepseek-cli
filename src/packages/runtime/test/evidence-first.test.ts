@@ -101,6 +101,30 @@ describe("evidence-first runtime helpers", () => {
     assert.equal(result.unsupportedClaims.some((claim) => claim.code === "unsupported-command"), true);
     assert.equal(result.summary.claimGroundingRate > 0, true);
   });
+
+  it("allows docs evidence to infer non-direct architecture claims", () => {
+    const context = {
+      ...evidenceContext(),
+      selectedEvidence: [{
+        ...evidenceContext().selectedEvidence[0]!,
+        evidenceId: "evidence:readme",
+        sourceGroup: "readme" as const,
+        sourcePath: "README.md",
+        sourceLabel: "README",
+        factClasses: ["docs"] as const,
+        preview: "DeepSeek CLI is a contract-first platform with one governed runtime kernel serving Terminal CLI, VSCode Extension, Local Server / SDK, Native Host, and Browser Bridge through one protocol."
+      }]
+    };
+
+    const result = groundStrictClaims(
+      "DeepSeek CLI is a contract-first platform governed by a single runtime kernel that serves multiple host surfaces including Terminal CLI, VSCode Extension, Local Server/SDK, Native Host, and Browser Bridge.",
+      context,
+      "summary"
+    );
+
+    assert.equal(result.unsupportedClaims.length, 0);
+    assert.equal(result.claimGroundings[0]?.certainty, "inferred");
+  });
 });
 
 function evidenceContext(): EvidenceFirstRuntimeContext {

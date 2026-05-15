@@ -2,7 +2,7 @@
 
 Command: npm run test:golden
 Exit Code: 0
-Duration Ms: 3554
+Duration Ms: 1410
 
 ## stdout
 
@@ -14,264 +14,277 @@ TAP version 13
     # Subtest: keeps approval lifecycle evidence replayable and immutable for future revert
     ok 1 - keeps approval lifecycle evidence replayable and immutable for future revert
       ---
-      duration_ms: 1.6984
+      duration_ms: 1.1513
       type: 'test'
       ...
     1..1
 ok 1 - approval lifecycle golden replay
   ---
-  duration_ms: 3.1081
+  duration_ms: 2.0912
   type: 'suite'
   ...
 # Subtest: checkpoint undo golden replay
     # Subtest: normalizes checkpoint evidence without raw rollback content
     ok 1 - normalizes checkpoint evidence without raw rollback content
       ---
-      duration_ms: 54.6139
+      duration_ms: 25.1877
       type: 'test'
       ...
     1..1
 ok 2 - checkpoint undo golden replay
   ---
-  duration_ms: 56.6591
+  duration_ms: 25.9772
   type: 'suite'
   ...
 # Subtest: code intelligence golden replay
     # Subtest: normalizes code intelligence context evidence without raw secrets
     ok 1 - normalizes code intelligence context evidence without raw secrets
       ---
-      duration_ms: 10.3045
+      duration_ms: 3.801
       type: 'test'
       ...
     1..1
 ok 3 - code intelligence golden replay
   ---
-  duration_ms: 11.9033
+  duration_ms: 4.6864
   type: 'suite'
   ...
 # Subtest: context projection golden replay
     # Subtest: captures selected nodes, budget, redaction, and cache metadata in replay
     ok 1 - captures selected nodes, budget, redaction, and cache metadata in replay
       ---
-      duration_ms: 30.135
+      duration_ms: 16.8474
       type: 'test'
       ...
     1..1
 ok 4 - context projection golden replay
   ---
-  duration_ms: 31.591
+  duration_ms: 17.8159
   type: 'suite'
   ...
 # Subtest: core coding tools golden replay
     # Subtest: normalizes and replays deterministic core tool evidence
     ok 1 - normalizes and replays deterministic core tool evidence
       ---
-      duration_ms: 31.8803
+      duration_ms: 27.2268
       type: 'test'
       ...
     1..1
 ok 5 - core coding tools golden replay
   ---
-  duration_ms: 33.6992
+  duration_ms: 28.192
   type: 'suite'
   ...
 # Subtest: DeepSeek provider golden trace
     # Subtest: replays normalized provider event order from fake transport
     ok 1 - replays normalized provider event order from fake transport
       ---
-      duration_ms: 4.6608
+      duration_ms: 2.8677
       type: 'test'
       ...
     1..1
 ok 6 - DeepSeek provider golden trace
   ---
-  duration_ms: 6.0956
+  duration_ms: 4.2996
   type: 'suite'
   ...
 # Subtest: evidence-first agent loop golden replay
     # Subtest: replays evidence ordering and prompt-boundary preservation
     ok 1 - replays evidence ordering and prompt-boundary preservation
       ---
-      duration_ms: 77.1585
+      duration_ms: 45.8881
       type: 'test'
       ...
     1..1
 ok 7 - evidence-first agent loop golden replay
   ---
-  duration_ms: 78.6269
+  duration_ms: 46.6606
   type: 'suite'
   ...
 # Subtest: extension auth boundary golden replay
     # Subtest: replays redacted readiness and plugin activation denial fingerprints deterministically
     ok 1 - replays redacted readiness and plugin activation denial fingerprints deterministically
       ---
-      duration_ms: 27.0547
+      duration_ms: 31.4532
       type: 'test'
       ...
     1..1
 ok 8 - extension auth boundary golden replay
   ---
-  duration_ms: 28.4383
+  duration_ms: 33.8498
   type: 'suite'
   ...
 # Subtest: golden replay
     # Subtest: replays a normalized minimal headless trace
     ok 1 - replays a normalized minimal headless trace
       ---
-      duration_ms: 36.5328
+      duration_ms: 17.3267
       type: 'test'
       ...
     1..1
 ok 9 - golden replay
   ---
-  duration_ms: 38.592
+  duration_ms: 17.9602
   type: 'suite'
   ...
 # Subtest: hook system golden replay
     # Subtest: normalizes hook ordering, invocation, and output evidence
     ok 1 - normalizes hook ordering, invocation, and output evidence
       ---
-      duration_ms: 6.3832
+      duration_ms: 3.8675
       type: 'test'
       ...
     1..1
 ok 10 - hook system golden replay
   ---
-  duration_ms: 7.8211
+  duration_ms: 4.8965
   type: 'suite'
   ...
 # Subtest: live tool execution golden replay
     # Subtest: emits the canonical tool turn event order with typed feedback and trace correlation
     ok 1 - emits the canonical tool turn event order with typed feedback and trace correlation
       ---
-      duration_ms: 68.7887
+      duration_ms: 59.9422
       type: 'test'
       ...
     # Subtest: captures a denied tool outcome with terminated continuation? false in the replay stream
     ok 2 - captures a denied tool outcome with terminated continuation? false in the replay stream
       ---
-      duration_ms: 26.5606
+      duration_ms: 25.1037
       type: 'test'
       ...
     1..2
 ok 11 - live tool execution golden replay
   ---
-  duration_ms: 97.0682
+  duration_ms: 86.1294
   type: 'suite'
   ...
 # Subtest: MCP gateway golden replay
     # Subtest: normalizes MCP discovery, invocation, resource, and failure evidence
     ok 1 - normalizes MCP discovery, invocation, resource, and failure evidence
       ---
-      duration_ms: 7.757
+      duration_ms: 25.5401
       type: 'test'
       ...
     1..1
 ok 12 - MCP gateway golden replay
   ---
-  duration_ms: 9.3316
+  duration_ms: 26.8769
   type: 'suite'
   ...
 # Subtest: minimal chat CLI golden replay
     # Subtest: keeps chat prompt semantics aligned with runtime agent-loop events
     ok 1 - keeps chat prompt semantics aligned with runtime agent-loop events
       ---
-      duration_ms: 50.4383
+      duration_ms: 43.662
       type: 'test'
       ...
     1..1
 ok 13 - minimal chat CLI golden replay
   ---
-  duration_ms: 51.6152
+  duration_ms: 44.2072
+  type: 'suite'
+  ...
+# Subtest: mode-aware agent loop golden replay
+    # Subtest: orders evidence, implementation, verification, reconciliation, and terminal events
+    ok 1 - orders evidence, implementation, verification, reconciliation, and terminal events
+      ---
+      duration_ms: 56.4155
+      type: 'test'
+      ...
+    1..1
+ok 14 - mode-aware agent loop golden replay
+  ---
+  duration_ms: 57.1933
   type: 'suite'
   ...
 # Subtest: observability privacy golden replay
     # Subtest: replays runtime trace with redacted observability diagnostic bundle evidence
     ok 1 - replays runtime trace with redacted observability diagnostic bundle evidence
       ---
-      duration_ms: 30.0923
+      duration_ms: 12.2543
       type: 'test'
       ...
     1..1
-ok 14 - observability privacy golden replay
+ok 15 - observability privacy golden replay
   ---
-  duration_ms: 31.5484
+  duration_ms: 12.9926
   type: 'suite'
   ...
 # Subtest: runtime kernel replay
     # Subtest: replays a normalized kernel invocation trace
     ok 1 - replays a normalized kernel invocation trace
       ---
-      duration_ms: 26.7082
+      duration_ms: 12.0114
       type: 'test'
       ...
     1..1
-ok 15 - runtime kernel replay
+ok 16 - runtime kernel replay
   ---
-  duration_ms: 28.2077
+  duration_ms: 12.7255
   type: 'suite'
   ...
 # Subtest: secret sandbox audit golden replay
     # Subtest: replays allow, deny, rewrite, and degraded platform audit evidence deterministically
     ok 1 - replays allow, deny, rewrite, and degraded platform audit evidence deterministically
       ---
-      duration_ms: 44.1161
+      duration_ms: 29.4048
       type: 'test'
       ...
     1..1
-ok 16 - secret sandbox audit golden replay
+ok 17 - secret sandbox audit golden replay
   ---
-  duration_ms: 45.2972
+  duration_ms: 30.0432
   type: 'suite'
   ...
 # Subtest: self-repair agent loop golden replay
     # Subtest: replays repair event ordering and stop decisions
     ok 1 - replays repair event ordering and stop decisions
       ---
-      duration_ms: 47.2963
+      duration_ms: 32.0971
       type: 'test'
       ...
     1..1
-ok 17 - self-repair agent loop golden replay
+ok 18 - self-repair agent loop golden replay
   ---
-  duration_ms: 48.5108
+  duration_ms: 32.7892
   type: 'suite'
   ...
 # Subtest: session resume and fork golden replay
     # Subtest: replays resumed and forked session lineage
     ok 1 - replays resumed and forked session lineage
       ---
-      duration_ms: 23.8496
+      duration_ms: 14.0587
       type: 'test'
       ...
     1..1
-ok 18 - session resume and fork golden replay
+ok 19 - session resume and fork golden replay
   ---
-  duration_ms: 25.2152
+  duration_ms: 14.5993
   type: 'suite'
   ...
 # Subtest: skill system golden replay
     # Subtest: normalizes trusted skill activation and context evidence
     ok 1 - normalizes trusted skill activation and context evidence
       ---
-      duration_ms: 4.9973
+      duration_ms: 3.7848
       type: 'test'
       ...
     1..1
-ok 19 - skill system golden replay
+ok 20 - skill system golden replay
   ---
-  duration_ms: 6.1624
+  duration_ms: 4.7069
   type: 'suite'
   ...
-1..19
-# tests 20
-# suites 19
-# pass 20
+1..20
+# tests 21
+# suites 20
+# pass 21
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 2982.5693
+# duration_ms 1100.7357
 
 ## stderr
 

@@ -12,8 +12,10 @@ import type {
   JsonObject,
   PlatformRuntime
 } from "@deepseek/platform-contracts";
+import type { ToolFamilyId, ToolFamilyParityMatrix } from "@deepseek/platform-contracts";
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
+import { buildToolFamilyParityMatrix, coreCapabilityFamilyMappings } from "@deepseek/core-coding-tools";
 import { generatedArtifactMetrics } from "./generated-artifacts.js";
 import {
   aggregateBaselines,
@@ -35,6 +37,8 @@ import {
 } from "./evaluation-metrics.js";
 import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
 import { checkerDiagnostics, evidenceManifestStatus, parseCheckerOutput, webpageProjectEvidence } from "./webpage-evidence.js";
+import { collectPackageScorecards } from "./package-scorecard.js";
+import { readLiveToolCoverageEvidence } from "./tool-live-coverage.js";
 import { webpageTaskPrompt } from "./webpage-task.js";
 
 interface CatalogFile extends JsonObject {
@@ -75,6 +79,8 @@ export async function collectCliEvaluation(options: CliEvaluationOptions): Promi
   }
   const selectedTasks = catalog.tasks.filter((task) => options.mode === "full" || task.mode === "smoke");
   const runs = (await Promise.all(baselines.map(async (baseline) => Promise.all(selectedTasks.map((task) => taskRun(platform, task, baseline, options)))))).flat();
+  const packageScorecards = await collectPackageScorecards(platform);
+  const toolFamilyParityMatrix = await collectToolFamilyParityMatrix(platform);
   const diagnostics = [
     ...baselines
       .filter((baseline) => baseline.status !== "available")
@@ -83,7 +89,7 @@ export async function collectCliEvaluation(options: CliEvaluationOptions): Promi
       ? [diagnostic("CLI_EVALUATION_EXECUTE_TASK_NOT_SELECTED", "error", `${options.executeTaskId} is not selected by ${options.mode} evaluation mode.`)]
       : [])
   ];
-  return comparisonSummary(options, catalog.catalogVersion, baselines, runs, diagnostics);
+  return comparisonSummary(options, catalog.catalogVersion, baselines, runs, diagnostics, packageScorecards, toolFamilyParityMatrix);
 }
 
 export function evaluationJsonLines(summary: CliEvaluationComparisonSummary): readonly JsonObject[] {
@@ -112,6 +118,24 @@ export function evaluationJsonLines(summary: CliEvaluationComparisonSummary): re
       aggregate,
       redaction: aggregate.redaction
     })),
+    ...(summary.packageScorecardAggregate ? [{
+      schemaVersion: summary.schemaVersion,
+      kind: "diagnostics.evaluate.package-scorecard-aggregate",
+      aggregate: summary.packageScorecardAggregate,
+      redaction: summary.packageScorecardAggregate.redaction
+    }] : []),
+    ...(summary.packageScorecards ?? []).map((scorecard) => ({
+      schemaVersion: summary.schemaVersion,
+      kind: "diagnostics.evaluate.package-scorecard",
+      scorecard,
+      redaction: scorecard.redaction
+    })),
+    ...(summary.toolFamilyParityMatrix ? [{
+      schemaVersion: summary.schemaVersion,
+      kind: "diagnostics.evaluate.tool-family-parity",
+      matrix: summary.toolFamilyParityMatrix,
+      redaction: summary.toolFamilyParityMatrix.redaction
+    }] : []),
     ...summary.gapFindings.map((finding) => ({
       schemaVersion: summary.schemaVersion,
       kind: "diagnostics.evaluate.gap-finding",
@@ -553,7 +577,9 @@ function comparisonSummary(
   taskCatalogVersion: string,
   baselines: readonly CliEvaluationBaselineDefinition[],
   taskRuns: readonly CliEvaluationTaskRunRecord[],
-  diagnostics: readonly CliEvaluationDiagnostic[]
+  diagnostics: readonly CliEvaluationDiagnostic[],
+  packageScorecards?: Awaited<ReturnType<typeof collectPackageScorecards>>,
+  toolFamilyParityMatrix?: ToolFamilyParityMatrix
 ): CliEvaluationComparisonSummary {
   const hasError = diagnostics.some((item) => item.severity === "error");
   const hasWarn = diagnostics.some((item) => item.severity === "warn") || baselines.some((baseline) => baseline.status !== "available");
@@ -570,6 +596,12 @@ function comparisonSummary(
     baselines,
     taskRuns,
     baselineAggregates,
+    ...(packageScorecards ? {
+      packageScorecardCatalogVersion: packageScorecards.catalogVersion,
+      packageScorecards: packageScorecards.scorecards,
+      packageScorecardAggregate: packageScorecards.aggregate
+    } : {}),
+    ...(toolFamilyParityMatrix ? { toolFamilyParityMatrix } : {}),
     gapFindings,
     publicBenchmarkReferences: publicBenchmarkReferences(),
     evidencePaths: [],
@@ -583,6 +615,18 @@ function comparisonSummary(
           : "Run diagnostics evaluate --full --execute-task eval.webpage.generation after smoke evaluation is stable.",
     redaction: { class: "internal", fields: ["taskRuns.task.promptDigest", "publicBenchmarkReferences.url", "evidencePaths", "gapFindings.message"] }
   };
+}
+
+async function collectToolFamilyParityMatrix(platform: PlatformRuntime): Promise<ToolFamilyParityMatrix> {
+  const liveCoverage = await readLiveToolCoverageEvidence(platform, process.cwd());
+  const familyByCapability = new Map(
+    coreCapabilityFamilyMappings().map((mapping) => [String(mapping.capabilityId), mapping.familyId as ToolFamilyId])
+  );
+  const liveCoveredFamilyIds = (liveCoverage?.records ?? [])
+    .filter((record) => record.status === "pass")
+    .map((record) => familyByCapability.get(record.toolId))
+    .filter((familyId): familyId is ToolFamilyId => familyId !== undefined);
+  return buildToolFamilyParityMatrix({ liveCoveredFamilyIds });
 }
 
 function publicBenchmarkReferences(): readonly CliEvaluationPublicBenchmarkReference[] {

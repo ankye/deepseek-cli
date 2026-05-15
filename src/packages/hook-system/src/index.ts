@@ -17,6 +17,7 @@ import type {
   SerializableResult
 } from "@deepseek/platform-contracts";
 import { HOOK_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+export { createHookSystemFamilyCapabilities } from "./capabilities.js";
 
 interface StoredHook {
   readonly manifest: HookManifest;

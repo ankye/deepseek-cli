@@ -1,4 +1,5 @@
 import type {
+  CapabilityExecutorBinding,
   CapabilityExecutionContext,
   CapabilityManifest,
   JsonObject,
@@ -6,12 +7,26 @@ import type {
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import { registerCoreCodingToolsForRuntime } from "@deepseek/core-coding-tools";
+import { createCodeIntelligenceFamilyCapabilities } from "@deepseek/code-intelligence";
+import {
+  commandManifestToCompositionRecord,
+  createCommandSystemFamilyCapabilities,
+  interactiveControlCompositionRecords,
+  modeControlCompositionRecords,
+  readinessCompositionRecords
+} from "@deepseek/command-system";
+import { createHookSystemFamilyCapabilities } from "@deepseek/hook-system";
+import { createMcpGatewayFamilyCapabilities } from "@deepseek/mcp-gateway";
+import { createModelGatewayFamilyCapabilities } from "@deepseek/model-gateway";
+import { createPluginInstallVerifyFamilyCapabilities } from "@deepseek/skill-system";
 import {
   analyzeResourceScope,
   createSandboxAuditEvidence,
   createSandboxRequirement,
   createSecretRedactionDecision
 } from "@deepseek/policy-sandbox";
+import { registerRuntimeFamilyCapabilities } from "./family-capabilities.js";
+import { registerPlatformFamilyCapabilities } from "./platform-family-capabilities.js";
 
 export const runtimeEchoCapability: CapabilityManifest = {
   id: asId<"capability">("runtime.echo"),
@@ -83,6 +98,67 @@ export async function registerRuntimeBuiltins(deps: Pick<RuntimeDependencies, "c
   });
 }
 
-export async function registerRuntimeCoreTools(deps: Pick<RuntimeDependencies, "capabilities" | "platform" | "workspaceState" | "webFetch" | "webSearch" | "backgroundTasks" | "agentSpawner" | "hooks" | "skills" | "codeIntelligence">, workspaceRoot: string): Promise<void> {
+export async function registerRuntimeCoreTools(deps: Pick<
+RuntimeDependencies,
+"capabilities"
+| "platform"
+| "workspaceState"
+| "webFetch"
+| "webSearch"
+| "backgroundTasks"
+| "agentSpawner"
+| "hooks"
+| "skills"
+| "codeIntelligence"
+| "toolIntentPreflight"
+| "policy"
+| "approvals"
+| "sessions"
+| "agents"
+| "commands"
+| "mcp"
+| "plugins"
+| "memory"
+| "remote"
+| "concurrency"
+| "usage"
+| "observability"
+>, workspaceRoot: string): Promise<void> {
   await registerCoreCodingToolsForRuntime(deps, workspaceRoot);
+  await registerExternalFamilyCapabilities(deps, workspaceRoot);
+  await registerRuntimeFamilyCapabilities(deps, workspaceRoot);
+  await registerPlatformFamilyCapabilities(deps, workspaceRoot);
+}
+
+async function registerExternalFamilyCapabilities(
+  deps: Pick<
+  RuntimeDependencies,
+  "capabilities" | "codeIntelligence" | "commands" | "hooks" | "mcp" | "plugins"
+  >,
+  workspaceRoot: string
+): Promise<void> {
+  const commandRecords = [
+    ...modeControlCompositionRecords(),
+    ...interactiveControlCompositionRecords(),
+    ...readinessCompositionRecords(),
+    ...(await deps.commands.help()).map(commandManifestToCompositionRecord)
+  ];
+  await registerCapabilityBindings(deps.capabilities, [
+    ...createCodeIntelligenceFamilyCapabilities(deps.codeIntelligence, { root: workspaceRoot }),
+    ...createModelGatewayFamilyCapabilities(),
+    ...createMcpGatewayFamilyCapabilities({ gateway: deps.mcp }),
+    ...createHookSystemFamilyCapabilities(deps.hooks),
+    ...createPluginInstallVerifyFamilyCapabilities(deps.plugins),
+    ...createCommandSystemFamilyCapabilities(commandRecords)
+  ]);
+}
+
+async function registerCapabilityBindings(
+  registry: RuntimeDependencies["capabilities"],
+  bindings: readonly CapabilityExecutorBinding[]
+): Promise<void> {
+  for (const binding of bindings) {
+    if (await registry.get(binding.manifest.id)) continue;
+    await registry.register(binding.manifest, binding.execute);
+  }
 }

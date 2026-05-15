@@ -2,14 +2,14 @@
 
 Command: npm run lint
 Exit Code: 0
-Duration Ms: 4208
+Duration Ms: 3654
 
 ## stdout
 
 > deepseek-cli-platform@0.1.0 lint
 > node scripts/lint.mjs
 
-ast lint passed (350 files, 18 rules)
+ast lint passed (412 files, 19 rules)
 lint passed
 
 ## stderr

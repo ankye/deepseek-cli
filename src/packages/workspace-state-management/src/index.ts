@@ -215,6 +215,109 @@ export class InMemoryWorkspaceStateManager implements WorkspaceStateManager {
   }
 }
 
+export type WorktreeEnvironmentOperation =
+  | { readonly action: "create"; readonly workspaceRoot: string; readonly worktreeId: string; readonly branch: string; readonly path: string; readonly writeScope: readonly string[] }
+  | { readonly action: "list"; readonly workspaceRoot: string }
+  | { readonly action: "cleanup"; readonly workspaceRoot: string; readonly worktreeId: string };
+
+export interface WorktreeEnvironmentRecord extends JsonObject {
+  readonly worktreeId: string;
+  readonly branch: string;
+  readonly path: string;
+  readonly status: "active" | "cleaned";
+  readonly writeScope: readonly string[];
+  readonly createdAt: string;
+  readonly cleanedAt?: string;
+  readonly replayFingerprint: string;
+  readonly redaction: { readonly class: "internal"; readonly fields: readonly string[] };
+}
+
+interface WorktreeEnvironmentRecordInput {
+  readonly worktreeId: string;
+  readonly branch: string;
+  readonly path: string;
+  readonly status: "active" | "cleaned";
+  readonly writeScope: readonly string[];
+  readonly createdAt: string;
+  readonly cleanedAt?: string;
+}
+
+export interface WorktreeEnvironmentResult extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly familyId: "worktree.environment";
+  readonly action: WorktreeEnvironmentOperation["action"];
+  readonly status: "completed" | "rejected";
+  readonly workspaceRoot: string;
+  readonly worktrees: readonly WorktreeEnvironmentRecord[];
+  readonly diagnostics: readonly string[];
+  readonly replayFingerprint: string;
+  readonly redaction: { readonly class: "internal"; readonly fields: readonly string[] };
+}
+
+export class InMemoryWorktreeEnvironment {
+  private readonly records = new Map<string, WorktreeEnvironmentRecord>();
+
+  execute(operation: WorktreeEnvironmentOperation): WorktreeEnvironmentResult {
+    if (operation.action === "create") return this.create(operation);
+    if (operation.action === "cleanup") return this.cleanup(operation);
+    return this.result(operation, [...this.records.values()].filter((record) => isWithinRoot(operation.workspaceRoot, record.path)), []);
+  }
+
+  private create(operation: Extract<WorktreeEnvironmentOperation, { readonly action: "create" }>): WorktreeEnvironmentResult {
+    const diagnostics: string[] = [];
+    if (!isWithinRoot(operation.workspaceRoot, operation.path)) diagnostics.push("worktree.environment.path-outside-root");
+    const unsafeScope = operation.writeScope.filter((path) => !isWithinRoot(operation.path, path));
+    if (unsafeScope.length > 0) diagnostics.push("worktree.environment.write-scope-outside-worktree");
+    if (this.records.has(operation.worktreeId)) diagnostics.push("worktree.environment.duplicate-id");
+    if (diagnostics.length > 0) return this.result(operation, [], diagnostics, "rejected");
+    const record = worktreeRecord({
+      worktreeId: operation.worktreeId,
+      branch: operation.branch,
+      path: operation.path,
+      status: "active",
+      writeScope: operation.writeScope,
+      createdAt: deterministicTime
+    });
+    this.records.set(operation.worktreeId, record);
+    return this.result(operation, [record], []);
+  }
+
+  private cleanup(operation: Extract<WorktreeEnvironmentOperation, { readonly action: "cleanup" }>): WorktreeEnvironmentResult {
+    const record = this.records.get(operation.worktreeId);
+    if (!record || !isWithinRoot(operation.workspaceRoot, record.path)) {
+      return this.result(operation, [], ["worktree.environment.not-found"], "rejected");
+    }
+    const cleaned = worktreeRecord({ ...record, status: "cleaned", cleanedAt: deterministicTime });
+    this.records.set(operation.worktreeId, cleaned);
+    return this.result(operation, [cleaned], []);
+  }
+
+  private result(
+    operation: WorktreeEnvironmentOperation,
+    worktrees: readonly WorktreeEnvironmentRecord[],
+    diagnostics: readonly string[],
+    status: WorktreeEnvironmentResult["status"] = "completed"
+  ): WorktreeEnvironmentResult {
+    return {
+      schemaVersion: "1.0.0",
+      familyId: "worktree.environment",
+      action: operation.action,
+      status,
+      workspaceRoot: operation.workspaceRoot,
+      worktrees,
+      diagnostics,
+      replayFingerprint: `worktree.environment:${hashText(JSON.stringify({
+        action: operation.action,
+        workspaceRoot: operation.workspaceRoot,
+        worktrees: worktrees.map((record) => record.replayFingerprint),
+        diagnostics,
+        status
+      }))}`,
+      redaction: { class: "internal", fields: ["workspaceRoot", "worktrees.path", "worktrees.writeScope"] }
+    };
+  }
+}
+
 function sanitizeTransaction(transaction: WorkspaceEditTransaction): WorkspaceEditTransaction {
   return {
     ...transaction,
@@ -324,4 +427,29 @@ function hashText(value: string): string {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
+}
+
+function worktreeRecord(input: WorktreeEnvironmentRecordInput): WorktreeEnvironmentRecord {
+  return {
+    ...input,
+    replayFingerprint: `worktree:${hashText(JSON.stringify({
+      worktreeId: input.worktreeId,
+      branch: input.branch,
+      path: input.path,
+      status: input.status,
+      writeScope: input.writeScope,
+      cleanedAt: input.cleanedAt ?? ""
+    }))}`,
+    redaction: { class: "internal", fields: ["path", "writeScope"] }
+  };
+}
+
+function isWithinRoot(root: string, path: string): boolean {
+  const normalizedRoot = normalizeWorkspacePath(root);
+  const normalizedPath = normalizeWorkspacePath(path);
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+
+function normalizeWorkspacePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "");
 }

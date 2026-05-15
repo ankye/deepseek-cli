@@ -1,5 +1,6 @@
 import { platformContractsArePure } from "./contracts.mjs";
 import { noDirectContextProjectionBypass } from "./context-projection.mjs";
+import { noPrivateExecutorChaining } from "./executor-chaining.mjs";
 import { noDirectGovernedExecutionBypass } from "./governed-execution.mjs";
 import { noLegacyHookSystemApi } from "./hook-system.mjs";
 import { noAppToAppImports, noCrossPackageRelativeImports, noInternalPackageSrcImports } from "./imports.mjs";
@@ -21,6 +22,7 @@ export const architectureRules = [
   platformContractsArePure,
   runtimeDoesNotDependOnTesting,
   noLegacyRuntimeDirectExecution,
+  noPrivateExecutorChaining,
   noDirectContextProjectionBypass,
   noDirectGovernedExecutionBypass,
   noLegacyHookSystemApi,

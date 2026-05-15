@@ -260,6 +260,9 @@ export class PersistentFilesystemSessionStore extends InMemorySessionStore {
 /** @deprecated Use PersistentFilesystemSessionStore. Kept as an alias until callers migrate. */
 export const DevelopmentFilesystemSessionStore = PersistentFilesystemSessionStore;
 
+export * from "./resume-fork-capability.js";
+
+
 function parseSessionOrdinal(sessionId: string): number | undefined {
   const match = /^session-(\d+)$/.exec(sessionId);
   if (!match) return undefined;

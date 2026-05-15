@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import { asId } from "@deepseek/platform-contracts";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import type { JsonObject, CapabilityExecutionContext, WebSearchProvider, WebFetchProvider } from "@deepseek/platform-contracts";
-import { defineWebFetchTool, clearWebFetchCacheForTests } from "../../src/packages/core-coding-tools/src/tools/web-fetch/index.js";
-import { defineWebSearchTool } from "../../src/packages/core-coding-tools/src/tools/web-search/index.js";
+import { defineWebFetchTool, clearWebFetchCacheForTests } from "../../src/packages/core-coding-tools/src/families/web-public-data/web-fetch/index.js";
+import { defineWebSearchTool } from "../../src/packages/core-coding-tools/src/families/web-public-data/web-search/index.js";
 
 function context(): CapabilityExecutionContext {
   return {

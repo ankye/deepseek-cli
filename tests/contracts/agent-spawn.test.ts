@@ -4,9 +4,9 @@ import { asId } from "@deepseek/platform-contracts";
 import type { AgentSpawner, CapabilityExecutionContext, JsonObject } from "@deepseek/platform-contracts";
 import { createDefaultRuntimeKernel, createAgentSpawner, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
-import { defineAgentContinueTool } from "../../src/packages/core-coding-tools/src/tools/agent-continue/index.js";
-import { defineAgentSpawnTool } from "../../src/packages/core-coding-tools/src/tools/agent-spawn/index.js";
-import { defineAgentStopTool } from "../../src/packages/core-coding-tools/src/tools/agent-stop/index.js";
+import { defineAgentContinueTool } from "../../src/packages/core-coding-tools/src/families/agents-tasks/agent-message-continue/index.js";
+import { defineAgentSpawnTool } from "../../src/packages/core-coding-tools/src/families/agents-tasks/agent-spawn/index.js";
+import { defineAgentStopTool } from "../../src/packages/core-coding-tools/src/families/agents-tasks/agent-stop-close/index.js";
 
 function context(): CapabilityExecutionContext {
   return {

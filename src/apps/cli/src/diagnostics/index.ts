@@ -23,6 +23,7 @@ import { refreshAcceptanceEvidence, refreshStepRecord } from "./refresh-evidence
 import { collectCliEvaluation, evaluationJsonLines } from "./evaluation.js";
 import { collectModeMatrix } from "./mode-matrix.js";
 import type { CliModeMatrixSummary } from "./mode-matrix.js";
+import { collectPackageScorecards, releasePackageScorecardAdvisory } from "./package-scorecard.js";
 
 export interface CliDiagnosticNotice {
   readonly code: string;
@@ -100,6 +101,10 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
     if ((result.release.verification.missingAcceptanceEvidencePaths?.length ?? 0) > 0) {
       lines.push(`- missing evidence: ${result.release.verification.missingAcceptanceEvidencePaths?.join(", ")}`);
     }
+    if (result.release.packageScorecardAdvisory) {
+      const aggregate = result.release.packageScorecardAdvisory.aggregate;
+      lines.push(`- package scorecards: advisory ${result.release.packageScorecardAdvisory.status} packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} objective=${aggregate.averageObjectiveScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
+    }
     for (const check of result.release.checks) lines.push(`- ${check.id}: ${check.status} - ${check.message}`);
   }
   if (result.verificationSummary) {
@@ -131,6 +136,14 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
     lines.push(`- catalog: ${result.evaluation.taskCatalogVersion}`);
     lines.push(`- baselines: ${result.evaluation.baselines.map((baseline) => `${baseline.baselineId}:${baseline.status}`).join(", ")}`);
     lines.push(`- task runs: ${result.evaluation.taskRuns.length}`);
+    if (result.evaluation.packageScorecardAggregate) {
+      const aggregate = result.evaluation.packageScorecardAggregate;
+      lines.push(`- package scorecards: packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} objective=${aggregate.averageObjectiveScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
+    }
+    if (result.evaluation.toolFamilyParityMatrix) {
+      const matrix = result.evaluation.toolFamilyParityMatrix;
+      lines.push(`- tool family parity: families=${matrix.totalFamilyCount} implemented=${matrix.implementedFamilyCount} execution=${matrix.executionCoveredFamilyCount} fake=${matrix.fakeCoveredFamilyCount} replayed=${matrix.replayedCoveredFamilyCount} live=${matrix.liveCoveredFamilyCount} task=${matrix.taskCoveredFamilyCount} safety=${matrix.safetyCoveredFamilyCount} provider-native=${matrix.providerNativeSupportedFamilyCount} planned=${matrix.plannedFamilyCount} absent=${matrix.absentFamilyCount} unavailable=${matrix.unavailableFamilyCount} objective=${matrix.objectiveScore}`);
+    }
     lines.push(`- next action: ${result.evaluation.nextAction}`);
     for (const run of result.evaluation.taskRuns) {
       lines.push(`- ${run.task.taskId}: ${run.outcome} (${run.baseline.baselineId})${evaluationRunMetricText(run)}`);
@@ -181,12 +194,19 @@ async function bundleDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
 
 async function releaseDiagnostics(_options: CliOptions): Promise<CliDiagnosticsResult> {
   const release = await collectReleaseReadinessEvidence();
+  const packageScorecards = await collectPackageScorecards();
+  const releaseWithAdvisory: DiagnosticsReleaseReadinessEvidence = {
+    ...release,
+    ...(packageScorecards.scorecards.length > 0 ? {
+      packageScorecardAdvisory: releasePackageScorecardAdvisory(packageScorecards.aggregate, packageScorecards.scorecards)
+    } : {})
+  };
   return {
     schemaVersion: diagnosticsSchemaVersion,
     kind: "diagnostics.release",
     status: release.status,
     command: "release",
-    release,
+    release: releaseWithAdvisory,
     referencePitFixtureIds: [...diagnosticPitIds],
     redaction: { class: "internal", fields: ["release.packageSurface.buildOutputPath"] }
   };
@@ -401,8 +421,17 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
       packageSurface: result.release.packageSurface,
       verification: result.release.verification,
       supportBundle: result.release.supportBundle,
+      packageScorecardAdvisory: result.release.packageScorecardAdvisory,
       redaction: result.release.redaction
     });
+    if (result.release.packageScorecardAdvisory) {
+      entries.push({
+        schemaVersion: result.schemaVersion,
+        kind: "diagnostics.release.package-scorecard-advisory",
+        advisory: result.release.packageScorecardAdvisory,
+        redaction: result.release.packageScorecardAdvisory.redaction
+      });
+    }
     for (const check of result.release.checks) {
       entries.push({
         schemaVersion: result.schemaVersion,

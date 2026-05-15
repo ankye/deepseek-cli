@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { HOOK_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
-import { createHookOutput, InMemoryHookSystem } from "./index.js";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
+import { createHookOutput, createHookSystemFamilyCapabilities, InMemoryHookSystem } from "./index.js";
 
 const secret = "sk-hook-1234567890";
 
@@ -85,6 +86,27 @@ describe("hook system v1", () => {
 
     assert.equal(serialized.includes(secret), false);
     assert.equal(serialized.includes("[REDACTED:secret]"), true);
+  });
+
+  it("exposes hook.list-run as governed list and run capability evidence", async () => {
+    const hooks = new InMemoryHookSystem();
+    await hooks.registerHook(
+      manifest("hook-family", "family", 1),
+      async () => ({ ok: true, value: createHookOutput(asId<"hook">("hook-family"), "observation", { result: "ok" }) })
+    );
+    const capabilities = createHookSystemFamilyCapabilities(hooks);
+    const registry = new InMemoryCapabilityRegistry();
+    await registry.register(capabilities[0]!.manifest, capabilities[0]!.execute);
+
+    const projected = await registry.listModelVisible({ allowedFamilyIds: ["hook.list-run"] });
+    assert.equal(projected.length, 1);
+
+    const listed = await capabilities[0]!.execute({ action: "list", point: "user-input.before" }, {} as never);
+    assert.equal((listed.value?.hooks as readonly unknown[] | undefined)?.length, 1);
+
+    const run = await capabilities[0]!.execute({ action: "run", point: "user-input.before", input: { prompt: "hi" } }, {} as never);
+    assert.equal((run.value?.result as { status?: string } | undefined)?.status, "completed");
+    assert.equal((run.value?.result as { executions?: readonly unknown[] } | undefined)?.executions?.length, 1);
   });
 });
 

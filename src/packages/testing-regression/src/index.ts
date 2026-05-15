@@ -6,3 +6,4 @@ export * from "./redaction/index.js";
 export * from "./matrix/index.js";
 export * from "./reference-pits/index.js";
 export * from "./approval/index.js";
+export * from "./family-evidence/index.js";

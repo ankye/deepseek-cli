@@ -66,6 +66,16 @@ export class InMemoryMcpGateway implements McpGateway {
     if (errors.length > 0) throw errors[0];
   }
 
+  async disconnectServer(serverId: McpServerManifest["id"]): Promise<McpServerSummary | undefined> {
+    const stored = this.servers.get(serverId);
+    if (!stored) return undefined;
+    if (stored.disposer) await stored.disposer();
+    this.servers.delete(serverId);
+    this.namespaces.delete(stored.manifest.namespace);
+    stored.health = "disabled";
+    return summaryFor(stored);
+  }
+
   async validateManifest(manifest: McpServerManifest): Promise<McpValidationResult> {
     const diagnostics: RedactedError[] = [];
     if (!manifest || typeof manifest !== "object") {
@@ -698,3 +708,5 @@ export { StdioMcpClient } from "./stdio-client.js";
 export type { StdioMcpClientOptions } from "./stdio-client.js";
 export { createRealMcpAdapter } from "./real-adapter.js";
 export type { McpProcessRunner, McpSubprocess, RealMcpAdapterHandle } from "./real-adapter.js";
+export { createMcpGatewayFamilyCapabilities } from "./connector-capabilities.js";
+export type { McpGatewayFamilyCapabilityOptions } from "./connector-capabilities.js";

@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import {
+  createCommandSystemFamilyCapabilities,
   interactiveControlManifest,
   interactiveControlCompositionRecords,
   interactiveHelpProjection,
@@ -74,5 +76,19 @@ describe("interactive control commands", () => {
     assert.equal(workers?.projection.metadata?.interactionModes instanceof Array, true);
     assert.equal(remote?.commandVisibilities.some((entry) => entry.commandId === "/workers" && entry.visibility === "rejected"), true);
     assert.equal(remote?.commandVisibilities.some((entry) => entry.commandId === "/mode" && entry.visibility === "visible"), true);
+  });
+
+  it("exposes command.palette-slash as a projection-ready capability", async () => {
+    const capabilities = createCommandSystemFamilyCapabilities(interactiveControlCompositionRecords());
+    const registry = new InMemoryCapabilityRegistry();
+    await registry.register(capabilities[0]!.manifest, capabilities[0]!.execute);
+
+    const projected = await registry.listModelVisible({ allowedFamilyIds: ["command.palette-slash"] });
+    assert.equal(projected.length, 1);
+
+    const result = await capabilities[0]!.execute({ query: "exit" }, {} as never);
+    assert.equal(result.ok, true);
+    assert.equal(result.value?.familyId, "command.palette-slash");
+    assert.equal((result.value?.slashCommands as readonly { title?: string }[] | undefined)?.some((entry) => entry.title === "/exit"), true);
   });
 });

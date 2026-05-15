@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { asId } from "@deepseek/platform-contracts";
-import { InMemoryWorkspaceStateManager } from "./index.js";
+import { InMemoryWorkspaceStateManager, InMemoryWorktreeEnvironment } from "./index.js";
 
 const workspaceRoot = "/workspace";
 const sessionId = asId<"session">("session-checkpoint");
@@ -152,6 +152,36 @@ describe("workspace checkpoint and undo manager", () => {
     assert.equal(reverted.ok, false);
     assert.equal(reverted.error?.code, "CHECKPOINT_REVERT_EMPTY");
     assert.equal(reverted.value?.status, "rejected");
+  });
+
+  it("executes worktree.environment create list cleanup with write-scope safety", () => {
+    const environment = new InMemoryWorktreeEnvironment();
+    const created = environment.execute({
+      action: "create",
+      workspaceRoot,
+      worktreeId: "wt-1",
+      branch: "feature/unit",
+      path: `${workspaceRoot}/.worktrees/wt-1`,
+      writeScope: [`${workspaceRoot}/.worktrees/wt-1/src`]
+    });
+    const listed = environment.execute({ action: "list", workspaceRoot });
+    const rejected = environment.execute({
+      action: "create",
+      workspaceRoot,
+      worktreeId: "wt-bad",
+      branch: "feature/bad",
+      path: "/tmp/outside",
+      writeScope: ["/tmp/outside/src"]
+    });
+    const cleaned = environment.execute({ action: "cleanup", workspaceRoot, worktreeId: "wt-1" });
+
+    assert.equal(created.familyId, "worktree.environment");
+    assert.equal(created.status, "completed");
+    assert.equal(listed.worktrees.length, 1);
+    assert.equal(rejected.status, "rejected");
+    assert.equal(rejected.diagnostics.includes("worktree.environment.path-outside-root"), true);
+    assert.equal(cleaned.worktrees[0]?.status, "cleaned");
+    assert.match(cleaned.replayFingerprint, /^worktree\.environment:[0-9a-f]+$/);
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { asId, CONTEXT_PROJECTION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import type { ContextGraphNode, ContextProjectionRequest, SessionId } from "@deepseek/platform-contracts";
-import { createProjectionRequest, InMemoryContextEngine } from "./index.js";
+import { createProjectionRequest, DeterministicProjectIndex, InMemoryContextEngine } from "./index.js";
 
 describe("InMemoryContextEngine", () => {
   it("filters, orders, budgets, redacts, and freezes projection results", async () => {
@@ -104,6 +104,39 @@ describe("InMemoryContextEngine", () => {
 
     const result = await engine.projectGraph(request);
     assert.equal(result.excludedNodes.some((node) => node.id === outside.id && node.reason === "outside-scope"), true);
+  });
+
+  it("refreshes and queries deterministic context.project-index evidence with stale diagnostics", () => {
+    const sessionId = asId<"session">("session-project-index-unit");
+    const index = new DeterministicProjectIndex();
+    const refresh = index.refresh({
+      sessionId,
+      workspaceRoot: "/workspace",
+      documents: [
+        { path: "/workspace/src/app.ts", content: "export const answer = 42", language: "typescript" },
+        { path: "/workspace/README.md", content: "Project index readme" }
+      ]
+    });
+
+    const query = index.query({
+      sessionId,
+      workspaceRoot: "/workspace",
+      query: "answer",
+      documentsFingerprint: refresh.documentsFingerprint
+    });
+    const stale = index.query({
+      sessionId,
+      workspaceRoot: "/workspace",
+      query: "answer",
+      documentsFingerprint: "changed"
+    });
+
+    assert.equal(refresh.familyId, "context.project-index");
+    assert.equal(query.status, "completed");
+    assert.equal(query.resultCount, 1);
+    assert.equal(query.contextNodes[0]?.provenance.source, "context.project-index");
+    assert.equal(stale.status, "degraded");
+    assert.equal(stale.diagnostics.includes("context.project-index.stale-index"), true);
   });
 });
 

@@ -13,7 +13,10 @@ import type {
   ObservabilityRedactionSummary,
   ObservabilitySink,
   PrivacySettings,
-  RedactionMetadata
+  RedactionMetadata,
+  SessionId,
+  UsageBudgetManager,
+  UsageRecord
 } from "@deepseek/platform-contracts";
 import { OBSERVABILITY_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 
@@ -125,6 +128,84 @@ export class InMemoryObservabilitySink implements ObservabilitySink, DiagnosticB
 
 export function redactObservabilityArtifact<T>(value: T): T {
   return redactJson(value).value as T;
+}
+
+export interface TraceBudgetEvidenceRequest {
+  readonly sessionId: SessionId;
+  readonly reason: string;
+  readonly maxRecords?: number;
+  readonly proposedUsage?: Partial<UsageRecord>;
+}
+
+export interface TraceBudgetUsageTotal extends JsonObject {
+  readonly sessionId: SessionId;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly costMicros: number;
+  readonly elapsedMs: number;
+}
+
+export interface TraceBudgetEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly familyId: "observability.trace-budget";
+  readonly status: "completed" | "degraded";
+  readonly sessionId: SessionId;
+  readonly diagnosticBundle: DiagnosticBundle;
+  readonly usageTotal: TraceBudgetUsageTotal;
+  readonly budgetAllowed: boolean;
+  readonly budgetWarning?: string;
+  readonly budgetHardLimit?: string;
+  readonly diagnostics: readonly string[];
+  readonly replayFingerprint: string;
+  readonly redaction: { readonly class: "internal"; readonly fields: readonly string[] };
+}
+
+export async function createTraceBudgetEvidence(
+  sink: DiagnosticBundleExporter,
+  usage: UsageBudgetManager,
+  request: TraceBudgetEvidenceRequest
+): Promise<TraceBudgetEvidence> {
+  const diagnosticBundle = await sink.createDiagnosticBundle({
+    target: "local-bundle",
+    reason: request.reason,
+    ...(request.maxRecords !== undefined ? { maxRecords: request.maxRecords } : {})
+  });
+  const usageTotal = usageTotalEvidence(await usage.total(request.sessionId));
+  const budget = await usage.check(request.sessionId, request.proposedUsage ?? {});
+  const diagnostics = [
+    ...(diagnosticBundle.truncated ? ["observability.trace-budget.bundle-truncated"] : []),
+    ...(budget.allowed ? [] : ["observability.trace-budget.budget-denied"])
+  ];
+  return {
+    schemaVersion: "1.0.0",
+    familyId: "observability.trace-budget",
+    status: diagnostics.length > 0 ? "degraded" : "completed",
+    sessionId: request.sessionId,
+    diagnosticBundle,
+    usageTotal,
+    budgetAllowed: budget.allowed,
+    ...(budget.warning ? { budgetWarning: budget.warning } : {}),
+    ...(budget.hardLimit ? { budgetHardLimit: budget.hardLimit } : {}),
+    diagnostics,
+    replayFingerprint: `observability.trace-budget:${stableHash(JSON.stringify({
+      sessionId: request.sessionId,
+      bundleId: diagnosticBundle.bundleId,
+      usageTotal,
+      budget,
+      diagnostics
+    }))}`,
+    redaction: { class: "internal", fields: ["diagnosticBundle.records", "usageTotal"] }
+  };
+}
+
+function usageTotalEvidence(record: UsageRecord): TraceBudgetUsageTotal {
+  return {
+    sessionId: record.sessionId,
+    inputTokens: record.inputTokens,
+    outputTokens: record.outputTokens,
+    costMicros: record.costMicros,
+    elapsedMs: record.elapsedMs
+  };
 }
 
 function policyFor(target: ObservabilityExportTarget): ObservabilityExportPolicy {

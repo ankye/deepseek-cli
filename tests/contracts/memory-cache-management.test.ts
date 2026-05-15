@@ -6,9 +6,11 @@ import {
   PROJECTION_CACHE_NAMESPACE,
   TOOL_RESULT_EVIDENCE_CACHE_NAMESPACE,
   createCompactBoundaryEvidence,
+  createCompactSummary,
   createProjectionCacheEntry,
   createToolResultEvidence,
   createToolResultEvidenceCacheEntry,
+  executeMemoryReadWrite,
   memoryCandidateFingerprint,
   projectionCacheKey
 } from "@deepseek/memory-cache-management";
@@ -105,6 +107,33 @@ describe("memory-cache-management contracts", () => {
     assert.deepEqual(session.map((entry) => entry.id), ["mem-session-1"]);
   });
 
+  it("executes memory.read-write with session scope, provenance hashes, and redacted evidence", async () => {
+    const memory = new InMemoryMemoryManager();
+    const sessionId = asId<"session">("session-memory-family");
+    const otherSessionId = asId<"session">("session-memory-other");
+    await executeMemoryReadWrite(memory, {
+      action: "write",
+      sessionId,
+      scope: "session",
+      content: "remember token=sk-memory-secret",
+      provenance: { source: "unit" }
+    });
+    await executeMemoryReadWrite(memory, {
+      action: "write",
+      sessionId: otherSessionId,
+      scope: "session",
+      content: "other session memory"
+    });
+
+    const result = await executeMemoryReadWrite(memory, { action: "read", sessionId, scope: "session" });
+
+    assert.equal(result.familyId, "memory.read-write");
+    assert.equal(result.recordCount, 1);
+    assert.equal(result.records[0]?.content.includes("sk-memory-secret"), false);
+    assert.equal(result.records[0]?.provenance.contentHash !== undefined, true);
+    assert.match(result.replayFingerprint, /^memory\.read-write:h[0-9a-f]+$/);
+  });
+
   it("memoryCandidateFingerprint changes when content changes without exposing raw content", () => {
     const base = {
       id: asId<"memory">("mem-fingerprint"),
@@ -137,6 +166,36 @@ describe("memory-cache-management contracts", () => {
     assert.equal(first.fingerprint, second.fingerprint);
     assert.equal(first.pressure, "soft");
     assert.equal(first.redaction.class, "internal");
+  });
+
+  it("creates bounded compact.summary evidence without leaking secret-like text", () => {
+    const sessionId = asId<"session">("session-compact-summary-family");
+    const first = createCompactSummary({
+      sessionId,
+      segments: [
+        "keep this short project decision",
+        "DEEPSEEK_API_KEY=sk-compact-secret should redact",
+        "this segment is over budget"
+      ],
+      maxTokens: 12,
+      reservedOutputTokens: 2
+    });
+    const second = createCompactSummary({
+      sessionId,
+      segments: [
+        "keep this short project decision",
+        "DEEPSEEK_API_KEY=sk-compact-secret should redact",
+        "this segment is over budget"
+      ],
+      maxTokens: 12,
+      reservedOutputTokens: 2
+    });
+
+    assert.equal(first.familyId, "compact.summary");
+    assert.equal(first.status, "degraded");
+    assert.equal(first.replayFingerprint, second.replayFingerprint);
+    assert.equal(first.summary.includes("sk-compact-secret"), false);
+    assert.equal(first.diagnostics.includes("compact.summary.budget-excluded-segments"), true);
   });
 
   it("createToolResultEvidence stores bounded hashes instead of preview text", () => {

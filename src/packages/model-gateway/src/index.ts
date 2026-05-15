@@ -22,6 +22,8 @@ import type {
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import OpenAI from "openai";
+export { createModelGatewayFamilyCapabilities } from "./family-capabilities.js";
+export type { ModelGatewayFamilyCapabilityOptions } from "./family-capabilities.js";
 
 const deepSeekProviderId = asId<"modelProvider">("provider-deepseek");
 const deepSeekCredentialRef = asId<"credentialRef">("credential-deepseek-api-key");
@@ -183,13 +185,25 @@ function providerMessagesFrom(request: ModelRequest): readonly JsonObject[] {
   const sourceMessages = request.messages && request.messages.length > 0
     ? request.messages
     : [{ role: "user" as const, content: request.prompt }];
-  return sourceMessages.map((message) => {
+  const pendingToolCallIds = new Set<string>();
+  const messages: JsonObject[] = [];
+  for (const message of sourceMessages) {
     if (message.role === "tool") {
-      return {
-        role: "tool",
-        content: message.content,
-        tool_call_id: message.toolCallId ?? message.toolName ?? "tool-call"
-      };
+      const toolCallId = message.toolCallId ?? "";
+      if (toolCallId && pendingToolCallIds.has(toolCallId)) {
+        pendingToolCallIds.delete(toolCallId);
+        messages.push({
+          role: "tool",
+          content: message.content,
+          tool_call_id: toolCallId
+        });
+      } else {
+        messages.push({
+          role: "user",
+          content: `Internal tool feedback (${message.toolName ?? "tool"}):\n${message.content}`
+        });
+      }
+      continue;
     }
     const toolCalls = message.toolCalls?.map((toolCall) => ({
       id: toolCall.id,
@@ -199,16 +213,18 @@ function providerMessagesFrom(request: ModelRequest): readonly JsonObject[] {
         arguments: JSON.stringify(toolCall.input)
       }
     }));
+    for (const toolCall of message.toolCalls ?? []) pendingToolCallIds.add(toolCall.id);
     const reasoningContent = typeof (message as { reasoningContent?: unknown }).reasoningContent === "string"
       ? (message as { reasoningContent: string }).reasoningContent
       : undefined;
-    return {
+    messages.push({
       role: message.role,
-      content: message.content,
+      content: toolCalls && toolCalls.length > 0 && message.content.length === 0 ? null : message.content,
       ...(reasoningContent && reasoningContent.length > 0 ? { reasoning_content: reasoningContent } : {}),
       ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
-    };
-  });
+    });
+  }
+  return messages;
 }
 
 export class StaticCredentialProvider implements ModelCredentialProvider {

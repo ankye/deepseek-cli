@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { MCP_SCHEMA_VERSION, asId, type ExtensionCredentialAuthorizationResult, type ExtensionCredentialRequirement, type McpServerManifest } from "@deepseek/platform-contracts";
-import { InMemoryMcpGateway } from "./index.js";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
+import { createMcpGatewayFamilyCapabilities, InMemoryMcpGateway } from "./index.js";
 
 function manifest(overrides: Partial<McpServerManifest> = {}): McpServerManifest {
   return {
@@ -185,5 +186,41 @@ describe("MCP gateway v1", () => {
     assert.equal(result.auth?.status, "denied");
     assert.equal(result.diagnostics[0]?.code, "EXTENSION_CREDENTIAL_MISSING");
     assert.equal(JSON.stringify(result).includes("sk-should-not-run"), false);
+  });
+
+  it("exposes fake-first MCP, browser, and design family capabilities", async () => {
+    const gateway = new InMemoryMcpGateway();
+    const capabilities = createMcpGatewayFamilyCapabilities({ gateway });
+    const registry = new InMemoryCapabilityRegistry();
+    for (const capability of capabilities) await registry.register(capability.manifest, capability.execute);
+
+    const projected = await registry.listModelVisible({ allowedConnectorTrust: ["fake"], allowedProviderSupport: ["fake"] });
+    assert.equal(projected.length, 12);
+    assert.equal(projected.some((entry) => entry.toolFamily?.familyId === "browser.screenshot"), true);
+    assert.equal(projected.some((entry) => entry.toolFamily?.familyId === "design.batch-edit"), true);
+    assert.equal(projected.some((entry) => entry.toolFamily?.familyId === "mcp.tool-call"), true);
+
+    const lifecycle = capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "mcp.server-lifecycle");
+    const connected = await lifecycle?.execute({ action: "connect" }, {} as never);
+    assert.equal((connected?.value?.summary as { health?: string } | undefined)?.health, "connected");
+
+    const tool = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "mcp.tool-call")?.execute({ name: "echo", input: { query: "TOKEN=supersecret" } }, {} as never);
+    const serializedTool = JSON.stringify(tool);
+    assert.equal((tool?.value?.result as { status?: string } | undefined)?.status, "completed");
+    assert.equal(serializedTool.includes("supersecret"), false);
+    assert.match(serializedTool, /REDACTED/);
+
+    const page = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "browser.navigate")?.execute({ url: "https://example.test/docs" }, {} as never);
+    const pageId = String(page?.value?.pageId);
+    await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "browser.interact")?.execute({ pageId, operation: "type", selector: "#q", value: "hello" }, {} as never);
+    const inspected = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "browser.inspect")?.execute({ pageId }, {} as never);
+    assert.equal(((inspected?.value?.state as { fields?: Record<string, string> } | undefined)?.fields ?? {})["#q"], "hello");
+    const screenshot = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "browser.screenshot")?.execute({ pageId }, {} as never);
+    assert.match(String((screenshot?.value?.artifact as { artifactId?: string } | undefined)?.artifactId), /^artifact:browser\.screenshot:/);
+
+    const edited = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "design.batch-edit")?.execute({ operations: [{ type: "insert", nodeId: "subtitle", name: "Subtitle", nodeType: "text", text: "Hi" }] }, {} as never);
+    assert.equal(edited?.value?.status, "completed");
+    const nodes = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "design.node-query")?.execute({ query: "subtitle" }, {} as never);
+    assert.equal((nodes?.value?.nodes as readonly unknown[] | undefined)?.length, 1);
   });
 });

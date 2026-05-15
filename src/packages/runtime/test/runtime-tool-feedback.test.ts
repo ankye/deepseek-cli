@@ -17,10 +17,23 @@ import {
   registerRuntimeCoreTools,
   runAgentLoop
 } from "../src/index.js";
+import { boundedModelText, toolFeedbackPreview } from "../src/model-tooling.js";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 
 describe("agent loop typed tool feedback", () => {
+  it("bounds model-facing tool text without splitting Unicode surrogate pairs", () => {
+    const text = `${"a".repeat(7999)}🧠tail`;
+    const bounded = boundedModelText(text, 8000);
+    const preview = toolFeedbackPreview(text, 8000);
+
+    assert.equal(Buffer.byteLength(bounded, "utf8") <= 8000, true);
+    assert.equal(Buffer.byteLength(preview.text, "utf8") <= 8000, true);
+    assert.equal(preview.truncated, true);
+    assert.equal(hasLoneSurrogate(bounded), false);
+    assert.equal(hasLoneSurrogate(preview.text), false);
+  });
+
   it("emits a success feedback DTO when a tool execution completes", async () => {
     const deps = createDeterministicRuntimeDependencies();
     await deps.platform.writeFile("/workspace/README.md", "feedback success\n");
@@ -233,6 +246,29 @@ describe("agent loop typed tool feedback", () => {
     await kernel.shutdown();
   });
 
+  it("keeps the provider-returned tool name in continuation history", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile("/workspace/README.md", "provider name\n");
+    const gateway = new RecordingSingleToolCallModelGateway("core_file_read", { path: "README.md" });
+    const loopDeps = { ...deps, models: gateway };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "provider safe name",
+      caller: "runtime.safe-name.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const intent = events.find((event) => event.kind === "model.tool.intent");
+    const assistant = gateway.requests[1]?.messages?.find((message) => message.role === "assistant");
+    assert.equal((intent?.data as JsonObject).name, "core.file.read");
+    assert.equal(assistant?.toolCalls?.[0]?.name, "core_file_read");
+    assert.equal(readFeedback(events)?.status, "success");
+    await kernel.shutdown();
+  });
+
   it("resolves mixed separator tool-call names returned by the provider back to the real capability id", async () => {
     const deps = createDeterministicRuntimeDependencies();
     await deps.platform.writeFile("/workspace/README.md", "mixed separator name\n");
@@ -258,6 +294,20 @@ describe("agent loop typed tool feedback", () => {
 function readFeedback(events: readonly RuntimeEvent[]): ToolResultFeedback | undefined {
   const resultEvent = events.find((event) => event.kind === "model.tool.result");
   return resultEvent ? (resultEvent.data as { feedback?: ToolResultFeedback }).feedback : undefined;
+}
+
+function hasLoneSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
 }
 
 class OneToolThenFinishModelGateway implements ModelGateway {
@@ -300,6 +350,29 @@ class SingleToolCallModelGateway implements ModelGateway {
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     if (request.messages?.some((message) => message.role === "tool")) {
+      yield { kind: "delta", text: "tool outcome acknowledged" };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "tool-call", id: "call-runtime", name: this.name, input: this.input };
+    yield { kind: "finish", reason: "tool-call" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class RecordingSingleToolCallModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+
+  constructor(private readonly name: string, private readonly input: JsonObject) {}
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    if (this.requests.length > 1) {
       yield { kind: "delta", text: "tool outcome acknowledged" };
       yield { kind: "finish", reason: "stop" };
       yield { kind: "done" };

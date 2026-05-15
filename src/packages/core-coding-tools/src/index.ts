@@ -1,28 +1,44 @@
 import type { AgentSpawner, BackgroundTaskManager, CapabilityManifest, CapabilityRegistry, HookSystem, PlatformRuntime, RuntimeDependencies, SkillSystem, WebFetchProvider, WebSearchProvider, WorkspaceStateManager } from "@deepseek/platform-contracts";
 import type { CoreCodingToolsDependencies } from "./shared/workspace.js";
 import type { ToolDefinition } from "./shared/tool-kit.js";
-import { defineFileReadTool } from "./tools/file-read/index.js";
-import { defineFileWriteTool } from "./tools/file-write/index.js";
-import { defineFileEditTool } from "./tools/file-edit/index.js";
-import { defineFileListTool } from "./tools/file-list/index.js";
-import { defineSearchTextTool } from "./tools/search-text/index.js";
-import { defineShellRunTool } from "./tools/shell-run/index.js";
-import { defineShellOutputTool } from "./tools/shell-output/index.js";
-import { defineShellKillTool } from "./tools/shell-kill/index.js";
-import { defineTestRunTool } from "./tools/test-run/index.js";
-import { defineGitStatusTool } from "./tools/git-status/index.js";
-import { defineGitDiffTool } from "./tools/git-diff/index.js";
-import { defineTodoPlanTool } from "./tools/todo-plan/index.js";
-import { defineWebFetchTool } from "./tools/web-fetch/index.js";
-import { defineWebSearchTool } from "./tools/web-search/index.js";
-import { defineAgentSpawnTool } from "./tools/agent-spawn/index.js";
-import { defineAgentContinueTool } from "./tools/agent-continue/index.js";
-import { defineAgentStopTool } from "./tools/agent-stop/index.js";
-import { defineHookListTool } from "./tools/hook-list/index.js";
-import { defineSkillListTool } from "./tools/skill-list/index.js";
-import { defineSkillActivateTool } from "./tools/skill-activate/index.js";
+import { defineAgentContinueTool } from "./families/agents-tasks/agent-message-continue/index.js";
+import { defineAgentSpawnTool } from "./families/agents-tasks/agent-spawn/index.js";
+import { defineAgentStopTool } from "./families/agents-tasks/agent-stop-close/index.js";
+import { defineHookListTool } from "./families/extensions-local-commands/hook-list/index.js";
+import { defineSkillActivateTool } from "./families/extensions-local-commands/skill-activate/index.js";
+import { defineSkillListTool } from "./families/extensions-local-commands/skill-list/index.js";
+import { defineGitDiffTool } from "./families/git-build/git-diff/index.js";
+import { defineGitHistoryBranchTool } from "./families/git-build/git-history-branch/index.js";
+import { defineGitStatusTool } from "./families/git-build/git-status-diff/index.js";
+import { definePackageManagerTool } from "./families/git-build/package-manager/index.js";
+import { defineTestRunTool } from "./families/git-build/test-run/index.js";
+import { defineFileEditTool } from "./families/mutation-patching/file-edit/index.js";
+import { definePatchApplyTool } from "./families/mutation-patching/patch-apply/index.js";
+import { defineFileWriteTool } from "./families/mutation-patching/file-write/index.js";
+import { defineRevertUndoTool } from "./families/mutation-patching/revert-undo/index.js";
+import { defineTodoPlanTool } from "./families/planning-control/todo-plan/index.js";
+import { defineNotebookReadTool } from "./families/search-code-intelligence/notebook-read/index.js";
+import { defineSearchTextTool } from "./families/search-code-intelligence/search-text/index.js";
+import { defineShellKillTool } from "./families/shell-process/process-kill/index.js";
+import { defineShellOutputTool } from "./families/shell-process/process-output/index.js";
+import { defineReplExecuteTool } from "./families/shell-process/repl-execute/index.js";
+import { defineShellRunTool } from "./families/shell-process/shell-run/index.js";
+import { defineWebFetchTool } from "./families/web-public-data/web-fetch/index.js";
+import { defineWebSearchTool } from "./families/web-public-data/web-search/index.js";
+import { defineAssetViewLocalTool } from "./families/workspace-io/asset-view-local/index.js";
+import { defineFileListTool } from "./families/workspace-io/file-list/index.js";
+import { defineFileReadTool } from "./families/workspace-io/file-read/index.js";
+import { defineWorkspaceGlobTool } from "./families/workspace-io/workspace-glob/index.js";
 
 export { coreToolIds } from "./shared/ids.js";
+export {
+  buildToolFamilyParityMatrix,
+  coreCapabilityFamilyMappings,
+  toolFamilyCatalog,
+  toolFamilyCatalogVersion,
+  validateToolFamilyCatalog
+} from "./catalog/index.js";
+export type { ToolFamilyCoverageEvidence } from "./catalog/index.js";
 export type { CoreCodingToolsDependencies } from "./shared/workspace.js";
 export type { ToolDefinition } from "./shared/tool-kit.js";
 
@@ -78,13 +94,21 @@ function coreToolDefinitions(deps: ExtendedCoreCodingToolsDependencies | undefin
     defineFileWriteTool(deps),
     defineFileEditTool(deps),
     defineFileListTool(deps),
+    defineWorkspaceGlobTool(deps),
+    defineAssetViewLocalTool(deps),
     defineSearchTextTool(deps),
+    defineNotebookReadTool(deps),
+    definePatchApplyTool(deps),
+    defineRevertUndoTool(deps),
     defineShellRunTool(deps),
     defineShellOutputTool(deps),
     defineShellKillTool(deps),
+    defineReplExecuteTool(deps),
     defineGitStatusTool(deps),
     defineGitDiffTool(deps),
+    defineGitHistoryBranchTool(deps),
     defineTestRunTool(deps),
+    definePackageManagerTool(deps),
     defineTodoPlanTool(),
     defineWebFetchTool(deps),
     defineWebSearchTool(deps),

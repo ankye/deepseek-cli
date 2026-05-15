@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  createModelGatewayFamilyCapabilities,
   DeepSeekOpenAIProvider,
   DeterministicMockModelGateway,
   FetchModelProviderTransport,
@@ -10,6 +11,7 @@ import {
   normalizeDeepSeekChunk
 } from "../src/index.js";
 import { asId } from "@deepseek/platform-contracts";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import type { CredentialRef, ModelRequest, ModelStreamEvent } from "@deepseek/platform-contracts";
 
 async function collect(iterable: AsyncIterable<ModelStreamEvent>): Promise<readonly ModelStreamEvent[]> {
@@ -71,6 +73,35 @@ describe("DeepSeek OpenAI provider", () => {
     assert.equal(Array.isArray(request?.body.tools), true);
     assert.deepEqual(request?.body.thinking, { type: "enabled" });
     assert.equal(request?.body.reasoning_effort, "high");
+  });
+
+  it("preserves provider tool names and downgrades unpaired internal tool feedback", async () => {
+    const transport = new FixtureModelProviderTransport([]);
+    const provider = new DeepSeekOpenAIProvider({ transport, credentials: new StaticCredentialProvider("sk-test") });
+    await collect(provider.stream({
+      profile: defaultDeepSeekProfile,
+      prompt: "read",
+      messages: [
+        { role: "user", content: "read" },
+        { role: "assistant", content: "", toolCalls: [{ id: "call-1", name: "core_file_read", input: { path: "README.md" } }] },
+        { role: "tool", content: "read result", toolCallId: "call-1", toolName: "core.file.read" },
+        { role: "tool", content: "repair feedback", toolCallId: "repair-1", toolName: "agent.self-repair" }
+      ]
+    }));
+
+    const messages = transport.requests[0]?.body.messages as readonly {
+      readonly role: string;
+      readonly content?: string | null;
+      readonly tool_call_id?: string;
+      readonly tool_calls?: readonly { readonly function?: { readonly name?: string } }[];
+    }[] | undefined;
+    assert.equal(messages?.[1]?.role, "assistant");
+    assert.equal(messages?.[1]?.content, null);
+    assert.equal(messages?.[1]?.tool_calls?.[0]?.function?.name, "core_file_read");
+    assert.equal(messages?.[2]?.role, "tool");
+    assert.equal(messages?.[2]?.tool_call_id, "call-1");
+    assert.equal(messages?.[3]?.role, "user");
+    assert.match(messages?.[3]?.content ?? "", /Internal tool feedback \(agent\.self-repair\)/);
   });
 
   it("normalizes reasoning, text, tool calls, usage/cache, finish, and done", async () => {
@@ -236,5 +267,36 @@ describe("DeepSeek OpenAI provider", () => {
     assert.equal(result?.ok, true);
     assert.equal(transport.requests[0]?.headers.authorization, "Bearer sk-custom");
     assert.equal(transport.requests[0]?.timeoutMs, 4321);
+  });
+
+  it("exposes fake-first web/data and image family capabilities without provider-native claims", async () => {
+    const capabilities = createModelGatewayFamilyCapabilities({ maxItems: 3 });
+    const registry = new InMemoryCapabilityRegistry();
+    for (const capability of capabilities) await registry.register(capability.manifest, capability.execute);
+
+    const media = await registry.listModelVisible({ allowedDomainIds: ["media-images"], allowedProviderSupport: ["fake"] });
+    assert.deepEqual(media.map((entry) => entry.toolFamily?.familyId).sort(), ["image.edit", "image.generate", "image.inspect", "image.search-stock"]);
+
+    const extract = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "web.extract")?.execute({
+      url: "https://example.test",
+      html: "<html><title>Docs</title><body><a href=\"/a\">A TOKEN=supersecret</a><p>Hello sk-testsecret</p></body></html>"
+    }, {} as never);
+    const serializedExtract = JSON.stringify(extract);
+    assert.equal(extract?.ok, true);
+    assert.equal(serializedExtract.includes("supersecret"), false);
+    assert.match(serializedExtract, /REDACTED/);
+
+    const data = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "web.data-lookup")?.execute({ namespace: "weather", query: "seattle" }, {} as never);
+    assert.equal(data?.value?.noNetwork, true);
+    assert.equal((data?.value?.rows as readonly unknown[] | undefined)?.length, 1);
+
+    const image = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "image.generate")?.execute({ prompt: "logo", width: 64, height: 32 }, {} as never);
+    assert.equal(image?.value?.providerNativeSupport, "unsupported");
+    assert.match(String((image?.value?.artifact as { artifactId?: string } | undefined)?.artifactId), /^artifact:image\.generate:/);
+
+    const png1x1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ";
+    const inspect = await capabilities.find((entry) => entry.manifest.toolFamily?.familyId === "image.inspect")?.execute({ bytesBase64: png1x1 }, {} as never);
+    assert.equal((inspect?.value?.metadata as { width?: number } | undefined)?.width, 1);
+    assert.equal((inspect?.value?.metadata as { height?: number } | undefined)?.height, 1);
   });
 });

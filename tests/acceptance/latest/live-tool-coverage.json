@@ -1,0 +1,1942 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "deepseek.live-tool-coverage",
+  "generatedAt": "2026-05-15T09:42:10.873Z",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "summary": {
+    "totalToolCount": 20,
+    "passedToolCount": 20,
+    "failedToolCount": 0,
+    "coverageRate": 1
+  },
+  "records": [
+    {
+      "toolId": "core.file.read",
+      "safeName": "core_file_read",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_file_read",
+        "inputKeys": [
+          "limitBytes",
+          "path"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.file.read",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 61,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.file.write",
+      "safeName": "core_file_write",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_file_write",
+        "inputKeys": [
+          "content",
+          "limitBytes",
+          "path"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.file.write",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-separator-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 25,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.file.edit",
+      "safeName": "core_file_edit",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_file_edit",
+        "inputKeys": [
+          "expected",
+          "limitBytes",
+          "path",
+          "replacement"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.file.edit",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 6,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.file.list",
+      "safeName": "core_file_list",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_file_list",
+        "inputKeys": [
+          "limit",
+          "path",
+          "pattern",
+          "sort"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.file.list",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 178,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.search.text",
+      "safeName": "core_search_text",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_search_text",
+        "inputKeys": [
+          "limit",
+          "outputMode",
+          "pattern"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.search.text",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 501,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.shell.run",
+      "safeName": "core_shell_run",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_shell_run",
+        "inputKeys": [
+          "args",
+          "command",
+          "cwd",
+          "limitBytes",
+          "runInBackground",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.shell.run",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 36,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.shell.output",
+      "safeName": "core_shell_output",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_shell_output",
+        "inputKeys": [
+          "limitBytes",
+          "taskId",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.shell.output",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 0,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.shell.kill",
+      "safeName": "core_shell_kill",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_shell_kill",
+        "inputKeys": [
+          "taskId",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.shell.kill",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 41,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.git.status",
+      "safeName": "core_git_status",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_git_status",
+        "inputKeys": [
+          "limitBytes"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.git.status",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 37,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.git.diff",
+      "safeName": "core_git_diff",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_git_diff",
+        "inputKeys": [
+          "limitBytes"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.git.diff",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 305,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.test.run",
+      "safeName": "core_test_run",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_test_run",
+        "inputKeys": [
+          "args",
+          "command",
+          "cwd",
+          "intent",
+          "limitBytes",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.test.run",
+        "repairKinds": [
+          "provider-tool-alias-normalized",
+          "path-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 0,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.todo.plan",
+      "safeName": "core_todo_plan",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_todo_plan",
+        "inputKeys": [
+          "items"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.todo.plan",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 27,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.web.fetch",
+      "safeName": "core_web_fetch",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_web_fetch",
+        "inputKeys": [
+          "followRedirects",
+          "limitBytes",
+          "url"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.web.fetch",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 165,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.web.search",
+      "safeName": "core_web_search",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_web_search",
+        "inputKeys": [
+          "limit",
+          "query"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.web.search",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 137,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.agent.spawn",
+      "safeName": "core_agent_spawn",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_agent_spawn",
+        "inputKeys": [
+          "agentMode",
+          "prompt",
+          "reason",
+          "toolProjection",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.agent.spawn",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 9,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.agent.continue",
+      "safeName": "core_agent_continue",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_agent_continue",
+        "inputKeys": [
+          "prompt",
+          "reason",
+          "workerInstanceId",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.agent.continue",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 16,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.agent.stop",
+      "safeName": "core_agent_stop",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_agent_stop",
+        "inputKeys": [
+          "reason",
+          "stopReason",
+          "workerInstanceId",
+          "workspaceRoot"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.agent.stop",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 14,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.hook.list",
+      "safeName": "core_hook_list",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_hook_list",
+        "inputKeys": [
+          "limit"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.hook.list",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 0,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.skill.list",
+      "safeName": "core_skill_list",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_skill_list",
+        "inputKeys": [],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.skill.list",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 45,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    },
+    {
+      "toolId": "core.skill.activate",
+      "safeName": "core_skill_activate",
+      "status": "pass",
+      "model": {
+        "called": true,
+        "eventKinds": [
+          "tool-call",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "name": "core_skill_activate",
+        "inputKeys": [
+          "name"
+        ],
+        "errors": []
+      },
+      "preflight": {
+        "status": "repaired",
+        "capabilityId": "core.skill.activate",
+        "repairKinds": [
+          "provider-tool-alias-normalized"
+        ],
+        "diagnosticCodes": []
+      },
+      "execution": {
+        "terminalKind": "capability.completed",
+        "previewBytes": 58,
+        "eventKinds": [
+          "kernel.request.accepted",
+          "workflow.opened",
+          "execution.envelope.created",
+          "policy.decided",
+          "sandbox.selected",
+          "capability.started",
+          "scheduler.queued",
+          "scheduler.started",
+          "scheduler.completed",
+          "capability.output",
+          "capability.completed",
+          "workflow.closed"
+        ]
+      },
+      "continuation": {
+        "status": "completed",
+        "eventKinds": [
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "delta",
+          "finish",
+          "usage",
+          "done"
+        ],
+        "errorCodes": []
+      },
+      "diagnostics": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "model.input",
+          "execution.preview",
+          "continuation.preview"
+        ]
+      }
+    }
+  ],
+  "redaction": {
+    "class": "internal",
+    "fields": [
+      "workspaceRoot",
+      "records.model.input",
+      "records.execution.preview",
+      "records.continuation.preview"
+    ]
+  }
+}

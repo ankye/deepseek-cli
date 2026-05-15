@@ -8,9 +8,9 @@ import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regres
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemoryWorkspaceStateManager } from "@deepseek/workspace-state-management";
 import type { JsonObject, CapabilityExecutionContext } from "@deepseek/platform-contracts";
-import { defineFileReadTool } from "../../src/packages/core-coding-tools/src/tools/file-read/index.js";
-import { defineFileListTool } from "../../src/packages/core-coding-tools/src/tools/file-list/index.js";
-import { defineSearchTextTool } from "../../src/packages/core-coding-tools/src/tools/search-text/index.js";
+import { defineSearchTextTool } from "../../src/packages/core-coding-tools/src/families/search-code-intelligence/search-text/index.js";
+import { defineFileListTool } from "../../src/packages/core-coding-tools/src/families/workspace-io/file-list/index.js";
+import { defineFileReadTool } from "../../src/packages/core-coding-tools/src/families/workspace-io/file-read/index.js";
 
 function context(): CapabilityExecutionContext {
   return {

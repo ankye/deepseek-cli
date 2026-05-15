@@ -1,7 +1,9 @@
 import type { JsonObject, RedactionMetadata } from "./common.js";
 import type { AgentLoopBudgetKind, AgentPhaseName } from "./agent-mode.js";
 import type { EvidenceManifestStatus } from "./evidence-first.js";
+import type { PackageScorecardAggregate, PackageScorecardSummary } from "./package-scorecard.js";
 import type { ReadinessStatus } from "./readiness.js";
+import type { ToolFamilyParityMatrix } from "./tool-family.js";
 
 export const CLI_TASK_EVALUATION_SCHEMA_VERSION = "1.0.0";
 
@@ -258,6 +260,10 @@ export interface CliEvaluationComparisonSummary extends JsonObject {
   readonly baselines: readonly CliEvaluationBaselineDefinition[];
   readonly taskRuns: readonly CliEvaluationTaskRunRecord[];
   readonly baselineAggregates: readonly CliEvaluationBaselineAggregate[];
+  readonly packageScorecardCatalogVersion?: string;
+  readonly packageScorecards?: readonly PackageScorecardSummary[];
+  readonly packageScorecardAggregate?: PackageScorecardAggregate;
+  readonly toolFamilyParityMatrix?: ToolFamilyParityMatrix;
   readonly gapFindings: readonly CliEvaluationGapFinding[];
   readonly publicBenchmarkReferences: readonly CliEvaluationPublicBenchmarkReference[];
   readonly evidencePaths: readonly string[];

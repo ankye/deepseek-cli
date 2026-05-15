@@ -516,11 +516,12 @@ export async function* runAgentLoop(
       }
       if (modelEvent.kind === "tool-call") {
         requestedTool = true;
-        const toolCallId = modelEvent.id ?? "";
-        const toolName = resolveCapabilityId(modelEvent.name, visibleCapabilities);
         if (toolCalls >= limits.maxToolCalls) {
           const error = kernelError("KERNEL_QUEUE_BACKPRESSURE", "Agent loop tool-call limit exceeded", { maxToolCalls: limits.maxToolCalls });
           diagnostics.push(error);
+          const providerToolName = modelEvent.name;
+          const toolName = resolveCapabilityId(providerToolName, visibleCapabilities);
+          const toolCallId = modelEvent.id ?? `tool-${iterations}-${toolCalls + 1}`;
           const limitFeedback = buildToolResultFeedback({
             toolCallId,
             toolName,
@@ -550,6 +551,9 @@ export async function* runAgentLoop(
           return;
         }
         toolCalls += 1;
+        const providerToolName = modelEvent.name;
+        const toolCallId = modelEvent.id ?? `tool-${iterations}-${toolCalls}`;
+        const toolName = resolveCapabilityId(providerToolName, visibleCapabilities);
         const intentEvent = agentLoopEvent("model.tool.intent", sessionId, turnId, trace, {
           toolCallId,
           name: toolName,
@@ -574,8 +578,8 @@ export async function* runAgentLoop(
           role: "assistant",
           content: "",
           toolCalls: [{
-            id: modelEvent.id ?? `tool-${iterations}-${toolCalls}`,
-            name: toolName,
+            id: toolCallId,
+            name: providerToolName,
             input: modelEvent.input
           }],
           ...(persistedReasoning.length > 0 ? { reasoningContent: persistedReasoning, reasoningRedaction: { class: "internal" } } : {})
@@ -584,7 +588,7 @@ export async function* runAgentLoop(
         const descriptor = await deps.platform.descriptor();
         const preflight = await deps.toolIntentPreflight.check({
           intent: {
-            ...(modelEvent.id ? { toolCallId: modelEvent.id } : {}),
+            toolCallId,
             name: toolName,
             input: modelEvent.input,
             source: "model"

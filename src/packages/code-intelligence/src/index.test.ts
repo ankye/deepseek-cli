@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { asId } from "@deepseek/platform-contracts";
-import { DeterministicCodeIntelligenceService, NullCodeIntelligenceService } from "./index.js";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
+import { createCodeIntelligenceFamilyCapabilities, DeterministicCodeIntelligenceService, NullCodeIntelligenceService } from "./index.js";
 
 const workspaceRoot = "/workspace";
 
@@ -72,5 +73,28 @@ describe("deterministic code intelligence service", () => {
     const service = new NullCodeIntelligenceService();
     assert.equal((await service.status()).status, "unavailable");
     assert.equal((await service.contextNodes({ sessionId: asId<"session">("session-null-ci"), root: workspaceRoot })).value?.nodes.length, 0);
+  });
+
+  it("exposes projection-ready search.symbol and diagnostics capability factories", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    await platform.writeFile(`${workspaceRoot}/app.ts`, "export function run() {\n  // FIXME TOKEN=supersecret\n}\nrun();\n");
+    const service = new DeterministicCodeIntelligenceService(platform);
+    const capabilities = createCodeIntelligenceFamilyCapabilities(service, { root: workspaceRoot, maxItems: 10 });
+    const registry = new InMemoryCapabilityRegistry();
+    for (const capability of capabilities) await registry.register(capability.manifest, capability.execute);
+
+    const projected = await registry.listModelVisible({ allowedDomainIds: ["search-code-intelligence"] });
+    assert.deepEqual(projected.map((entry) => entry.toolFamily?.familyId).sort(), ["code.diagnostics-lsp", "search.symbol"]);
+
+    const search = await capabilities[0]?.execute({ query: "run" }, {} as never);
+    assert.equal(search?.ok, true);
+    assert.equal((search?.value?.symbols as readonly unknown[] | undefined)?.length, 1);
+    assert.equal(search?.value?.familyId, "search.symbol");
+
+    const diagnostics = await capabilities[1]?.execute({ root: workspaceRoot }, {} as never);
+    const serialized = JSON.stringify(diagnostics);
+    assert.equal(diagnostics?.ok, true);
+    assert.equal(serialized.includes("supersecret"), false);
+    assert.equal(serialized.includes("[REDACTED:env-credential]"), true);
   });
 });

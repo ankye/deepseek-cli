@@ -4,6 +4,9 @@ export interface InMemoryUsageBudgetOptions {
   readonly contextHardLimitTokens?: number;
   readonly contextSoftLimitTokens?: number;
   readonly reservedOutputTokens?: number;
+  readonly maxInputTokens?: number;
+  readonly maxOutputTokens?: number;
+  readonly maxCostMicros?: number;
 }
 
 export class InMemoryUsageBudgetManager implements UsageBudgetManager {
@@ -15,8 +18,24 @@ export class InMemoryUsageBudgetManager implements UsageBudgetManager {
     this.records.push(record);
   }
 
-  async check(): Promise<{ allowed: boolean; warning?: string; hardLimit?: string }> {
-    return { allowed: true };
+  async check(sessionId: SessionId, proposed: Partial<UsageRecord> = {}): Promise<{ allowed: boolean; warning?: string; hardLimit?: string }> {
+    const total = await this.total(sessionId);
+    const nextInputTokens = total.inputTokens + (proposed.inputTokens ?? 0);
+    const nextOutputTokens = total.outputTokens + (proposed.outputTokens ?? 0);
+    const nextCostMicros = total.costMicros + (proposed.costMicros ?? 0);
+    if (this.options.maxInputTokens !== undefined && nextInputTokens > this.options.maxInputTokens) {
+      return { allowed: false, hardLimit: "usage.inputTokens" };
+    }
+    if (this.options.maxOutputTokens !== undefined && nextOutputTokens > this.options.maxOutputTokens) {
+      return { allowed: false, hardLimit: "usage.outputTokens" };
+    }
+    if (this.options.maxCostMicros !== undefined && nextCostMicros > this.options.maxCostMicros) {
+      return { allowed: false, hardLimit: "usage.costMicros" };
+    }
+    const warning = this.options.maxInputTokens !== undefined && nextInputTokens > this.options.maxInputTokens * 0.8
+      ? "usage.inputTokens.near-limit"
+      : undefined;
+    return warning ? { allowed: true, warning } : { allowed: true };
   }
 
   async total(sessionId: SessionId): Promise<UsageRecord> {

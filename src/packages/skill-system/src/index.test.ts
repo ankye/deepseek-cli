@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
-import { InMemorySkillSystem } from "./index.js";
+import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
+import { createPluginInstallVerifyFamilyCapabilities, InMemorySkillSystem } from "./index.js";
 
 const secret = "sk-skill-1234567890";
 
@@ -114,5 +115,30 @@ describe("skill system v1", () => {
     assert.equal(projection.nodes[0]?.source, "skill-system");
     assert.equal(serialized.includes(secret), false);
     assert.equal(serialized.includes("[REDACTED:secret]"), true);
+  });
+
+  it("exposes plugin.install-verify through nearest owner fake capability", async () => {
+    const capabilities = createPluginInstallVerifyFamilyCapabilities();
+    const registry = new InMemoryCapabilityRegistry();
+    await registry.register(capabilities[0]!.manifest, capabilities[0]!.execute);
+
+    const projected = await registry.listModelVisible({ allowedFamilyIds: ["plugin.install-verify"], allowedProviderSupport: ["fake"] });
+    assert.equal(projected.length, 1);
+
+    const installed = await capabilities[0]!.execute({
+      action: "install",
+      id: "plugin-demo",
+      version: "1.0.0",
+      integrity: "sha256:demo",
+      permissions: ["skill:read"]
+    }, {} as never);
+    assert.equal(installed.ok, true);
+    assert.equal(installed.value?.familyId, "plugin.install-verify");
+    assert.equal((installed.value?.lockfileDiff as { changedPluginId?: string } | undefined)?.changedPluginId, "plugin-demo");
+    assert.match(String((installed.value?.evidence as { packageGap?: string } | undefined)?.packageGap), /plugin-system package absent/);
+
+    const rejected = await capabilities[0]!.execute({ action: "install", id: "plugin-bad", integrity: "md5:bad" }, {} as never);
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.error?.code, "PLUGIN_INTEGRITY_INVALID");
   });
 });

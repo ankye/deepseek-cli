@@ -2,7 +2,7 @@
 
 Command: npm run build:cli
 Exit Code: 0
-Duration Ms: 836
+Duration Ms: 499
 
 ## stdout
 
@@ -15,6 +15,6 @@ Duration Ms: 836
 
 ## stderr
 
-  dist\index.js  1.1mb
+  dist\index.js  1.5mb
 
-Done in 54ms
+Done in 36ms

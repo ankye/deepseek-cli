@@ -15,6 +15,8 @@ import type {
   SymbolReference
 } from "@deepseek/platform-contracts";
 import { CODE_INTELLIGENCE_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+export { createCodeIntelligenceFamilyCapabilities } from "./capabilities.js";
+export type { CodeIntelligenceFamilyCapabilityOptions } from "./capabilities.js";
 
 const deterministicTime = new Date(0).toISOString();
 const supportedExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".md"] as const;

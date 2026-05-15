@@ -83,7 +83,7 @@ export function modelToolResultText(event: RuntimeEvent | undefined): string {
 
 export function boundedModelText(value: string, limitBytes: number): string {
   const safe = redactSecretTextForRuntime(value);
-  return Buffer.byteLength(safe, "utf8") > limitBytes ? safe.slice(0, limitBytes) : safe;
+  return Buffer.byteLength(safe, "utf8") > limitBytes ? truncateUtf8Text(safe, limitBytes) : safe;
 }
 
 export function isJsonObjectForRuntime(value: unknown): value is JsonObject {
@@ -95,12 +95,26 @@ export function toolFeedbackPreview(text: string, limitBytes: number): ToolFeedb
   const byteLength = Buffer.byteLength(safe, "utf8");
   const truncated = byteLength > limitBytes;
   return {
-    text: truncated ? safe.slice(0, limitBytes) : safe,
+    text: truncated ? truncateUtf8Text(safe, limitBytes) : safe,
     byteLength,
     truncated,
     limitBytes,
     redaction: { class: "internal", fields: ["text"] }
   };
+}
+
+function truncateUtf8Text(text: string, limitBytes: number): string {
+  const limit = Number.isFinite(limitBytes) ? Math.max(0, Math.floor(limitBytes)) : 0;
+  if (Buffer.byteLength(text, "utf8") <= limit) return text;
+  const chunks: string[] = [];
+  let bytes = 0;
+  for (const character of text) {
+    const nextBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + nextBytes > limit) break;
+    chunks.push(character);
+    bytes += nextBytes;
+  }
+  return chunks.join("");
 }
 
 export interface ToolFeedbackInput {

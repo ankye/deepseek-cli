@@ -16,6 +16,7 @@ import {
   redactJsonSecrets,
   redactSecretText
 } from "@deepseek/policy-sandbox";
+import { capabilityToolFamilyMetadata } from "../catalog/families.js";
 
 export interface ToolDefinition {
   readonly toolName: CoreCodingToolName;
@@ -34,6 +35,7 @@ export function defineToolManifest(
   execute: (input: JsonObject, context: CapabilityExecutionContext) => Promise<SerializableResult<CoreToolResult>>
 ): ToolDefinition {
   const resourceScope = analyzeResourceScope({}, sideEffect);
+  const toolFamily = capabilityToolFamilyMetadata(id);
   const sandboxRequirements = createSandboxRequirement({
     sideEffect,
     resourceScope,
@@ -59,8 +61,18 @@ export function defineToolManifest(
       projection: {
         modelVisible: true,
         hostVisible: true,
-        executorVisible: false
+        executorVisible: false,
+        outputBounded: true,
+        connectorTrust: "trusted",
+        providerSupport: toolFamily?.connectorProfile === "provider" ? "connector" : "not_applicable",
+        policyTags: [
+          "core-tool",
+          `family:${toolFamily?.familyId ?? toolName}`,
+          `domain:${toolFamily?.domainId ?? "unknown"}`
+        ],
+        agentScopeIds: ["default"]
       },
+      ...(toolFamily ? { toolFamily } : {}),
       compatibility: {
         schemaVersion: "1.0.0",
         requiresPlatform: true
@@ -133,7 +145,7 @@ export function failure(tool: CoreCodingToolName, code: string, message: string,
 export function boundedText(text: string, limitBytes = 8_000) {
   const safeText = redactSecretText(text);
   const truncated = Buffer.byteLength(safeText, "utf8") > limitBytes;
-  const limited = truncated ? safeText.slice(0, limitBytes) : safeText;
+  const limited = truncated ? truncateUtf8Text(safeText, limitBytes) : safeText;
   return {
     text: limited,
     byteLength: Buffer.byteLength(safeText, "utf8"),
@@ -142,6 +154,20 @@ export function boundedText(text: string, limitBytes = 8_000) {
     limitBytes,
     redaction: { class: "internal" as const }
   };
+}
+
+function truncateUtf8Text(text: string, limitBytes: number): string {
+  const limit = Number.isFinite(limitBytes) ? Math.max(0, Math.floor(limitBytes)) : 0;
+  if (Buffer.byteLength(text, "utf8") <= limit) return text;
+  const chunks: string[] = [];
+  let bytes = 0;
+  for (const character of text) {
+    const nextBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + nextBytes > limit) break;
+    chunks.push(character);
+    bytes += nextBytes;
+  }
+  return chunks.join("");
 }
 
 export function diag(code: string, message: string): CoreToolDiagnostic {

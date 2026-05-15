@@ -20,13 +20,21 @@ describe("core coding tool contracts", () => {
       "core.file.write",
       "core.file.edit",
       "core.file.list",
+      "core.workspace.glob",
+      "core.asset.view-local",
       "core.search.text",
+      "core.notebook.read",
+      "core.patch.apply",
+      "core.revert.undo",
       "core.shell.run",
       "core.shell.output",
       "core.shell.kill",
+      "core.repl.execute",
       "core.git.status",
       "core.git.diff",
+      "core.git.history-branch",
       "core.test.run",
+      "core.package.manager",
       "core.todo.plan",
       "core.web.fetch",
       "core.web.search",
@@ -100,7 +108,7 @@ describe("core coding tool contracts", () => {
   });
 });
 
-function context(capabilityId: typeof coreToolIds.fileEdit | typeof coreToolIds.fileRead): CapabilityExecutionContext {
+function context(capabilityId: (typeof coreToolIds)[keyof typeof coreToolIds]): CapabilityExecutionContext {
   const trace: TraceContext = {
     traceId: asId<"trace">("trace-contract"),
     spanId: asId<"span">("span-contract"),
@@ -141,7 +149,7 @@ function context(capabilityId: typeof coreToolIds.fileEdit | typeof coreToolIds.
   };
 }
 
-function securityFields(capabilityId: typeof coreToolIds.fileEdit | typeof coreToolIds.fileRead) {
+function securityFields(capabilityId: (typeof coreToolIds)[keyof typeof coreToolIds]) {
   const resourceScope = analyzeResourceScope({}, "write");
   const sandboxRequirements = createSandboxRequirement({ sideEffect: "write", resourceScope, timeoutMs: 30_000, permissions: [] });
   return {

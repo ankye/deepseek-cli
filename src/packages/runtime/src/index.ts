@@ -1,5 +1,21 @@
 export { kernelError } from "./errors.js";
 export { runtimeEchoCapability, registerRuntimeBuiltins, registerRuntimeCoreTools } from "./echo-capability.js";
+export {
+  registerRuntimeFamilyCapabilities,
+  runtimeFamilyCapabilityIds,
+  runtimeFamilyManifests
+} from "./family-capabilities.js";
+export {
+  platformFamilyCapabilityIds,
+  platformFamilyManifests,
+  registerPlatformFamilyCapabilities
+} from "./platform-family-capabilities.js";
+export type {
+  RuntimeFamilyCapabilityDependencies,
+  RuntimeFamilyCapabilityHost,
+  RuntimeUserInputDecision,
+  RuntimeUserInputRequest
+} from "./family-capabilities.js";
 export type { ExecutionEnvelopeBuildInput } from "./envelope.js";
 export { buildExecutionEnvelope, validateExecutionEnvelope } from "./envelope.js";
 export { InProcessRuntimeKernel, createRuntimeKernel, createDefaultRuntimeKernel } from "./kernel.js";

@@ -4,9 +4,9 @@ import { asId } from "@deepseek/platform-contracts";
 import type { CapabilityExecutionContext, JsonObject } from "@deepseek/platform-contracts";
 import { FakeBackgroundTaskManager } from "@deepseek/testing-regression";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
-import { defineShellRunTool } from "../../src/packages/core-coding-tools/src/tools/shell-run/index.js";
-import { defineShellOutputTool } from "../../src/packages/core-coding-tools/src/tools/shell-output/index.js";
-import { defineShellKillTool } from "../../src/packages/core-coding-tools/src/tools/shell-kill/index.js";
+import { defineShellKillTool } from "../../src/packages/core-coding-tools/src/families/shell-process/process-kill/index.js";
+import { defineShellOutputTool } from "../../src/packages/core-coding-tools/src/families/shell-process/process-output/index.js";
+import { defineShellRunTool } from "../../src/packages/core-coding-tools/src/families/shell-process/shell-run/index.js";
 
 function context(): CapabilityExecutionContext {
   return {

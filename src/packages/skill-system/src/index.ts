@@ -17,6 +17,7 @@ import type {
   SkillValidationResult
 } from "@deepseek/platform-contracts";
 import { CONTEXT_PROJECTION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+export { createPluginInstallVerifyFamilyCapabilities } from "./plugin-capability.js";
 
 interface StoredSkill {
   readonly manifest: SkillManifest;

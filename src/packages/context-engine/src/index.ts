@@ -258,6 +258,141 @@ export function createProjectionRequest(input: ProjectionRequestInput): ContextP
   };
 }
 
+export interface ProjectIndexDocumentInput {
+  readonly path: string;
+  readonly content: string;
+  readonly language?: string;
+  readonly redactionClass?: RedactionClass;
+}
+
+export interface ProjectIndexRefreshRequest {
+  readonly sessionId: SessionId;
+  readonly workspaceRoot: string;
+  readonly documents: readonly ProjectIndexDocumentInput[];
+  readonly indexId?: string;
+}
+
+export interface ProjectIndexQueryRequest {
+  readonly sessionId: SessionId;
+  readonly workspaceRoot: string;
+  readonly query: string;
+  readonly limit?: number;
+  readonly indexId?: string;
+  readonly documentsFingerprint?: string;
+}
+
+export interface ProjectIndexEntry extends JsonObject {
+  readonly path: string;
+  readonly language: string;
+  readonly contentHash: string;
+  readonly excerpt: string;
+  readonly estimatedTokens: number;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface ProjectIndexRefreshResult extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly familyId: "context.project-index";
+  readonly status: "completed";
+  readonly indexId: string;
+  readonly sessionId: SessionId;
+  readonly workspaceRoot: string;
+  readonly documentCount: number;
+  readonly documentsFingerprint: string;
+  readonly replayFingerprint: string;
+  readonly diagnostics: readonly string[];
+  readonly redaction: { readonly class: "internal"; readonly fields: readonly string[] };
+}
+
+export interface ProjectIndexQueryResult extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly familyId: "context.project-index";
+  readonly status: "completed" | "degraded";
+  readonly indexId: string;
+  readonly sessionId: SessionId;
+  readonly workspaceRoot: string;
+  readonly query: string;
+  readonly resultCount: number;
+  readonly entries: readonly ProjectIndexEntry[];
+  readonly contextNodes: readonly ContextGraphNode[];
+  readonly stale: boolean;
+  readonly diagnostics: readonly string[];
+  readonly replayFingerprint: string;
+  readonly redaction: { readonly class: "internal"; readonly fields: readonly string[] };
+}
+
+export class DeterministicProjectIndex {
+  private readonly indexes = new Map<string, { readonly refresh: ProjectIndexRefreshResult; readonly documents: readonly ProjectIndexEntry[] }>();
+
+  refresh(request: ProjectIndexRefreshRequest): ProjectIndexRefreshResult {
+    const documents = request.documents
+      .map((document) => indexEntry(document))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    const documentsFingerprint = stableHash(JSON.stringify(documents.map((document) => [document.path, document.contentHash])));
+    const indexId = request.indexId ?? `project-index-${stableHash(`${request.sessionId}:${request.workspaceRoot}`)}`;
+    const refresh: ProjectIndexRefreshResult = {
+      schemaVersion: "1.0.0",
+      familyId: "context.project-index",
+      status: "completed",
+      indexId,
+      sessionId: request.sessionId,
+      workspaceRoot: request.workspaceRoot,
+      documentCount: documents.length,
+      documentsFingerprint,
+      replayFingerprint: `context.project-index.refresh:${stableHash(JSON.stringify({
+        indexId,
+        sessionId: request.sessionId,
+        workspaceRoot: request.workspaceRoot,
+        documentsFingerprint
+      }))}`,
+      diagnostics: [],
+      redaction: { class: "internal", fields: ["workspaceRoot", "documents.path", "documents.excerpt"] }
+    };
+    this.indexes.set(indexKey(request.sessionId, request.workspaceRoot, indexId), { refresh, documents });
+    return refresh;
+  }
+
+  query(request: ProjectIndexQueryRequest): ProjectIndexQueryResult {
+    const indexId = request.indexId ?? `project-index-${stableHash(`${request.sessionId}:${request.workspaceRoot}`)}`;
+    const index = this.indexes.get(indexKey(request.sessionId, request.workspaceRoot, indexId));
+    const stale = Boolean(index && request.documentsFingerprint && request.documentsFingerprint !== index.refresh.documentsFingerprint);
+    const diagnostics: string[] = [];
+    if (!index) diagnostics.push("context.project-index.missing-index");
+    if (stale) diagnostics.push("context.project-index.stale-index");
+    const limit = Math.max(0, request.limit ?? 20);
+    const query = request.query.trim().toLowerCase();
+    const entries = (index?.documents ?? [])
+      .filter((entry) => query.length === 0 || entry.path.toLowerCase().includes(query) || entry.excerpt.toLowerCase().includes(query))
+      .slice(0, limit);
+    if (index && entries.length === limit && limit > 0) diagnostics.push("context.project-index.output-bounded");
+    const contextNodes = entries.map((entry, position) => projectIndexNode(request.sessionId, request.workspaceRoot, entry, position, index?.refresh.documentsFingerprint ?? "missing"));
+    return {
+      schemaVersion: "1.0.0",
+      familyId: "context.project-index",
+      status: diagnostics.length > 0 ? "degraded" : "completed",
+      indexId,
+      sessionId: request.sessionId,
+      workspaceRoot: request.workspaceRoot,
+      query: request.query,
+      resultCount: entries.length,
+      entries,
+      contextNodes,
+      stale,
+      diagnostics,
+      replayFingerprint: `context.project-index.query:${stableHash(JSON.stringify({
+        indexId,
+        sessionId: request.sessionId,
+        workspaceRoot: request.workspaceRoot,
+        query: request.query,
+        entries: entries.map((entry) => [entry.path, entry.contentHash]),
+        stale,
+        diagnostics
+      }))}`,
+      redaction: { class: "internal", fields: ["workspaceRoot", "entries.path", "entries.excerpt", "contextNodes.content"] }
+    };
+  }
+}
+
 function normalizeStoredNode(sessionId: SessionId, node: ContextNode): ContextGraphNode {
   return normalizeGraphNode(sessionId, {
     schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
@@ -550,4 +685,59 @@ function numberField(metadata: JsonObject, key: string, fallback: number): numbe
 function stringArrayField(metadata: JsonObject, key: string, fallback: readonly string[]): readonly string[] {
   const value = metadata[key];
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : fallback;
+}
+
+function indexEntry(document: ProjectIndexDocumentInput): ProjectIndexEntry {
+  const redaction = { class: document.redactionClass ?? "internal" } satisfies RedactionMetadata;
+  const excerpt = redactContent(firstWords(document.content, 40), redaction);
+  return {
+    path: document.path,
+    language: document.language ?? languageForPath(document.path),
+    contentHash: stableHash(document.content),
+    excerpt,
+    estimatedTokens: countTokens(document.content),
+    redaction
+  };
+}
+
+function projectIndexNode(sessionId: SessionId, workspaceRoot: string, entry: ProjectIndexEntry, position: number, documentsFingerprint: string): ContextGraphNode {
+  return normalizeGraphNode(sessionId, {
+    schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
+    id: asId<"contextNode">(`project-index-${stableHash(`${workspaceRoot}:${entry.path}`)}`),
+    kind: "file",
+    source: "workspace",
+    lifecycle: "session",
+    scope: { sessionId, workspaceRoot },
+    priority: 900 - position,
+    content: `${entry.path}\n${entry.excerpt}`,
+    estimatedTokens: entry.estimatedTokens,
+    redaction: entry.redaction,
+    provenance: {
+      source: "context.project-index",
+      path: entry.path,
+      language: entry.language,
+      contentHash: entry.contentHash
+    },
+    dependencyFingerprints: [`project-index:${documentsFingerprint}`, `file:${entry.contentHash}`],
+    compatibility: { schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION },
+    createdAt: new Date(0).toISOString()
+  });
+}
+
+function indexKey(sessionId: SessionId, workspaceRoot: string, indexId: string): string {
+  return `${sessionId}:${workspaceRoot}:${indexId}`;
+}
+
+function firstWords(content: string, maxWords: number): string {
+  const words = content.trim().split(/\s+/).filter((word) => word.length > 0);
+  return words.slice(0, maxWords).join(" ");
+}
+
+function languageForPath(path: string): string {
+  const extension = path.split(".").at(-1)?.toLowerCase();
+  if (extension === "ts" || extension === "tsx") return "typescript";
+  if (extension === "js" || extension === "jsx") return "javascript";
+  if (extension === "json") return "json";
+  if (extension === "md") return "markdown";
+  return "text";
 }
