@@ -20,9 +20,14 @@ export interface ModelProfile extends JsonObject {
   readonly providerOptions?: JsonObject;
 }
 
+export type ModelReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type ModelReasoningProviderEffort = "low" | "medium" | "high" | "max";
+
 export interface ModelReasoningOptions extends JsonObject {
   readonly enabled?: boolean;
-  readonly effort?: "low" | "medium" | "high";
+  readonly effort?: ModelReasoningEffort;
+  readonly providerEffort?: ModelReasoningProviderEffort;
+  readonly providerMapping?: JsonObject;
 }
 
 export type ModelChatMessageRole = "system" | "user" | "assistant" | "tool";

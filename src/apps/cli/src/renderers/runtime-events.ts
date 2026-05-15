@@ -1,4 +1,5 @@
 import type { AgentLoopOutputMode, AgentLoopSummary, RuntimeDependencies, RuntimeEvent, RuntimeKernel } from "@deepseek/platform-contracts";
+import type { AgentLoopBudget, AgentPhasePlan, AgentPhasePlanItem, AgentVerifierResult, AgentWorkerLifecycleEvent, AgentWorkerResult } from "@deepseek/platform-contracts";
 import { runAgentLoop } from "@deepseek/runtime";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
 import { isApprovalEvent, renderApprovalJson, renderApprovalText } from "./approval.js";
@@ -55,6 +56,16 @@ export async function emitAgentLoop(
 export function renderText(event: RuntimeEvent): string {
   if (isApprovalEvent(event)) return renderApprovalText(event);
   if (event.kind === "model.requested") return `[model] request iteration=${String(event.data.iteration ?? "")}`;
+  if (event.kind === "evidence.classified") return `[evidence] required=${String(event.data.evidenceRequired ?? false)} intents=${eventDataList(event.data.intents)}`;
+  if (event.kind === "evidence.plan.created") return `[evidence] plan sources=${eventDataCount(event.data.sources)} claims=${eventDataCount(event.data.claims)}`;
+  if (event.kind === "evidence.selected") return `[evidence] selected=${String(event.data.selectedEvidenceCount ?? 0)}`;
+  if (event.kind === "agent.phase.plan.created") return renderPhasePlan(event.data as unknown as AgentPhasePlan);
+  if (event.kind === "agent.phase.skipped") return renderSkippedPhase(event.data as unknown as AgentPhasePlanItem);
+  if (event.kind === "agent.loop.budget.consumed") return renderBudget(event.data as unknown as AgentLoopBudget);
+  if (event.kind === "agent.worker.launched" || event.kind === "agent.worker.continued" || event.kind === "agent.worker.stopped") return renderWorkerLifecycle(event.data as unknown as AgentWorkerLifecycleEvent);
+  if (event.kind === "agent.worker.result") return renderWorkerResult(event.data as unknown as AgentWorkerResult);
+  if (event.kind === "agent.verifier.verdict") return renderVerifierVerdict(event.data as unknown as AgentVerifierResult);
+  if (event.kind === "model.reasoning.effort.mapped") return `[model] reasoning requested=${String(event.data.requestedEffort ?? "none")} provider=${String(event.data.providerEffort ?? "none")} supported=${String(event.data.supported ?? true)}`;
   if (event.kind === "model.tool.intent") return `[tool] ${String(event.data.name ?? "")}`;
   if (event.kind === "model.tool.repaired") return "[tool repaired]";
   if (event.kind === "model.tool.rejected") return `[tool rejected] ${event.error?.message ?? ""}`.trim();
@@ -70,6 +81,40 @@ export function renderText(event: RuntimeEvent): string {
   if (event.kind === "agent.loop.failed") return `[failed] ${event.error?.message ?? ""}`.trim();
   if (event.kind === "runtime.error") return `[error] ${event.error?.message ?? ""}`.trim();
   return "";
+}
+
+function renderPhasePlan(plan: AgentPhasePlan): string {
+  const required = plan.phases.filter((phase) => phase.required).map((phase) => phase.phase).join(",");
+  const skipped = plan.phases.filter((phase) => phase.status === "skipped").map((phase) => `${phase.phase}:${phase.skipReason ?? "unknown"}`).join(",");
+  return `[plan] mode=${plan.agentMode} required=${required || "none"} skipped=${skipped || "none"}`;
+}
+
+function renderSkippedPhase(phase: AgentPhasePlanItem): string {
+  return `[phase skipped] ${phase.phase} reason=${phase.skipReason ?? "unknown"} mode=${phase.mode}`;
+}
+
+function renderBudget(budget: AgentLoopBudget): string {
+  return `[budget] ${budget.kind} consumed=${budget.consumed}/${budget.allowed} remaining=${budget.remaining}${budget.stopReason ? ` stop=${budget.stopReason}` : ""}`;
+}
+
+function renderWorkerLifecycle(worker: AgentWorkerLifecycleEvent): string {
+  return `[worker] ${worker.status} worker=${worker.workerAgentId ?? "unknown"} instance=${worker.workerInstanceId ?? "none"} work_order=${worker.workOrderId ?? "none"}`;
+}
+
+function renderWorkerResult(result: AgentWorkerResult): string {
+  return `[worker] result=${result.resultId} status=${result.status} evidence=${result.evidenceIds.length} changed_scope=${result.changedScope.length}`;
+}
+
+function renderVerifierVerdict(result: AgentVerifierResult): string {
+  return `[verify] verdict=${result.verdict} evidence=${result.evidenceIds.length} commands=${result.commandEvidenceIds.length} unchecked=${result.unverifiedAreas.length}`;
+}
+
+function eventDataList(value: unknown): string {
+  return Array.isArray(value) ? value.map(String).join(",") || "none" : "none";
+}
+
+function eventDataCount(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 export function renderJsonLine(event: RuntimeEvent): string {

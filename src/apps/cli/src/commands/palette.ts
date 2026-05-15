@@ -14,6 +14,7 @@ import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import {
   coreKeymapProfile,
   interactiveControlCompositionRecords,
+  modeControlCompositionRecords,
   projectCommandPalette,
   readinessCompositionRecords,
   resolveCliAction,
@@ -57,7 +58,8 @@ export function createCliPaletteProjection(records: readonly CommandCompositionR
 function defaultPaletteRecords(): readonly CommandCompositionRecord[] {
   return [
     ...readinessCompositionRecords(),
-    ...interactiveControlCompositionRecords()
+    ...interactiveControlCompositionRecords(),
+    ...modeControlCompositionRecords()
   ];
 }
 

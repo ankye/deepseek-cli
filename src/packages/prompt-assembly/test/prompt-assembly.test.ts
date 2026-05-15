@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
-import { EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { AgentLoopBudget, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
+import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
 describe("prompt assembly", () => {
@@ -111,6 +111,51 @@ describe("prompt assembly", () => {
     assert.equal(excluded.every((section) => typeof section.evidenceFingerprint === "string" && section.evidenceFingerprint.length > 0), true);
   });
 
+  it("adds mode, phase, budget, verifier, and reasoning sections before evidence sections", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const phasePlan = agentPhasePlan();
+    const result = await assembler.assemble(input({
+      prompt: "生成 website 到 @website 目录",
+      mode: "webpage-generation",
+      evidenceFirst: evidenceFirstContext(),
+      phasePlan,
+      reasoningEffortMapping: reasoningMapping()
+    }));
+
+    const providerIds = result.sections
+      .filter((section) => section.included && section.providerId !== "core.user-prompt")
+      .map((section) => section.providerId);
+    assert.deepEqual(providerIds.slice(0, 6), [
+      "core.mode-context",
+      "core.phase-plan",
+      "core.loop-budget",
+      "core.evidence-first-operating-rules",
+      "core.verifier-expectations",
+      "core.reasoning-effort-policy"
+    ]);
+    assert.equal(result.messages.some((message) => message.content.includes("External orchestration budgets:")), true);
+    assert.equal(result.messages.some((message) => message.content.includes("Requested effort: xhigh")), true);
+    assert.equal(result.messages.at(-1)?.content, "生成 website 到 @website 目录");
+  });
+
+  it("renders self-contained work orders and rejects lazy delegation", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "worker task",
+      phasePlan: agentPhasePlan(),
+      workOrder: workOrder()
+    }));
+    const lazy = await assembler.assemble(input({
+      prompt: "worker task",
+      phasePlan: agentPhasePlan(),
+      workOrder: workOrder({ taskSummary: "continue from prior findings" })
+    }));
+
+    assert.equal(result.messages.some((message) => message.content.includes("Structured worker work order:")), true);
+    assert.equal(result.messages.some((message) => message.content.includes("Original user goal: Build a product page")), true);
+    assert.equal(lazy.diagnostics.some((diagnostic) => diagnostic.code === "PROMPT_LAZY_DELEGATION_REJECTED"), true);
+  });
+
   it("records budget exclusions", async () => {
     const assembler = createDefaultPromptAssembler({
       providers: [
@@ -193,6 +238,9 @@ function input(options: {
   readonly mode?: PromptAssemblyInput["mode"];
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
   readonly selfRepair?: SelfRepairOutcomeSummary;
+  readonly phasePlan?: AgentPhasePlan;
+  readonly workOrder?: AgentWorkOrder;
+  readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -218,6 +266,13 @@ function input(options: {
     history: [{ role: "user", content: options.prompt }],
     ...(options.evidenceFirst ? { evidenceFirst: options.evidenceFirst } : {}),
     ...(options.selfRepair ? { selfRepair: options.selfRepair } : {}),
+    ...(options.phasePlan ? {
+      interactionMode: options.phasePlan.interactionMode,
+      agentMode: options.phasePlan.agentMode,
+      phasePlan: options.phasePlan
+    } : {}),
+    ...(options.workOrder ? { workOrder: options.workOrder } : {}),
+    ...(options.reasoningEffortMapping ? { reasoningEffortMapping: options.reasoningEffortMapping } : {}),
     ...(selectedNodes.length > 0 ? {
       contextProjection: {
         schemaVersion: "1.0.0",
@@ -307,6 +362,95 @@ function selfRepairOutcome(): SelfRepairOutcomeSummary {
     verification: [verification],
     compatibility: SELF_REPAIR_COMPATIBILITY,
     redaction: { class: "internal", fields: ["classifications.diagnostics"] }
+  };
+}
+
+function agentPhasePlan(): AgentPhasePlan {
+  const budget: AgentLoopBudget = {
+    schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+    kind: "verification",
+    requested: 1,
+    allowed: 1,
+    consumed: 0,
+    remaining: 1,
+    policy: { source: "test" },
+    redaction: { class: "internal" },
+    compatibility: AGENT_MODE_COMPATIBILITY
+  };
+  return {
+    schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+    planId: "agent-phase-plan:test",
+    sessionId: asId<"session">("session-prompt-assembly"),
+    turnId: asId<"turn">("turn-prompt-assembly"),
+    interactionMode: "headless",
+    agentMode: "coordinator",
+    phases: [
+      {
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        phase: "evidence",
+        status: "completed",
+        required: true,
+        mode: "evidence",
+        budgets: [],
+        diagnostics: [],
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      },
+      {
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        phase: "verify",
+        status: "required",
+        required: true,
+        mode: "verifier",
+        budgets: [budget],
+        diagnostics: [],
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      }
+    ],
+    budgets: [budget],
+    reason: "test phase plan",
+    diagnostics: [],
+    redaction: { class: "internal" },
+    compatibility: AGENT_MODE_COMPATIBILITY
+  };
+}
+
+function workOrder(overrides: Partial<AgentWorkOrder> = {}): AgentWorkOrder {
+  return {
+    schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+    workOrderId: "work-order:test",
+    parentSessionId: asId<"session">("session-parent"),
+    parentAgentId: asId<"agent">("agent-parent"),
+    targetAgentId: asId<"agent">("agent-worker"),
+    mode: "worker",
+    purpose: "Verify generated website files",
+    originalUserGoal: "Build a product page",
+    taskSummary: "Inspect website/index.html and evidence.json.",
+    evidenceIds: ["evidence:package-json"],
+    targets: [{ kind: "file", id: "file:website/index.html", path: "website/index.html" }],
+    allowedTools: ["core.file.read", "core.test.run"],
+    permissionScope: { toolProjection: "read-only" },
+    doneCriteria: ["Report pass/fail with evidence ids."],
+    verificationExpectations: ["Check generated artifact evidence."],
+    redaction: { class: "internal" },
+    compatibility: AGENT_MODE_COMPATIBILITY,
+    ...overrides
+  };
+}
+
+function reasoningMapping(): AgentReasoningEffortMapping {
+  return {
+    schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+    requestedEffort: "xhigh",
+    providerEffort: "max",
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    mapped: true,
+    supported: true,
+    diagnostics: [],
+    redaction: { class: "internal" },
+    compatibility: AGENT_MODE_COMPATIBILITY
   };
 }
 

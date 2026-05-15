@@ -16,6 +16,8 @@ import { defineTodoPlanTool } from "./tools/todo-plan/index.js";
 import { defineWebFetchTool } from "./tools/web-fetch/index.js";
 import { defineWebSearchTool } from "./tools/web-search/index.js";
 import { defineAgentSpawnTool } from "./tools/agent-spawn/index.js";
+import { defineAgentContinueTool } from "./tools/agent-continue/index.js";
+import { defineAgentStopTool } from "./tools/agent-stop/index.js";
 import { defineHookListTool } from "./tools/hook-list/index.js";
 import { defineSkillListTool } from "./tools/skill-list/index.js";
 import { defineSkillActivateTool } from "./tools/skill-activate/index.js";
@@ -87,6 +89,8 @@ function coreToolDefinitions(deps: ExtendedCoreCodingToolsDependencies | undefin
     defineWebFetchTool(deps),
     defineWebSearchTool(deps),
     defineAgentSpawnTool(deps),
+    defineAgentContinueTool(deps),
+    defineAgentStopTool(deps),
     defineHookListTool(deps),
     defineSkillListTool(deps),
     defineSkillActivateTool(deps)

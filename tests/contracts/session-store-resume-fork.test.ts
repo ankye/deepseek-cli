@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SessionEvent, SessionStore } from "@deepseek/platform-contracts";
-import { SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, INTERACTION_MODE_COMPATIBILITY, INTERACTION_MODE_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { DevelopmentFilesystemSessionStore, InMemorySessionStore, PersistentFilesystemSessionStore, userSessionsDirectory } from "@deepseek/session-store";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, sep } from "node:path";
@@ -14,6 +14,17 @@ function event(sessionId: string, sequence: number, kind = "runtime.test"): Sess
     kind,
     at: new Date(0).toISOString(),
     payload: { text: "hello", secret: "sk-live-secret-value" },
+    redaction: { class: "internal" }
+  };
+}
+
+function modeEvent(sessionId: string, sequence: number, kind: string, payload: SessionEvent["payload"]): SessionEvent {
+  return {
+    sessionId: asId<"session">(sessionId),
+    sequence,
+    kind,
+    at: new Date(0).toISOString(),
+    payload,
     redaction: { class: "internal" }
   };
 }
@@ -103,6 +114,73 @@ describe("session store resume and fork contracts", () => {
 
   it("keeps DevelopmentFilesystemSessionStore as a backwards-compatible alias", () => {
     assert.equal(DevelopmentFilesystemSessionStore, PersistentFilesystemSessionStore);
+  });
+
+  it("projects mode metadata from session events and preserves it through fork lineage", async () => {
+    const store = new InMemorySessionStore();
+    const sessionId = await store.create({ label: "mode-parent" });
+    await store.append(modeEvent(sessionId, 1, "mode.interaction.changed", {
+      schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+      transitionId: "interaction-transition:test",
+      sessionId,
+      previousMode: "chat",
+      nextMode: "chat",
+      reason: "runtime-phase",
+      initiator: "runtime",
+      at: new Date(0).toISOString(),
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: INTERACTION_MODE_COMPATIBILITY
+    }));
+    await store.append(modeEvent(sessionId, 2, "agent.phase.plan.created", {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      planId: "agent-phase-plan:test",
+      sessionId,
+      interactionMode: "chat",
+      agentMode: "default",
+      phases: [],
+      budgets: [{
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        kind: "verification",
+        requested: 1,
+        allowed: 1,
+        consumed: 0,
+        remaining: 1,
+        policy: { source: "test" },
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      }],
+      reason: "test plan",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    }));
+    await store.append(modeEvent(sessionId, 3, "model.reasoning.effort.mapped", {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      requestedEffort: "high",
+      providerEffort: "high",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      mapped: true,
+      supported: true,
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    }));
+
+    const resumed = await store.resume(sessionId);
+    assert.equal(resumed.ok, true);
+    assert.equal(resumed.value?.mode?.interactionMode?.mode, "chat");
+    assert.equal(resumed.value?.mode?.agentMode?.phasePlanId, "agent-phase-plan:test");
+    assert.equal(resumed.value?.mode?.agentMode?.budgets[0]?.kind, "verification");
+    assert.equal(resumed.value?.mode?.agentMode?.reasoningEffort?.providerEffort, "high");
+
+    const forked = await store.fork({ parentSessionId: sessionId, reason: "mode fork" });
+    assert.equal(forked.ok, true);
+    assert.equal(forked.value?.lineage.modeForkPoint?.interactionMode?.mode, "chat");
+    assert.equal(forked.value?.lineage.modeForkPoint?.agentMode?.phasePlanId, "agent-phase-plan:test");
+    assert.equal(forked.value?.lineage.modeForkPoint?.activeWorkerPolicy, "historical-lineage-only");
+    assert.equal(forked.value?.mode?.agentMode?.reasoningEffort?.requestedEffort, "high");
   });
 
   it("picks a per-user sessions directory from environment", () => {

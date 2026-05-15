@@ -17,10 +17,11 @@ export interface CliTerminalFlags {
   readonly stdoutIsTTY: boolean;
 }
 
-export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider";
+export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode";
 export type CliPaletteAction = "list" | "keymap" | "action";
 export type CliRevertAction = "preview" | "apply";
 export type CliIndexProviderAction = "status" | "set";
+export type CliModeAction = "status" | "agent" | "workers" | "verify" | "plan";
 
 export interface CliOptions {
   readonly command: CliCommand;
@@ -54,6 +55,8 @@ export interface CliOptions {
   readonly indexProviderId?: string;
   readonly indexProviderStatus?: string;
   readonly indexProviderScope?: "workspace" | "user";
+  readonly modeAction?: CliModeAction;
+  readonly modeRequestedTransition?: string;
   readonly toolProjection?: "read-only" | "read-write" | "all";
 }
 

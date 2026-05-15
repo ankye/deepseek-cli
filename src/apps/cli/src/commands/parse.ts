@@ -75,6 +75,17 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       indexProviderScope: args.includes("--user") ? "user" : "workspace"
     };
   }
+  if (first === "mode") {
+    const action = parseModeAction(args[1]);
+    return {
+      command: "mode",
+      prompt: "",
+      output,
+      live,
+      modeAction: action,
+      ...(args[2] && !args[2].startsWith("-") ? { modeRequestedTransition: args[2] } : {})
+    };
+  }
   if (first === "diagnostics") {
     const diagnosticsCommand = parseDiagnosticsCommand(args[1]);
     return {
@@ -140,6 +151,7 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek mcp test <manifest.json> [--enable-real-mcp] [--call <tool> --input <json>] [--output text|json]",
     "  deepseek index-provider status [--output text|json|jsonl]",
     "  deepseek index-provider set <pageindex|zvec|code-index> <enabled|deferred|disabled> [--user] [--output text|json|jsonl]",
+    "  deepseek mode [status|agent|workers|verify|plan] [--output text|json|jsonl]",
     "  deepseek extension list [--output text|json|jsonl]",
     "  deepseek extension plugin install|verify|snapshot|apply-lockfile <file.json> [--output text|json|jsonl]",
     "  deepseek extension skill list|activate [name] [--output text|json|jsonl]",
@@ -157,6 +169,11 @@ export function cliUsageLines(): readonly string[] {
     "  fact-sensitive run/chat turns classify and select bounded local evidence before model dispatch",
     "  one-shot run turns use bounded self-repair for repairable failures and emit redacted repair evidence"
   ];
+}
+
+function parseModeAction(value: string | undefined): NonNullable<CliOptions["modeAction"]> {
+  if (value === "agent" || value === "workers" || value === "verify" || value === "plan") return value;
+  return "status";
 }
 
 function parseRevertTarget(args: readonly string[]): WorkspaceRevertRequestTarget {

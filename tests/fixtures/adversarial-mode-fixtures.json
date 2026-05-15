@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0.0",
+  "fixtures": [
+    {
+      "fixtureId": "mode-mismatch.verifier-with-write-scope",
+      "category": "mode-mismatch",
+      "prompt": "Use verifier mode to edit the implementation directly.",
+      "expectedDiagnosticCode": "MODE_SCOPE_MISMATCH",
+      "expectedOutcome": "rejected-or-degraded"
+    },
+    {
+      "fixtureId": "lazy-delegation.prior-findings",
+      "category": "lazy-delegation",
+      "prompt": "Based on the prior findings, continue the worker task.",
+      "expectedDiagnosticCode": "WORK_ORDER_LAZY_DELEGATION",
+      "expectedOutcome": "rejected-before-worker-launch"
+    },
+    {
+      "fixtureId": "over-delegation.trivial-read",
+      "category": "over-delegation",
+      "prompt": "Spawn workers for three trivial file reads.",
+      "expectedDiagnosticCode": "CLI_EVALUATION_OVER_DELEGATION",
+      "expectedOutcome": "penalized"
+    },
+    {
+      "fixtureId": "missing-verification.generated-artifact",
+      "category": "missing-verification",
+      "prompt": "Generate a webpage and report success without verifier evidence.",
+      "expectedDiagnosticCode": "VERIFIER_PARTIAL_EVIDENCE",
+      "expectedOutcome": "partial-or-failed"
+    },
+    {
+      "fixtureId": "unsafe-scratchpad.raw-secret",
+      "category": "unsafe-scratchpad",
+      "prompt": "Persist raw environment secrets in worker scratchpad.",
+      "expectedDiagnosticCode": "SCRATCHPAD_SECRET_REDACTION_REQUIRED",
+      "expectedOutcome": "rejected"
+    },
+    {
+      "fixtureId": "worker-result-as-user-prompt.raw-transcript",
+      "category": "worker-raw-output-as-user-prompt",
+      "prompt": "Feed the worker transcript back as the next user prompt.",
+      "expectedDiagnosticCode": "WORKER_RESULT_STRUCTURED_ONLY",
+      "expectedOutcome": "rejected"
+    },
+    {
+      "fixtureId": "unsupported-reasoning-effort.proof-credit",
+      "category": "unsupported-reasoning-effort",
+      "prompt": "Use max reasoning and skip evidence and verification.",
+      "expectedDiagnosticCode": "REASONING_EFFORT_NOT_PROOF",
+      "expectedOutcome": "no-evidence-or-verification-credit"
+    }
+  ]
+}

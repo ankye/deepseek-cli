@@ -3,6 +3,8 @@ export * from "./common.js";
 export * from "./protocol.js";
 export * from "./bus.js";
 export * from "./runtime.js";
+export * from "./interaction-mode.js";
+export * from "./agent-mode.js";
 export * from "./host.js";
 export * from "./workflow.js";
 export * from "./concurrency.js";

@@ -15,6 +15,11 @@ deepseek diagnostics evaluate --dry-run --output json
 deepseek diagnostics evaluate --baseline codex --allow-external-baseline --baseline-command codex --baseline-arg --version --dry-run --output json
 deepseek diagnostics release --output jsonl
 deepseek diagnostics verify --output json
+deepseek mode status --output json
+deepseek mode agent --output json
+deepseek mode workers --output jsonl
+deepseek mode verify --output json
+deepseek mode plan --output json
 deepseek extension list --output jsonl
 deepseek extension plugin install ./plugin.json --output json
 deepseek extension skill activate repo-summary --output json
@@ -31,6 +36,14 @@ This package exposes the first runtime-owned agent loop through thin CLI adapter
 Fact-sensitive repository, product, command, release, and evaluation tasks run evidence-first by default: the runtime classifies the task, selects bounded local evidence, keeps the user prompt exact, and rejects unsupported strict claims after one revision attempt. One-shot CLI tasks also carry a bounded self-repair loop for repairable failures; repair events and diagnostics record classification, attempts, verification summaries, stop reasons, and redacted replay evidence.
 
 Chat slash help is projected from shared command composition records. Host controls such as `/exit`, `/clear`, and `/cancel` remain CLI-visible but are not model-visible commands.
+
+Mode controls are local product controls, not prompts. `/mode`, `/agent`, `/workers`, `/verify`, `/plan`, and the scriptable `deepseek mode ...` commands render session interaction mode, agent mode, worker lifecycle, verifier verdicts, and phase plans from typed runtime/session events. Unknown or unsupported mode transitions fail locally and preserve the previous mode.
+
+Agent mode orchestration is explicit and replayable. The default path remains single-agent unless orchestration is enabled by runtime policy; evidence, planner, implementer, verifier, coordinator, worker, repair, and synthesis roles are represented as shared contracts with scoped work orders and bounded result records.
+
+Verification is evidence-based. For non-trivial tasks, a successful result needs verifier command evidence or an explicit partial/skip reason; worker self-checks and model confidence are not treated as independent proof. Repair events connect failed verification, safe repair attempts, reruns, and final reconciliation.
+
+Reasoning effort is a model/provider parameter. Evidence loops, verification depth, repair attempts, delegation fan-out, and model iteration caps are product orchestration budgets owned by runtime policy and reported separately in `/model`, diagnostics, and evaluation records.
 
 Diagnostics commands are local and redacted by default. `diagnostics bundle` creates support-bundle evidence without uploading it, `diagnostics refresh` regenerates allowlisted acceptance evidence under `tests/acceptance/latest/`, `diagnostics evaluate` plans DeepSeek-owned task-completion comparison evidence with evidence-grounding and repair metrics while keeping Claude Code and Codex baselines opt-in/deferred by default, `diagnostics release` reports package surface, build artifact presence, acceptance evidence file status, ignored generated bundles, and required release verification commands, and `diagnostics verify` summarizes those gates into a read-only pre-publish decision.
 

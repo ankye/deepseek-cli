@@ -1,10 +1,11 @@
-import type { AgentLoopTerminalStatus, RuntimeEvent, SessionId, TurnId } from "@deepseek/platform-contracts";
+import type { AgentLoopTerminalStatus, RuntimeEvent } from "@deepseek/platform-contracts";
 import { invokeInteractiveCommand, isInteractiveControlResult, renderInteractiveControlText } from "@deepseek/command-system";
 import type { InteractiveControlResult } from "@deepseek/command-system";
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import type { CliInputStream, CliOptions, CliRunOptions } from "../types.js";
 import { createCliAgentRuntime } from "../host/runtime.js";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
+import { createInitialChatModeControlState, isChatModeControlCommand, modeControlRequestedTransition, renderChatModeControl, renderChatCostStatus, renderChatModelStatus, restoreChatModeControlState, updateChatModeControlState } from "./chat-mode-controls.js";
 import { renderApprovalActionText, runLocalApprovalAction } from "./approval.js";
 import {
   createCliPaletteProjection,
@@ -14,7 +15,6 @@ import {
   renderPaletteProjection,
   resolvePaletteAction
 } from "./palette.js";
-import type { ChatPaletteState } from "./palette-state.js";
 import {
   agentLoopReferenceContextFromPaletteState,
   createChatPaletteState,
@@ -38,7 +38,6 @@ import {
   resolveChatPaletteReferenceReplaceCurrent,
   summarizeChatPaletteState
 } from "./palette-state.js";
-import type { ChatPageIndexPage } from "./pageindex.js";
 import {
   chatPageIndexPagesFromSnapshot,
   createChatPageIndexRecallDeferred,
@@ -53,58 +52,14 @@ import {
   renderChatPageIndexRecallExplain,
   resolveChatPageIndexRecall
 } from "./pageindex.js";
+import type { ChatPageIndexPage } from "./pageindex.js";
 import { CliWorkspacePageIndexStore, renderWorkspacePageIndexFailure } from "./pageindex-workspace.js";
 import type { WorkspacePageIndexDiagnostic } from "./pageindex-workspace.js";
 import { readCliLines } from "../input/lines.js";
+import { accumulateChatUsage } from "./chat-usage.js";
 import { applyRevert, parseRevertApplyArgs, parseRevertPreviewArgs, previewRevert, renderRevertApply, renderRevertPreview } from "./revert.js";
 import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint } from "../renderers/runtime-events.js";
-
-interface ChatUsageAccumulator {
-  inputTokens: number;
-  outputTokens: number;
-  elapsedMs: number;
-}
-
-interface ChatSessionState {
-  sessionId: SessionId | undefined;
-  turns: number;
-  usage: ChatUsageAccumulator;
-  palette: ChatPaletteState | undefined;
-  history: readonly ChatHistoryEntry[];
-  pageIndex: readonly ChatPageIndexPage[];
-  selectedHistoryTurnId: TurnId | undefined;
-  revertReviews: readonly ChatRevertReviewEntry[];
-  currentRevertReviewId: string | undefined;
-  workspaceDeps: Awaited<ReturnType<typeof createCliAgentRuntime>>["deps"] | undefined;
-  workspaceRoot: string;
-  workspacePageIndexFailure: WorkspacePageIndexDiagnostic | undefined;
-  activeController: AbortController | undefined;
-  pendingExit: boolean;
-  pendingExitTimer: NodeJS.Timeout | undefined;
-}
-
-interface ChatHistoryEntry {
-  readonly index: number;
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
-  readonly status: AgentLoopTerminalStatus;
-  readonly traceId: string;
-  readonly promptPreview: string;
-  readonly selected: boolean;
-}
-
-interface ChatRevertReviewEntry {
-  readonly reviewId: string;
-  readonly index: number;
-  readonly target: {
-    readonly sessionId: SessionId;
-    readonly turnId: TurnId;
-  };
-  readonly selectedTurnId: TurnId;
-  readonly preview: Awaited<ReturnType<typeof previewRevert>>;
-  readonly createdFrom: "current";
-  readonly confirmed: boolean;
-}
+import type { ChatHistoryEntry, ChatRevertReviewEntry, ChatSessionState } from "./chat-state.js";
 
 export async function runChatCommand(
   options: CliOptions,
@@ -132,12 +87,13 @@ export async function runChatCommand(
     workspacePageIndexFailure: undefined,
     activeController: undefined,
     pendingExit: false,
-    pendingExitTimer: undefined
+    pendingExitTimer: undefined,
+    modeControls: createInitialChatModeControlState(options.sessionId)
   };
   const sigintHandler = makeSigintHandler(state, write, options.output);
   process.on("SIGINT", sigintHandler);
   try {
-    const resumed = await hydrateChatSession(options, state, write);
+    const resumed = await hydrateChatSession(options, state, terminalProfile, write);
     if (!resumed) return;
     if (options.output === "text") {
       await write("DeepSeek chat");
@@ -172,7 +128,8 @@ export async function runChatCommand(
       state.pageIndex = recordChatPageIndexTurn(state.pageIndex, { prompt, terminal });
       await snapshotChatPageIndex(state);
       await persistWorkspaceChatPageIndex(state);
-      accumulateUsage(state, events);
+      accumulateChatUsage(state.usage, events);
+      state.modeControls = updateChatModeControlState(state.modeControls, events);
       await renderFinalJsonIfNeeded(options.output, events, write);
       state.activeController = undefined;
       if (state.pendingExit) break;
@@ -188,7 +145,7 @@ export async function runChatCommand(
   }
 }
 
-async function hydrateChatSession(options: CliOptions, state: ChatSessionState, write: (line: string) => Promise<void>): Promise<boolean> {
+async function hydrateChatSession(options: CliOptions, state: ChatSessionState, terminalProfile: CliTerminalCapabilityProfile, write: (line: string) => Promise<void>): Promise<boolean> {
   if (!options.sessionId) return true;
   if (!state.workspaceDeps) {
     await writeLocalFailure("session", "CLI_CHAT_SESSION_STORE_UNAVAILABLE", options, write);
@@ -200,6 +157,19 @@ async function hydrateChatSession(options: CliOptions, state: ChatSessionState, 
     return false;
   }
   state.sessionId = resumed.value?.sessionId ?? options.sessionId;
+  state.modeControls = createInitialChatModeControlState(state.sessionId);
+  if (resumed.value?.mode) {
+    const restored = restoreChatModeControlState(state.modeControls, resumed.value.mode, state.sessionId, terminalProfile, options.output);
+    state.modeControls = restored.state;
+    const degradationEvents = restored.degradationEvents;
+    if (degradationEvents.length > 0) {
+      await writeChatLocalLines("chat.session.mode-degraded", degradationEvents.map((event) => JSON.stringify({
+        kind: event.kind,
+        sessionId: event.sessionId,
+        data: event.data
+      })), options, write);
+    }
+  }
   state.pageIndex = chatPageIndexPagesFromSnapshot(resumed.value?.snapshot?.payload);
   return true;
 }
@@ -274,18 +244,30 @@ async function handleSlashCommand(prompt: string, options: CliOptions, state: Ch
     await handleHistorySlashCommand(rest, options, state, write);
     return "continue";
   }
-  if (options.output === "text" && (name === "cost" || name === "model")) {
+  if (isChatModeControlCommand(name)) {
+    const requestedTransition = modeControlRequestedTransition(name, rest);
+    await writeChatLocalLines(
+      `chat.command.${name}`,
+      renderChatModeControl(name, state.modeControls, options.output, {
+        ...(requestedTransition ? { requestedTransition } : {})
+      }),
+      options,
+      write
+    );
+    return "continue";
+  }
+  if (name === "cost" || name === "model") {
     if (name === "cost") {
-      await write(`[chat] tokens in=${state.usage.inputTokens} out=${state.usage.outputTokens} elapsed_ms=${state.usage.elapsedMs}`);
+      await writeChatLocalLines("chat.command.cost", renderChatCostStatus(state.usage, options.output), options, write);
     } else {
-      await write(`[chat] model=${defaultDeepSeekProfile.model} provider=${defaultDeepSeekProfile.providerId}`);
+      await writeChatLocalLines("chat.command.model", renderChatModelStatus(state.modeControls, options.output), options, write);
     }
     return "continue";
   }
   const result = await invokeInteractiveCommand(name);
   if (!result.ok || !isInteractiveControlResult(result.value)) {
     if (options.output === "text") await write(`[chat] unknown command /${name}`);
-    else if (options.output === "json") await write(JSON.stringify({ kind: "chat.command.unknown", command: name }));
+    else if (options.output === "json" || options.output === "jsonl") await write(JSON.stringify({ kind: "chat.command.unknown", command: name }));
     return "continue";
   }
   const control: InteractiveControlResult = result.value;
@@ -775,15 +757,4 @@ function renderRevertConfirm(review: ChatRevertReviewEntry, result: Awaited<Retu
     `revert confirm: ${review.reviewId} ${result.ok ? "ok" : "failed"} status=${result.status} dryRun=false target=sessionId=${review.target.sessionId} turnId=${review.target.turnId}`,
     `  affected_checkpoints=${record.affectedCheckpointCount} affected_paths=${record.affectedPathCount} restored_paths=${record.restoredPathCount} stale_paths=${record.stalePathCount} non_restorable_paths=${record.nonRestorablePathCount}`
   ];
-}
-
-function accumulateUsage(state: ChatSessionState, events: readonly RuntimeEvent[]): void {
-  for (const event of events) {
-    if (event.kind === "usage.updated") {
-      const input = typeof event.data.inputTokens === "number" ? event.data.inputTokens : 0;
-      const output = typeof event.data.outputTokens === "number" ? event.data.outputTokens : 0;
-      state.usage.inputTokens += input;
-      state.usage.outputTokens += output;
-    }
-  }
 }

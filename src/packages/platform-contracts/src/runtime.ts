@@ -1,6 +1,7 @@
 import type { Clock, JsonObject, RedactedError, TraceContext } from "./common.js";
 import type { AgentId, CapabilityId, CredentialRef, IdFactory, ModelProviderId, ModelProfileId, SessionId, TaskId, TurnId, WorkflowId } from "./ids.js";
 import type { CliReferenceKind, CliTargetRef } from "./cli-composition.js";
+import type { AgentModeName, AgentModeSessionSummary, AgentPhasePlan, AgentReasoningEffortMapping } from "./agent-mode.js";
 import type { AgentManager } from "./agent.js";
 import type { CapabilityRegistry } from "./capability.js";
 import type { CacheManager, MemoryManager } from "./memory.js";
@@ -19,6 +20,7 @@ import type { McpGateway } from "./mcp.js";
 import type { ModelGateway, ModelProfile, ModelReasoningOptions } from "./model.js";
 import type { PromptAssembler } from "./prompt-assembly.js";
 import type { SelfRepairConfig, SelfRepairOutcomeSummary } from "./self-repair.js";
+import type { InteractionModeName, InteractionModeState, InteractionModeTransition } from "./interaction-mode.js";
 import type { ToolFeedbackStatus, ToolIntentPreflightService } from "./tool-intent.js";
 import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
@@ -77,6 +79,21 @@ export type RuntimeEventKind =
   | "agent.repair.verification.started"
   | "agent.repair.verification.completed"
   | "agent.repair.stopped"
+  | "mode.interaction.changed"
+  | "mode.interaction.degraded"
+  | "mode.agent.bound"
+  | "agent.phase.plan.created"
+  | "agent.phase.skipped"
+  | "agent.loop.budget.consumed"
+  | "agent.worker.launched"
+  | "agent.worker.continued"
+  | "agent.worker.stopped"
+  | "agent.worker.result"
+  | "agent.verifier.verdict"
+  | "agent.repair.attempted"
+  | "agent.repair.rerun"
+  | "agent.result.reconciled"
+  | "model.reasoning.effort.mapped"
   | "evidence.classified"
   | "evidence.plan.created"
   | "evidence.selected"
@@ -292,12 +309,15 @@ export interface AgentLoopRequest extends JsonObject {
   readonly prompt: string;
   readonly sessionId?: SessionId;
   readonly agentId?: AgentId;
+  readonly interactionMode?: InteractionModeName;
+  readonly agentMode?: AgentModeName;
   readonly caller: string;
   readonly workspaceRoot: string;
   readonly outputMode: AgentLoopOutputMode;
   readonly profile: ModelProfile;
   readonly credentialRef?: CredentialRef;
   readonly reasoning?: ModelReasoningOptions;
+  readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly timeoutMs?: number;
   readonly limits?: Partial<AgentLoopLimits>;
   readonly live?: boolean;
@@ -321,6 +341,13 @@ export interface AgentLoopSummary extends JsonObject {
   readonly assistantText: string;
   readonly iterations: number;
   readonly toolCalls: number;
+  readonly interactionMode?: InteractionModeName;
+  readonly agentMode?: AgentModeName;
+  readonly modeSummary?: AgentModeSessionSummary;
+  readonly phasePlan?: AgentPhasePlan;
+  readonly interactionModeState?: InteractionModeState;
+  readonly interactionModeTransitions?: readonly InteractionModeTransition[];
+  readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly modelProvider?: ModelProviderId;
   readonly modelProfile?: ModelProfileId;
   readonly selfRepair?: SelfRepairOutcomeSummary;

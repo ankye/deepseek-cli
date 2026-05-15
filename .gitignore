@@ -4,6 +4,7 @@ coverage/
 .turbo/
 .cache/
 .codex/
+.deepseek/
 
 .env
 .env.*

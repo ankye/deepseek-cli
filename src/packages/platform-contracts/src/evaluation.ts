@@ -1,4 +1,5 @@
 import type { JsonObject, RedactionMetadata } from "./common.js";
+import type { AgentLoopBudgetKind, AgentPhaseName } from "./agent-mode.js";
 import type { EvidenceManifestStatus } from "./evidence-first.js";
 import type { ReadinessStatus } from "./readiness.js";
 
@@ -9,6 +10,8 @@ export type CliEvaluationBaselineKind = "deepseek-cli" | "external-cli" | "manua
 export type CliEvaluationBaselineStatus = "available" | "deferred" | "unavailable";
 export type CliEvaluationOutcome = "solved" | "partial" | "failed" | "invalid" | "planned" | "deferred";
 export type CliEvaluationCheckStatus = "pass" | "fail" | "skipped";
+export type CliEvaluationMetricAvailabilityStatus = "instrumented" | "inferred" | "unavailable";
+export type CliEvaluationQualityStatus = "pass" | "partial" | "fail" | "missing" | "unavailable";
 export type CliEvaluationInstrumentationEventKind =
   | "run_started"
   | "workspace_created"
@@ -22,6 +25,33 @@ export type CliEvaluationInstrumentationEventKind =
   | "artifact_scan_finished"
   | "evidence_written"
   | "run_finished";
+
+export interface CliEvaluationMetricAvailability extends JsonObject {
+  readonly metric: string;
+  readonly status: CliEvaluationMetricAvailabilityStatus;
+  readonly reason: string;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface CliEvaluationPhaseUsageMetric extends JsonObject {
+  readonly phase: AgentPhaseName | string;
+  readonly used: boolean;
+  readonly required?: boolean;
+  readonly skipped?: boolean;
+  readonly evidenceSource: "runtime-event" | "checker" | "inferred" | "unavailable";
+  readonly redaction: RedactionMetadata;
+}
+
+export interface CliEvaluationLoopBudgetMetric extends JsonObject {
+  readonly kind: AgentLoopBudgetKind | string;
+  readonly requested?: number;
+  readonly allowed?: number;
+  readonly consumed?: number;
+  readonly remaining?: number;
+  readonly stopReason?: string;
+  readonly evidenceSource: "runtime-event" | "inferred" | "unavailable";
+  readonly redaction: RedactionMetadata;
+}
 
 export interface CliEvaluationTaskDefinition extends JsonObject {
   readonly schemaVersion: string;
@@ -104,6 +134,20 @@ export interface CliEvaluationRunMetrics extends JsonObject {
   readonly promptAssemblyVisibleToolCount?: number;
   readonly promptAssemblyFingerprint?: string;
   readonly promptAssemblyGapReason?: "missing-output-contract" | "dropped-context" | "insufficient-tool-visibility" | "provider-readiness-failure" | "post-assembly-model-failure" | "not-applicable";
+  readonly phaseUsage?: readonly CliEvaluationPhaseUsageMetric[];
+  readonly loopBudgets?: readonly CliEvaluationLoopBudgetMetric[];
+  readonly workerFanOut?: number;
+  readonly overDelegationFlag?: boolean;
+  readonly overDelegationReason?: string;
+  readonly verifierQuality?: CliEvaluationQualityStatus;
+  readonly repairQuality?: CliEvaluationQualityStatus;
+  readonly reasoningEffort?: string;
+  readonly providerMappedEffort?: string;
+  readonly evidenceCredit?: boolean;
+  readonly verificationCredit?: boolean;
+  readonly repairCredit?: boolean;
+  readonly reconciliationCredit?: boolean;
+  readonly metricAvailability?: readonly CliEvaluationMetricAvailability[];
   readonly evidencePlanPresent?: boolean;
   readonly evidenceItemCount?: number;
   readonly evidenceSourceCoverageRate?: number;
@@ -181,6 +225,14 @@ export interface CliEvaluationBaselineAggregate extends JsonObject {
   readonly repairActivationCount?: number;
   readonly repairSuccessCount?: number;
   readonly repairSuccessRate?: number;
+  readonly evidenceCreditRate?: number;
+  readonly verificationCreditRate?: number;
+  readonly repairCreditRate?: number;
+  readonly reconciliationCreditRate?: number;
+  readonly overDelegationRate?: number;
+  readonly averageWorkerFanOut?: number;
+  readonly unavailableMetricCount?: number;
+  readonly inferredMetricCount?: number;
   readonly redaction: RedactionMetadata;
 }
 

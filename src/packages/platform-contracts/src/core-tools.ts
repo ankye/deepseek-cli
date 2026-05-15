@@ -1,5 +1,6 @@
 import type { JsonObject, RedactedError, RedactionMetadata } from "./common.js";
-import type { CapabilityId, SessionId, TurnId } from "./ids.js";
+import type { AgentId, AgentInstanceId, CapabilityId, SessionId, TurnId } from "./ids.js";
+import type { AgentDelegationReasonCode, AgentModeName, AgentVerifierVerdict, AgentWorkerResult, AgentWorkerStopReason, AgentWorkOrder } from "./agent-mode.js";
 import type { PlatformProviderResultMetadata } from "./platform.js";
 
 export type CoreCodingToolName =
@@ -18,6 +19,8 @@ export type CoreCodingToolName =
   | "web.fetch"
   | "web.search"
   | "agent.spawn"
+  | "agent.continue"
+  | "agent.stop"
   | "hook.list"
   | "skill.list"
   | "skill.activate";
@@ -243,22 +246,100 @@ export type AgentSpawnToolProjection = "read-only" | "read-write" | "all";
 
 export interface AgentSpawnRequest extends JsonObject {
   readonly prompt: string;
+  readonly workOrder?: AgentWorkOrder;
+  readonly agentMode?: AgentModeName;
   readonly toolProjection?: AgentSpawnToolProjection;
+  readonly toolScope?: JsonObject;
+  readonly contextScope?: JsonObject;
   readonly timeoutMs?: number;
   readonly maxIterations?: number;
   readonly parentSessionId?: SessionId;
+  readonly parentAgentId?: AgentId;
+  readonly parentAgentInstanceId?: AgentInstanceId;
+  readonly workOrderId?: string;
+  readonly delegationDecisionId?: string;
   readonly reason?: string;
 }
 
 export interface AgentSpawnResult extends JsonObject {
   readonly childSessionId: SessionId;
+  readonly workerAgentId?: AgentId;
+  readonly workerInstanceId?: AgentInstanceId;
+  readonly workOrderId?: string;
+  readonly agentMode?: AgentModeName;
   readonly terminalStatus: "completed" | "failed" | "cancelled" | "timed-out" | "rejected";
   readonly assistantText: string;
   readonly iterations: number;
   readonly toolCalls: number;
+  readonly usage: JsonObject;
+  readonly resultProvenance: JsonObject;
+  readonly workerResult?: AgentWorkerResult;
+  readonly verifierStatus?: AgentVerifierVerdict | "not-run";
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface AgentContinueRequest extends JsonObject {
+  readonly workerInstanceId: AgentInstanceId;
+  readonly prompt: string;
+  readonly workOrder?: AgentWorkOrder;
+  readonly workOrderId?: string;
+  readonly parentSessionId?: SessionId;
+  readonly parentAgentId?: AgentId;
+  readonly parentAgentInstanceId?: AgentInstanceId;
+  readonly toolProjection?: AgentSpawnToolProjection;
+  readonly toolScope?: JsonObject;
+  readonly contextScope?: JsonObject;
+  readonly timeoutMs?: number;
+  readonly maxIterations?: number;
+  readonly contextOverlapScore?: number;
+  readonly evidenceIds?: readonly string[];
+  readonly reasonCode?: AgentDelegationReasonCode;
+  readonly reason?: string;
+}
+
+export interface AgentContinueResult extends JsonObject {
+  readonly childSessionId: SessionId;
+  readonly workerAgentId?: AgentId;
+  readonly workerInstanceId: AgentInstanceId;
+  readonly continuationOf: AgentInstanceId;
+  readonly workOrderId?: string;
+  readonly agentMode?: AgentModeName;
+  readonly terminalStatus: AgentSpawnResult["terminalStatus"];
+  readonly assistantText: string;
+  readonly iterations: number;
+  readonly toolCalls: number;
+  readonly usage: JsonObject;
+  readonly resultProvenance: JsonObject;
+  readonly workerResult?: AgentWorkerResult;
+  readonly verifierStatus?: AgentVerifierVerdict | "not-run";
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface AgentStopRequest extends JsonObject {
+  readonly workerInstanceId: AgentInstanceId;
+  readonly parentSessionId?: SessionId;
+  readonly parentAgentId?: AgentId;
+  readonly workOrderId?: string;
+  readonly stopReason?: AgentWorkerStopReason;
+  readonly reason?: string;
+}
+
+export interface AgentStopResult extends JsonObject {
+  readonly workerInstanceId: AgentInstanceId;
+  readonly workerSessionId: SessionId;
+  readonly workerAgentId?: AgentId;
+  readonly workOrderId?: string;
+  readonly lifecycleState: "stopped";
+  readonly status: "stopped";
+  readonly stopReason: AgentWorkerStopReason;
+  readonly usage: JsonObject;
+  readonly resultProvenance: JsonObject;
+  readonly workerResult: AgentWorkerResult;
   readonly diagnostics: readonly RedactedError[];
 }
 
 export interface AgentSpawner {
   spawn(input: AgentSpawnRequest): Promise<AgentSpawnResult>;
+  continue?(input: AgentContinueRequest): Promise<AgentContinueResult>;
+  stop?(input: AgentStopRequest): Promise<AgentStopResult>;
 }

@@ -36,6 +36,24 @@ flowchart LR
 | Resource lock / 资源锁 | Prevents conflicting writes or process scopes from running concurrently. / 防止冲突写入或进程范围并发运行。 |
 | Audit evidence / 审计证据 | Records policy, sandbox, platform, and redaction decisions in replayable form. / 以可 replay 形式记录 policy、sandbox、platform、redaction 决策。 |
 
+## Mode-Aware Agent Loop / 模式感知 Agent 循环
+
+Non-trivial CLI work uses an explicit operating loop: classify, collect evidence, plan when needed, execute through governed capabilities, verify independently, repair when safe, synthesize, and complete. Simple work can skip phases, but the skip reason is recorded as structured evidence.
+
+非琐碎 CLI 工作使用显式运行循环：classify、collect evidence、必要时 plan、通过受治理能力 execute、独立 verify、安全时 repair、synthesize 与 complete。简单任务可以跳过阶段，但跳过原因必须以结构化证据记录。
+
+Interaction modes and agent modes are separate axes. Interaction mode describes the host/user surface, such as `one-shot`, `chat`, `headless`, `approval`, `result-list`, `remote`, or `degraded`. Agent mode describes runtime work, such as `default`, `evidence`, `planner`, `implementer`, `verifier`, `coordinator`, `worker`, `repair`, or `synthesis`.
+
+Interaction mode 与 agent mode 是两个独立轴。Interaction mode 描述 host/user 表面，例如 `one-shot`、`chat`、`headless`、`approval`、`result-list`、`remote` 或 `degraded`。Agent mode 描述 runtime 工作，例如 `default`、`evidence`、`planner`、`implementer`、`verifier`、`coordinator`、`worker`、`repair` 或 `synthesis`。
+
+Reasoning effort is not an orchestration budget. Provider reasoning/thinking settings can change model behavior, but they do not prove that the system searched the project, ran verification, repaired a failure, or delegated safely. Evidence, verification, repair, delegation, and model-iteration budgets are recorded separately by runtime policy.
+
+推理强度不是编排预算。Provider reasoning/thinking 设置可以改变模型行为，但不能证明系统已经搜索项目、运行验证、修复失败或安全委派。Evidence、verification、repair、delegation 与 model-iteration budgets 由 runtime policy 单独记录。
+
+Coordinator and verifier defaults are gated. Coordinator mode can plan, delegate, synthesize, and reconcile, but it should not become default for broad CLI work until deterministic evaluation shows lower correction cost than the default single-agent path. Verifier mode can independently inspect artifacts and commands; non-trivial success requires command evidence or an explicit partial status.
+
+Coordinator 与 verifier 默认启用受门禁控制。Coordinator mode 可以 plan、delegate、synthesize 与 reconcile，但在确定性评估证明其 correction cost 低于默认 single-agent 路径前，不应成为广泛 CLI 工作的默认值。Verifier mode 可以独立检查产物与命令；非琐碎成功需要 command evidence 或显式 partial 状态。
+
 ## Workflow Responsibilities / Workflow 职责
 
 Workflow orchestration decides **what work exists**.

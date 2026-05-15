@@ -31,6 +31,8 @@ describe("core coding tool contracts", () => {
       "core.web.fetch",
       "core.web.search",
       "core.agent.spawn",
+      "core.agent.continue",
+      "core.agent.stop",
       "core.hook.list",
       "core.skill.list",
       "core.skill.activate"

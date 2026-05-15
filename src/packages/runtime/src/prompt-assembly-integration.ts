@@ -4,6 +4,8 @@ import type {
   AgentLoopToolProjection,
   CapabilityManifest,
   ContextProjectionResult,
+  AgentPhasePlan,
+  AgentReasoningEffortMapping,
   JsonObject,
   ModelChatMessage,
   PromptAssemblyMode,
@@ -26,7 +28,11 @@ export async function assemblePromptForIteration(
   availableCapabilities: readonly CapabilityManifest[],
   limits: AgentLoopLimits,
   evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined,
-  selfRepair: import("@deepseek/platform-contracts").SelfRepairOutcomeSummary | undefined
+  selfRepair: import("@deepseek/platform-contracts").SelfRepairOutcomeSummary | undefined,
+  mode?: {
+    readonly phasePlan?: AgentPhasePlan | undefined;
+    readonly reasoningEffortMapping?: AgentReasoningEffortMapping | undefined;
+  }
 ): Promise<PromptAssemblyResult> {
   const assembler = deps.promptAssembler ?? createDefaultPromptAssembler();
   return assembler.assemble({
@@ -46,6 +52,12 @@ export async function assemblePromptForIteration(
     ...(contextProjection ? { contextProjection } : {}),
     ...(evidenceFirst ? { evidenceFirst } : {}),
     ...(selfRepair ? { selfRepair } : {}),
+    ...(mode?.phasePlan ? {
+      interactionMode: mode.phasePlan.interactionMode,
+      agentMode: mode.phasePlan.agentMode,
+      phasePlan: mode.phasePlan
+    } : {}),
+    ...(mode?.reasoningEffortMapping ? { reasoningEffortMapping: mode.reasoningEffortMapping } : {}),
     ...(request.referenceContext ? { referenceContext: request.referenceContext } : {}),
     availableTools: availableCapabilities,
     toolPolicy: toolProjectionPolicy(request),

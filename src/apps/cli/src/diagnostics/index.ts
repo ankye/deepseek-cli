@@ -21,6 +21,8 @@ import { activationEvidenceText, missingActivationEvidence } from "../commands/i
 import { collectReleaseReadinessEvidence, diagnosticPitIds, diagnosticsSchemaVersion } from "./release-evidence.js";
 import { refreshAcceptanceEvidence, refreshStepRecord } from "./refresh-evidence.js";
 import { collectCliEvaluation, evaluationJsonLines } from "./evaluation.js";
+import { collectModeMatrix } from "./mode-matrix.js";
+import type { CliModeMatrixSummary } from "./mode-matrix.js";
 
 export interface CliDiagnosticNotice {
   readonly code: string;
@@ -40,6 +42,7 @@ export interface CliDiagnosticsResult extends JsonObject {
   readonly refresh?: AcceptanceEvidenceRefreshSummary;
   readonly evaluation?: CliEvaluationComparisonSummary;
   readonly indexProviders?: IndexProviderDiagnosticsSummary;
+  readonly modeMatrix?: CliModeMatrixSummary;
   readonly referencePitFixtureIds: readonly string[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
 }
@@ -136,6 +139,12 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
       lines.push(`- ${diagnostic.code}: ${diagnostic.severity} - ${diagnostic.message}`);
     }
   }
+  if (result.modeMatrix) {
+    lines.push(`- interaction modes: ${modeMatrixStatusText(result.modeMatrix.interactionModes)}`);
+    lines.push(`- agent modes: ${modeMatrixStatusText(result.modeMatrix.agentModes)}`);
+    if (result.modeMatrix.missingAcceptanceEvidence.length > 0) lines.push(`- missing mode evidence: ${result.modeMatrix.missingAcceptanceEvidence.join(", ")}`);
+    if (result.modeMatrix.nextTasks.length > 0) lines.push(`- mode next tasks: ${result.modeMatrix.nextTasks.join(", ")}`);
+  }
   lines.push(`- reference pits: ${result.referencePitFixtureIds.join(", ")}`);
   return lines;
 }
@@ -156,6 +165,7 @@ async function bundleDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
   const maxRecords = typeof options.diagnosticsInput?.maxRecords === "number" ? options.diagnosticsInput.maxRecords : 10;
   const bundle = await sink.createDiagnosticBundle({ target: "local-bundle", reason: "cli diagnostics bundle", maxRecords });
   const externalExportDecision = sink.decideExport("support-upload");
+  const modeMatrix = await collectModeMatrix();
   return {
     schemaVersion: diagnosticsSchemaVersion,
     kind: "diagnostics.bundle",
@@ -163,8 +173,9 @@ async function bundleDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
     command: "bundle",
     bundle,
     externalExportDecision,
+    modeMatrix,
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["bundle.records", "externalExportDecision"] }
+    redaction: { class: "internal", fields: ["bundle.records", "externalExportDecision", "modeMatrix.missingAcceptanceEvidence"] }
   };
 }
 
@@ -184,6 +195,7 @@ async function releaseDiagnostics(_options: CliOptions): Promise<CliDiagnosticsR
 async function verifyDiagnostics(_options: CliOptions): Promise<CliDiagnosticsResult> {
   const release = await collectReleaseReadinessEvidence();
   const verificationSummary = releaseVerificationSummary(release);
+  const modeMatrix = await collectModeMatrix();
   return {
     schemaVersion: diagnosticsSchemaVersion,
     kind: "diagnostics.verify",
@@ -191,8 +203,9 @@ async function verifyDiagnostics(_options: CliOptions): Promise<CliDiagnosticsRe
     command: "verify",
     release,
     verificationSummary,
+    modeMatrix,
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["release", "verificationSummary.missingAcceptanceEvidencePaths"] }
+    redaction: { class: "internal", fields: ["release", "verificationSummary.missingAcceptanceEvidencePaths", "modeMatrix.missingAcceptanceEvidence"] }
   };
 }
 
@@ -242,8 +255,9 @@ async function evaluateDiagnostics(options: CliOptions): Promise<CliDiagnosticsR
     status: evaluation.status,
     command: "evaluate",
     evaluation,
+    modeMatrix: await collectModeMatrix(),
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["evaluation.taskRuns.task.promptDigest", "evaluation.evidencePaths"] }
+    redaction: { class: "internal", fields: ["evaluation.taskRuns.task.promptDigest", "evaluation.evidencePaths", "modeMatrix.missingAcceptanceEvidence"] }
   };
 }
 
@@ -251,6 +265,7 @@ async function doctorDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
   const environment = await createCliReadinessEnvironment({ ...options, readinessCommand: "doctor", readinessInput: { live: false } });
   const readiness = await invokeLocalReadinessCommand("doctor", { live: false }, environment);
   const release = await collectReleaseReadinessEvidence();
+  const modeMatrix = await collectModeMatrix();
   const status = readiness.value?.status === "fail" || release.status === "fail" ? "fail" : readiness.value?.status === "warn" || release.status === "warn" ? "warn" : "pass";
   return {
     schemaVersion: diagnosticsSchemaVersion,
@@ -260,8 +275,9 @@ async function doctorDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
     ...(readiness.value ? { readiness: readiness.value } : {}),
     release,
     ...(readiness.value?.indexProviders ? { indexProviders: readiness.value.indexProviders } : {}),
+    modeMatrix,
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["readiness", "release", "indexProviders.providers.metadata", "indexProviders.providers.activationEvidence.metadata", "indexProviders.providers.diagnostics.details"] }
+    redaction: { class: "internal", fields: ["readiness", "release", "indexProviders.providers.metadata", "indexProviders.providers.activationEvidence.metadata", "indexProviders.providers.diagnostics.details", "modeMatrix.missingAcceptanceEvidence"] }
   };
 }
 
@@ -444,7 +460,37 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
   if (result.evaluation) {
     entries.push(...evaluationJsonLines(result.evaluation));
   }
+  if (result.modeMatrix) {
+    entries.push({
+      schemaVersion: result.schemaVersion,
+      kind: "diagnostics.mode-matrix.summary",
+      matrix: result.modeMatrix,
+      redaction: result.modeMatrix.redaction
+    });
+    for (const mode of result.modeMatrix.interactionModes) {
+      entries.push({
+        schemaVersion: result.schemaVersion,
+        kind: "diagnostics.mode-matrix.interaction",
+        mode,
+        redaction: mode.redaction
+      });
+    }
+    for (const mode of result.modeMatrix.agentModes) {
+      entries.push({
+        schemaVersion: result.schemaVersion,
+        kind: "diagnostics.mode-matrix.agent",
+        mode,
+        redaction: mode.redaction
+      });
+    }
+  }
   return entries;
+}
+
+function modeMatrixStatusText(entries: readonly { readonly status: string }[]): string {
+  const counts = new Map<string, number>();
+  for (const entry of entries) counts.set(entry.status, (counts.get(entry.status) ?? 0) + 1);
+  return [...counts.entries()].map(([status, count]) => `${status}=${count}`).join(" ");
 }
 
 async function safePackageSummary(): Promise<JsonObject> {

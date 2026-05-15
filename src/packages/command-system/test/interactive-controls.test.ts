@@ -6,6 +6,8 @@ import {
   interactiveHelpProjection,
   invokeInteractiveCommand,
   invokeInteractiveControlCommand,
+  modeControlCompositionRecords,
+  modeControlVisibilityProfiles,
   modelVisibleInteractiveControlProjection,
   readinessCompositionRecords
 } from "../src/index.js";
@@ -60,5 +62,17 @@ describe("interactive control commands", () => {
     assert.equal(init?.permissions.includes("workspace:metadata"), true);
     assert.equal(init?.projection.modelVisible, false);
     assert.deepEqual(verify?.aliases, ["verify"]);
+  });
+
+  it("declares mode-aware visibility metadata for local and remote profiles", () => {
+    const records = modeControlCompositionRecords();
+    const mode = records.find((record) => record.displayName === "mode");
+    const workers = records.find((record) => record.displayName === "workers");
+    const remote = modeControlVisibilityProfiles("remote").find((profile) => profile.profile === "remote");
+
+    assert.equal(mode?.projection.modelVisible, false);
+    assert.equal(workers?.projection.metadata?.interactionModes instanceof Array, true);
+    assert.equal(remote?.commandVisibilities.some((entry) => entry.commandId === "/workers" && entry.visibility === "rejected"), true);
+    assert.equal(remote?.commandVisibilities.some((entry) => entry.commandId === "/mode" && entry.visibility === "visible"), true);
   });
 });

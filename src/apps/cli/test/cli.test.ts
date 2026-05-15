@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { APPROVAL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
-import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, PlatformRuntime, PolicyDecision, PolicyEngine, PolicyRequest, ProcessResult, RuntimeEvent, WorkspaceEditTransaction } from "@deepseek/platform-contracts";
+import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, APPROVAL_SCHEMA_VERSION, INTERACTION_MODE_COMPATIBILITY, INTERACTION_MODE_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, PlatformRuntime, PolicyDecision, PolicyEngine, PolicyRequest, ProcessResult, RuntimeEvent, SessionEvent, SessionId, WorkspaceEditTransaction } from "@deepseek/platform-contracts";
 import { FakePlatformRuntime, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
@@ -49,6 +49,13 @@ describe("cli host adapter", () => {
       indexProviderId: "zvec",
       indexProviderStatus: "enabled",
       indexProviderScope: "user"
+    });
+    assert.deepEqual(parseCliArgs(["mode", "workers", "--output", "jsonl"]), {
+      command: "mode",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      modeAction: "workers"
     });
     assert.deepEqual(parseCliArgs(["revert", "preview", "--request", "request-1", "--output", "jsonl"]), {
       command: "revert",
@@ -167,6 +174,7 @@ describe("cli host adapter", () => {
     assert.equal(lines.some((line) => line.includes("deepseek revert preview")), true);
     assert.equal(lines.some((line) => line.includes("deepseek revert apply")), true);
     assert.equal(lines.some((line) => line.includes("deepseek index-provider status")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek mode [status|agent|workers|verify|plan]")), true);
     assert.equal(lines.some((line) => line.includes("deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate")), true);
     assert.equal(lines.some((line) => line.includes("deepseek chat [--session <session-id>]")), true);
     assert.equal(lines.join("\n").includes("stream-json"), false);
@@ -1264,9 +1272,8 @@ describe("cli host adapter", () => {
     assert.equal(referenceItem?.target?.metadata?.freshnessStatus, "stale");
     assert.equal(referenceItem?.target?.metadata?.freshnessEvidence?.reason, "workspace-edit-after-page");
     assert.equal(records.filter((record) => record.kind === "model.requested").length, 4);
-    assert.equal(finalRequest?.messages?.[0]?.role, "system");
-    assert.equal(finalRequest?.messages?.[0]?.content.includes("Evidence: createdAt=1970-01-01T00:00:00.000Z freshness=stale"), true);
-    assert.equal(finalRequest?.messages?.[0]?.content.includes("Freshness evidence: reason=workspace-edit-after-page scope=session-turn-order"), true);
+    assert.equal(finalRequest?.messages?.some((message) => message.role === "system" && message.content.includes("Evidence: createdAt=1970-01-01T00:00:00.000Z freshness=stale")), true);
+    assert.equal(finalRequest?.messages?.some((message) => message.role === "system" && message.content.includes("Freshness evidence: reason=workspace-edit-after-page scope=session-turn-order")), true);
     assert.equal(lines.join("\n").includes("\u001b["), false);
     await kernel.shutdown("cli-test-pageindex-stale-after-file-write");
   });
@@ -2205,6 +2212,86 @@ describe("cli host adapter", () => {
     assert.equal(fork.error?.code, "SESSION_NOT_FOUND");
   });
 
+  it("renders mode-aware fork-lite output with active worker inheritance policy", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const sessionId = await deps.sessions.create({ label: "mode-fork-lite" });
+    await deps.sessions.append(cliModeSessionEvent(sessionId, 1, "mode.interaction.changed", {
+      schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+      transitionId: "interaction-transition:cli-fork",
+      sessionId,
+      previousMode: "chat",
+      nextMode: "chat",
+      reason: "runtime-phase",
+      initiator: "runtime",
+      at: new Date(0).toISOString(),
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: INTERACTION_MODE_COMPATIBILITY
+    }));
+    await deps.sessions.append(cliModeSessionEvent(sessionId, 2, "agent.phase.plan.created", {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      planId: "agent-phase-plan:cli-fork",
+      sessionId,
+      interactionMode: "chat",
+      agentMode: "coordinator",
+      phases: [{
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        phase: "verify",
+        status: "required",
+        required: true,
+        mode: "verifier",
+        budgets: [],
+        diagnostics: [],
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      }],
+      budgets: [cliLoopBudget("verification", 1, 1, 0)],
+      reason: "mode-aware fork lite test",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    }));
+    await deps.sessions.append(cliModeSessionEvent(sessionId, 3, "agent.worker.launched", {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      workerEventId: "worker-event:cli-fork",
+      status: "running",
+      sessionId,
+      workerSessionId: "session-worker-cli-fork",
+      workOrderId: "work-order:cli-fork",
+      at: new Date(0).toISOString(),
+      delegationDecision: {
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        decisionId: "delegation-decision:cli-fork",
+        kind: "spawn",
+        reasonCode: "parallel-independent-work",
+        parentSessionId: sessionId,
+        workOrderId: "work-order:cli-fork",
+        evidenceIds: ["evidence:cli-fork"],
+        diagnostics: [],
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      },
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    }));
+    const lines: string[] = [];
+    await runCli(["session", "fork", sessionId, "--output", "text"], (line: string) => {
+      lines.push(line);
+    }, [], { stdinIsTTY: false, stdoutIsTTY: false }, {
+      createRuntime: async () => ({ deps, kernel })
+    });
+    const output = lines.join("\n");
+
+    assert.equal(output.includes(`forked ${sessionId} -> session-2`), true, output);
+    assert.equal(output.includes("mode interaction=chat agent=coordinator phase_plan=agent-phase-plan:cli-fork"), true, output);
+    assert.equal(output.includes("active_workers policy=historical-lineage-only"), true, output);
+    assert.equal(output.includes("delegation_lineage=1"), true, output);
+    assert.equal(output.includes("phase_summary phases=1 budgets=verification=0/1"), true, output);
+    await kernel.shutdown("cli-session-fork-lite-test");
+  });
+
   it("coalesces streaming model deltas into one inline line in text mode", async () => {
     const deps = createDeterministicRuntimeDependencies();
     const streamingDeps = { ...deps, models: new StreamingDeltaModelGateway() };
@@ -2904,6 +2991,78 @@ describe("cli host adapter", () => {
     assert.equal(parsed.evaluation?.diagnostics?.some((item) => item.code === "CLI_EVALUATION_INVALID_ARGS"), false);
   });
 
+  it("includes interaction and agent mode matrices in diagnostics output", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "evaluate", "--dry-run", "--output", "jsonl"], (line: string) => {
+      lines.push(line);
+    });
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      matrix?: { interactionModes?: readonly { mode?: string; status?: string; nextTasks?: readonly string[] }[]; agentModes?: readonly { mode?: string; status?: string }[] };
+      mode?: { mode?: string; status?: string; productRole?: string };
+    });
+    const matrix = records.find((record) => record.kind === "diagnostics.mode-matrix.summary")?.matrix;
+
+    assert.equal(matrix?.interactionModes?.some((mode) => mode.mode === "chat" && mode.status === "complete"), true);
+    assert.equal(matrix?.interactionModes?.some((mode) => mode.mode === "remote" && mode.status === "disabled"), true);
+    assert.equal(matrix?.agentModes?.some((mode) => mode.mode === "verifier" && mode.status === "complete"), true);
+    assert.equal(matrix?.agentModes?.some((mode) => mode.mode === "coordinator" && mode.status === "partial"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.mode-matrix.agent" && record.mode?.mode === "verifier" && record.mode.productRole === "verifier"), true);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("records evaluation mode metrics and unavailable external baseline instrumentation separately", async () => {
+    const platform = new FakeWebpageAgentPlatform({ includeRuntimeSignals: true });
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      live: false,
+      baselineId: "codex",
+      compareBaselineIds: ["codex"],
+      allowExternalBaseline: true,
+      codexCommand: "fake-web-agent",
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+    const aggregate = summary.baselineAggregates.find((item) => item.baselineId === "codex");
+
+    assert.equal(webpageRun?.outcome, "solved");
+    assert.equal(webpageRun?.metrics.evidenceCredit, true);
+    assert.equal(webpageRun?.metrics.verificationCredit, true);
+    assert.equal(webpageRun?.metrics.phaseUsage?.some((phase) => phase.phase === "verify" && phase.evidenceSource === "checker"), true);
+    assert.equal(webpageRun?.metrics.loopBudgets?.some((budget) => budget.kind === "verification" && budget.evidenceSource === "unavailable"), true);
+    assert.equal(webpageRun?.metrics.metricAvailability?.some((metric) => metric.metric === "loop_budgets" && metric.status === "unavailable"), true);
+    assert.equal(aggregate?.verificationCreditRate, 1);
+    assert.equal((aggregate?.unavailableMetricCount ?? 0) > 0, true);
+  });
+
+  it("scores runtime verification credit independently from reasoning effort", async () => {
+    const platform = new FakeWebpageAgentPlatform({ includeRuntimeSignals: true, runtimeReasoningOnly: true });
+    const summary = await collectCliEvaluation({
+      mode: "full",
+      dryRun: false,
+      live: false,
+      baselineId: "deepseek-cli",
+      compareBaselineIds: ["deepseek-cli"],
+      allowExternalBaseline: false,
+      baselineArgs: [],
+      executeTaskId: "eval.webpage.generation",
+      extraArgs: [],
+      platform
+    });
+    const webpageRun = summary.taskRuns.find((run) => run.task.taskId === "eval.webpage.generation");
+
+    assert.equal(webpageRun?.metrics.reasoningEffort, "xhigh");
+    assert.equal(webpageRun?.metrics.providerMappedEffort, "max");
+    assert.equal(webpageRun?.metrics.evidenceCredit, false);
+    assert.equal(webpageRun?.metrics.verificationCredit, false);
+    assert.equal(webpageRun?.metrics.verifierQuality, "missing");
+    assert.equal(webpageRun?.metrics.metricAvailability?.some((metric) => metric.metric === "reasoning_effort" && metric.status === "instrumented"), true);
+  });
+
   it("renders diagnostics verify blockers as JSONL", async () => {
     const lines = await withTempReleaseRepo("deepseek-cli-verify-blocked-", { buildOutput: false, acceptanceEvidence: true }, async () => {
       const output: string[] = [];
@@ -3456,11 +3615,36 @@ function requestUserMessage(request: ModelRequest | undefined, content: string) 
   return request?.messages?.find((message) => message.role === "user" && message.content === content);
 }
 
+function cliModeSessionEvent(sessionId: SessionId, sequence: number, kind: string, payload: SessionEvent["payload"]): SessionEvent {
+  return {
+    sessionId,
+    sequence,
+    kind,
+    at: new Date(0).toISOString(),
+    payload,
+    redaction: { class: "internal" }
+  };
+}
+
+function cliLoopBudget(kind: string, allowed: number, requested: number, consumed: number): JsonObject {
+  return {
+    schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+    kind,
+    requested,
+    allowed,
+    consumed,
+    remaining: Math.max(0, allowed - consumed),
+    policy: { source: "cli-test" },
+    redaction: { class: "internal" },
+    compatibility: AGENT_MODE_COMPATIBILITY
+  };
+}
+
 class FakeWebpageAgentPlatform extends NodePlatformRuntime {
   readonly executedWorkspaces: string[] = [];
   readonly executedCommands: { readonly command: string; readonly args: readonly string[]; readonly cwd: string; readonly env?: JsonObject }[] = [];
 
-  constructor(private readonly behavior: { readonly omitEvidenceManifest?: boolean } = {}) {
+  constructor(private readonly behavior: { readonly omitEvidenceManifest?: boolean; readonly includeRuntimeSignals?: boolean; readonly runtimeReasoningOnly?: boolean } = {}) {
     super();
   }
 
@@ -3488,7 +3672,8 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
       await this.writeGeneratedWebpage(cwd);
       return {
         exitCode: 0,
-        stdout: `${JSON.stringify({
+        stdout: [
+          JSON.stringify({
           kind: "prompt.assembled",
           data: {
             fingerprint: "assembly-test",
@@ -3504,16 +3689,21 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
               ]
             }
           }
-        })}\n${JSON.stringify({
-          kind: "agent.repair.started",
-          data: { schemaVersion: "1.0.0", enabled: true, attemptBudget: 1 }
-        })}\n${JSON.stringify({
-          kind: "agent.repair.stopped",
-          data: { schemaVersion: "1.0.0", stopReason: "completed" }
-        })}\n${JSON.stringify({
-          kind: "agent.loop.completed",
-          data: { selfRepair: { stopReason: "completed" } }
-        })}\n`,
+          }),
+          JSON.stringify({
+            kind: "agent.repair.started",
+            data: { schemaVersion: "1.0.0", enabled: true, attemptBudget: 1 }
+          }),
+          JSON.stringify({
+            kind: "agent.repair.stopped",
+            data: { schemaVersion: "1.0.0", stopReason: "completed" }
+          }),
+          JSON.stringify({
+            kind: "agent.loop.completed",
+            data: { selfRepair: { stopReason: "completed" } }
+          }),
+          ...this.runtimeSignalLines()
+        ].join("\n") + "\n",
         stderr: ""
       };
     }
@@ -3546,6 +3736,7 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
       await writeFile(join(target, "styles.css"), "body { font-family: system-ui; margin: 0; } main { padding: 2rem; }\n", "utf8");
       await writeFile(join(target, "app.js"), "document.getElementById('demo')?.addEventListener('click', () => document.body.classList.toggle('ready'));\n", "utf8");
       if (this.behavior.omitEvidenceManifest) return;
+      if (this.behavior.runtimeReasoningOnly) return;
       await writeFile(join(target, "evidence.json"), JSON.stringify({
         schemaVersion: "1.0.0",
         manifestId: "evidence-manifest:test-webpage",
@@ -3665,6 +3856,83 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
         compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" },
         redaction: { class: "internal", fields: ["evidenceItems.preview", "claimGroundings.claimPreview"] }
       }, null, 2), "utf8");
+  }
+
+  private runtimeSignalLines(): readonly string[] {
+    if (!this.behavior.includeRuntimeSignals) return [];
+    const base = {
+      schemaVersion: "1.0.0",
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const reasoning = JSON.stringify({
+      kind: "model.reasoning.effort.mapped",
+      data: {
+        ...base,
+        requestedEffort: "xhigh",
+        providerEffort: "max",
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        mapped: true,
+        supported: true,
+        diagnostics: []
+      }
+    });
+    if (this.behavior.runtimeReasoningOnly) return [reasoning];
+    return [
+      JSON.stringify({
+        kind: "agent.phase.plan.created",
+        data: {
+          ...base,
+          planId: "agent-phase-plan:evaluation-test",
+          sessionId: "session-evaluation-test",
+          interactionMode: "headless",
+          agentMode: "default",
+          phases: [
+            { ...base, phase: "evidence", status: "completed", required: true, mode: "evidence", budgets: [], diagnostics: [] },
+            { ...base, phase: "verify", status: "completed", required: true, mode: "verifier", budgets: [], diagnostics: [] }
+          ],
+          budgets: [],
+          reason: "Evaluation fixture."
+        }
+      }),
+      JSON.stringify({
+        kind: "agent.loop.budget.consumed",
+        data: {
+          ...base,
+          kind: "verification",
+          requested: 1,
+          allowed: 1,
+          consumed: 1,
+          remaining: 0,
+          policy: { source: "evaluation-test" }
+        }
+      }),
+      JSON.stringify({
+        kind: "agent.verifier.verdict",
+        data: {
+          ...base,
+          verifierResultId: "agent-verifier-result:evaluation-test",
+          verdict: "pass",
+          sessionId: "session-evaluation-test",
+          checkedTargets: [{ kind: "directory", id: "generated-webpage", path: "generated-webpage" }],
+          commandEvidenceIds: ["command:webpage-check"],
+          evidenceIds: ["evidence:artifact-check"],
+          unverifiedAreas: [],
+          summary: "Fixture verification passed.",
+          diagnostics: []
+        }
+      }),
+      JSON.stringify({
+        kind: "agent.result.reconciled",
+        data: {
+          status: "pass",
+          repairAttemptCount: 0,
+          redaction: { class: "internal" }
+        }
+      }),
+      reasoning
+    ];
   }
 }
 

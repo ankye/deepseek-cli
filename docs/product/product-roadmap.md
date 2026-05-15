@@ -19,6 +19,46 @@ CLI-first rules / CLI-first 规则:
 - Large CLI-first changes must include a directory plan and avoid growing central files such as app entrypoints, package `index.ts` files, or one-size-fits-all tool/policy interfaces. / 大型 CLI-first 变更必须包含目录计划，并避免继续膨胀 app entrypoint、package `index.ts` 或一体化 tool/policy 接口。
 - Large CLI-facing changes that affect input, rendering, navigation, recovery, or extension UX must declare terminal capability impact, vi-inspired composition impact, request/turn revert impact, and reference pit fixture coverage before implementation. / 影响 input、rendering、navigation、recovery 或 extension UX 的大型 CLI-facing 变更，必须在实现前声明 terminal capability impact、vi-inspired composition impact、request/turn revert impact 和 reference pit fixture coverage。
 
+## CLI Mode Completion Matrix / CLI 模式完成度矩阵
+
+The current CLI mode work is intentionally split into interaction modes and agent modes. Interaction modes describe the user/host surface; agent modes describe runtime work. `complete` means contract, CLI surface, session replay, and deterministic tests are present. `partial` means the runtime contract exists but rollout still needs governance or terminal evidence. `planned` means not a stable product surface yet. `disabled` means fail-closed until host capability evidence lands. `unsupported` is reserved for host/profile-specific rejection in diagnostics.
+
+当前 CLI mode 工作刻意拆成 interaction modes 与 agent modes。Interaction modes 描述 user/host 表面；agent modes 描述 runtime 工作。`complete` 表示 contract、CLI surface、session replay 与确定性测试已具备。`partial` 表示 runtime contract 已有，但 rollout 仍需要治理或终端证据。`planned` 表示还不是稳定产品面。`disabled` 表示在 host capability evidence 落地前 fail-closed。`unsupported` 保留给 diagnostics 中的 host/profile-specific rejection。
+
+Interaction mode status / Interaction mode 状态：
+
+| Mode | Status | Product meaning / 产品含义 |
+| --- | --- | --- |
+| `one-shot` | complete | `deepseek run` JSON/JSONL and runtime mode events are covered. / `deepseek run` JSON/JSONL 与 runtime mode events 已覆盖。 |
+| `chat` | complete | Local slash controls, session mode state, and resume/fork metadata are covered. / 本地 slash controls、session mode state 与 resume/fork metadata 已覆盖。 |
+| `headless` | complete | CI/headless JSON and diagnostics paths are covered. / CI/headless JSON 与 diagnostics 路径已覆盖。 |
+| `degraded` | complete | Unsupported resumed host/profile states emit typed degradation. / 不支持的恢复 host/profile 状态会发出 typed degradation。 |
+| `result-list` | partial | Local semantics exist; terminal matrix acceptance is still required. / 本地语义已存在；仍需 terminal matrix 验收。 |
+| `approval` | partial | Approval rendering exists; mode-aware matrix evidence remains required. / approval rendering 已存在；仍需 mode-aware matrix evidence。 |
+| `command-palette` | partial | Palette/action records exist; richer raw-key/TUI behavior is not default. / palette/action records 已存在；更完整 raw-key/TUI 行为还不是默认。 |
+| `review-diff` | planned | Future review surface gated by diff/revert acceptance. / 未来 review 表面，受 diff/revert 验收门禁控制。 |
+| `interactive` | planned | Slash-driven controls are the baseline; raw interactive mode stays optional. / slash-driven controls 是基线；raw interactive mode 保持可选。 |
+| `background-task` | planned | Future host capability after worker scheduling evidence. / worker scheduling evidence 后的未来 host capability。 |
+| `remote` | disabled | Fail-closed until remote-safe command filtering and identity evidence land. / remote-safe command filtering 与 identity evidence 落地前 fail-closed。 |
+
+Agent mode status / Agent mode 状态：
+
+| Mode | Status | Product meaning / 产品含义 |
+| --- | --- | --- |
+| `default` | complete | Default single-agent path remains the stable baseline. / 默认 single-agent 路径仍是稳定基线。 |
+| `evidence` | complete | Fact-sensitive evidence phase and diagnostics metrics are covered. / fact-sensitive evidence phase 与 diagnostics metrics 已覆盖。 |
+| `planner` | complete | Phase planning and local `/plan` visibility are covered. / phase planning 与本地 `/plan` 可见性已覆盖。 |
+| `verifier` | complete | Independent verdict events, command evidence checks, and reconciliation are covered. / independent verdict events、command evidence checks 与 reconciliation 已覆盖。 |
+| `implementer` | partial | Execution role exists; write-capable rollout still needs checkpoint governance evidence. / execution role 已存在；write-capable rollout 仍需 checkpoint governance evidence。 |
+| `coordinator` | partial | Delegation and reconciliation contracts exist; default enablement is gated by evaluation. / delegation 与 reconciliation contracts 已存在；默认启用受 evaluation 门禁控制。 |
+| `worker` | partial | Worker lifecycle/result records exist; scratchpad/checkpoint governance remains the gate. / worker lifecycle/result records 已存在；scratchpad/checkpoint governance 仍是门禁。 |
+| `repair` | partial | Repair-aware events exist; broader automatic repair remains policy-gated. / repair-aware events 已存在；更广泛自动修复仍受 policy 门禁。 |
+| `synthesis` | planned | Future synthesis/reconciliation product mode after multi-agent acceptance. / multi-agent acceptance 后的未来 synthesis/reconciliation 产品模式。 |
+
+Reasoning effort is separate from this matrix. Model/provider effort such as low/medium/high/max can be requested or mapped, but it never counts as proof of evidence search, verification, repair, or safe delegation.
+
+推理强度与本矩阵分离。low/medium/high/max 等 model/provider effort 可以被请求或映射，但永远不算作 evidence search、verification、repair 或 safe delegation 的证明。
+
 ## Roadmap Metadata Required For Future OpenSpecs / 后续 OpenSpec 必需路线图元数据
 
 Every future feature proposal should include the following metadata so product planning, ownership, tests, and acceptance remain aligned.
@@ -362,12 +402,19 @@ CLI-first position: multi-agent work should first be visible and controllable fr
 
 CLI-first 定位：多 Agent 工作应先在 CLI 中可见、可控，具备 scoped workers、evidence summaries、conflict handling 和 test aggregation，然后再成为 IDE/server orchestration UX。
 
+Current status: mode-aware contracts, local `/agent`/`/workers`/`/verify`/`/plan` controls, structured work orders, worker lifecycle/result events, verifier verdicts, repair/reconciliation events, diagnostics metrics, golden replay, adversarial fixtures, and terminal matrix coverage are implemented. Coordinator, worker write execution, and automatic repair remain rollout-gated rather than default.
+
+当前状态：mode-aware contracts、本地 `/agent`/`/workers`/`/verify`/`/plan` controls、结构化 work orders、worker lifecycle/result events、verifier verdicts、repair/reconciliation events、diagnostics metrics、golden replay、adversarial fixtures 与 terminal matrix coverage 已实现。Coordinator、worker 写执行与 automatic repair 仍受 rollout 门禁控制，不作为默认行为。
+
 Product scope / 产品范围:
 
+- Interaction/agent mode contracts and completion matrix. / interaction/agent mode contracts 与 completion matrix。
 - TaskGraph and subagent manager. / TaskGraph 与 subagent manager。
-- Worker scopes: paths, tools, budgets, deadlines. / worker scopes：paths、tools、budgets、deadlines。
+- Worker scopes: paths, tools, budgets, deadlines, lineage, scratchpad, and checkpoint policy. / worker scopes：paths、tools、budgets、deadlines、lineage、scratchpad 与 checkpoint policy。
 - Worktree or overlay execution. / worktree 或 overlay execution。
 - Patch/evidence collection. / patch/evidence collection。
+- Independent verifier mode with command evidence and partial/fail/pass reconciliation. / 带 command evidence 与 partial/fail/pass reconciliation 的独立 verifier mode。
+- Safe repair loop with bounded reruns and terminal reconciliation. / 带有界 rerun 与 terminal reconciliation 的安全 repair loop。
 - Merge, review, and test aggregation. / merge、review 与 test aggregation。
 
 Platform scope / 平台范围:
@@ -376,9 +423,22 @@ Platform scope / 平台范围:
 
 Acceptance gate / 验收门禁:
 
+- `diagnostics evaluate` reports interaction/agent completion matrix, phase usage, loop budgets, verifier quality, repair quality, worker fan-out, over-delegation flags, and baseline unavailable/inferred metrics. / `diagnostics evaluate` 报告 interaction/agent completion matrix、phase usage、loop budgets、verifier quality、repair quality、worker fan-out、over-delegation flags 与 baseline unavailable/inferred metrics。
+- Golden replay proves mode ordering: evidence before model dispatch, implementation before verification, verifier before final success, and typed worker result events. / Golden replay 证明 mode ordering：evidence 先于 model dispatch、implementation 先于 verification、verifier 先于 final success，并包含 typed worker result events。
+- Adversarial fixtures cover mode mismatch, lazy delegation, over-delegation, missing verification, unsafe scratchpad, worker raw-output-as-user-prompt, and unsupported reasoning effort. / adversarial fixtures 覆盖 mode mismatch、lazy delegation、over-delegation、missing verification、unsafe scratchpad、worker raw-output-as-user-prompt 与 unsupported reasoning effort。
+- Terminal matrix covers CI, redirected JSONL, no-color, Windows PowerShell-like, macOS Terminal-like, and Linux Terminal-like profiles. / terminal matrix 覆盖 CI、redirected JSONL、no-color、Windows PowerShell-like、macOS Terminal-like 与 Linux Terminal-like profiles。
+- Scratchpad/checkpoint governance records fingerprints, scopes, and lineage without raw secrets or unbounded content. / scratchpad/checkpoint governance 记录 fingerprints、scopes 与 lineage，且不包含 raw secrets 或 unbounded content。
 - Multi-agent scenario runs two disjoint workers with separate write scopes. / multi-agent 场景运行两个互不重叠写入范围的 worker。
 - Conflict scenario rejects or escalates instead of silently overwriting. / conflict 场景拒绝或升级处理，而不是静默覆盖。
 - Evidence includes tests, changed files, policy decisions, and trace replay. / evidence 包含 tests、changed files、policy decisions 和 trace replay。
+
+Rollout criteria for default enablement / 默认启用门槛:
+
+- Keep `default` single-agent mode as the baseline until evaluation shows coordinator/verifier orchestration reduces correction cost or failed completions on non-trivial CLI tasks. / 在 evaluation 证明 coordinator/verifier orchestration 能降低非琐碎 CLI tasks 的 correction cost 或失败完成率前，保持 `default` single-agent mode 为基线。
+- Enable verifier by default only for risk classes where command evidence is available and the verifier can produce pass/fail/partial without overstating unsupported areas. / 只有在 command evidence 可用且 verifier 能产出不夸大 unsupported areas 的 pass/fail/partial 时，才对对应风险等级默认启用 verifier。
+- Enable coordinator by default only after worker fan-out stays bounded, over-delegation rate is below the release threshold, and reconciliation quality beats direct single-agent repair in deterministic suites. / 只有在 worker fan-out 有界、over-delegation rate 低于发布阈值，并且 reconciliation quality 在确定性套件中优于直接 single-agent repair 后，才默认启用 coordinator。
+- Keep worker write scopes behind checkpoint policy, stale workspace checks, and disjoint path ownership. / worker 写范围必须受 checkpoint policy、stale workspace checks 与 disjoint path ownership 约束。
+- Preserve local CLI controls as the semantic baseline before raw-key/TUI or remote orchestration is promoted. / 在推广 raw-key/TUI 或 remote orchestration 前，保留本地 CLI controls 作为语义基线。
 
 Next OpenSpecs / 后续 OpenSpec:
 
@@ -463,17 +523,19 @@ Next OpenSpecs / 后续 OpenSpec:
 
 ## Immediate Recommended Sequence / 近期推荐顺序
 
-1. Add `split-cli-host-and-architecture-scale-guardrails`. / 增加 `split-cli-host-and-architecture-scale-guardrails`。
-2. Add `backfill-reference-pit-fixtures`. / 增加 `backfill-reference-pit-fixtures`。
-3. Finish and archive `harden-cli-permissions-and-approval-ux`. / 完成并归档 `harden-cli-permissions-and-approval-ux`。
-4. Finish and archive `polish-cli-diagnostics-and-release-readiness`. / 完成并归档 `polish-cli-diagnostics-and-release-readiness`。
-5. Finish and archive `implement-cli-extension-auth-and-management`. / 完成并归档 `implement-cli-extension-auth-and-management`。
-6. Add `stabilize-command-skill-hook-composition`. / 增加 `stabilize-command-skill-hook-composition`。
-7. Then promote proven workflows with `implement-vscode-event-projection` and `implement-local-runtime-server`. / 然后通过 `implement-vscode-event-projection` 和 `implement-local-runtime-server` 推广已验证 workflow。
+1. Finish and archive `formalize-cli-interaction-agent-modes`. / 完成并归档 `formalize-cli-interaction-agent-modes`。
+2. Add `implement-taskgraph-v1` for CLI-visible task graph records, worker ownership, and conflict handling. / 增加 `implement-taskgraph-v1`，覆盖 CLI 可见 task graph records、worker ownership 与 conflict handling。
+3. Add `implement-subagent-scoped-execution` for checkpoint-gated write workers and bounded scratchpads. / 增加 `implement-subagent-scoped-execution`，覆盖受 checkpoint 门禁控制的写 worker 与有界 scratchpad。
+4. Add `stabilize-command-skill-hook-composition`. / 增加 `stabilize-command-skill-hook-composition`。
+5. Then promote proven workflows with `implement-vscode-event-projection` and `implement-local-runtime-server`. / 然后通过 `implement-vscode-event-projection` 和 `implement-local-runtime-server` 推广已验证 workflow。
 
 Rationale: R1/R2 foundations now cover the first usable local product surface, context/safety, checkpoints, code intelligence, and observability/privacy, but the CLI should become the first polished daily-use product before IDE/server expansion. Before adding heavy CLI UX, the host entrypoint and implementation-heavy package `index.ts` files need scale guardrails, request/turn-level revert must be modeled as structured recovery rather than transcript deletion, and reference pitfalls should be converted into negative fixtures so permissions, diagnostics, extension/auth management, and release readiness do not recreate the reference CLI's central-file or security-bypass pressure.
 
 理由：R1/R2 基础现在已经覆盖首个可用本地产品面、context/safety、checkpoints、code intelligence 和 observability/privacy，但在 IDE/server 扩展之前，CLI 应先成为第一个打磨成熟的日常产品。在加入重型 CLI UX 前，需要先给 host entrypoint 和实现过重的 package `index.ts` 建立规模护栏，将 request/turn 级 revert 建模为结构化 recovery 而不是 transcript deletion，并把参考实现踩过的坑转成负向 fixtures，避免 permissions、diagnostics、extension/auth management 和 release readiness 重演参考 CLI 的中心文件或安全绕过压力。
+
+The immediate sequence now favors finishing the mode-aware agent loop before host promotion. The product has enough contracts to show planner, verifier, worker, repair, and reconciliation surfaces, but it should not make coordinator/worker orchestration the default until taskgraph ownership, checkpoint-gated worker writes, and deterministic evaluation thresholds are in place.
+
+近期顺序现在优先完成 mode-aware agent loop，再做 host promotion。产品已有足够契约展示 planner、verifier、worker、repair 与 reconciliation 表面，但在 taskgraph ownership、checkpoint-gated worker writes 与确定性 evaluation thresholds 到位前，不应把 coordinator/worker orchestration 设为默认。
 
 Near-term non-goals / 近期非目标:
 

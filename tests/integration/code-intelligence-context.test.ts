@@ -89,7 +89,7 @@ describe("code intelligence context integration", () => {
     const codeEvidence = memoryEvent?.data.codeEvidence as { candidateCount?: number; status?: string } | undefined;
     assert.equal(codeEvidence?.status, "completed");
     assert.equal((codeEvidence?.candidateCount ?? 0) > 0, true);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("definition run"), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("definition run")), true);
     await kernel.shutdown();
   });
 

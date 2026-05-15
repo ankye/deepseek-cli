@@ -1,6 +1,35 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId, type EvidenceManifest, type SelfRepairModelHypothesis, type SelfRepairOutcomeSummary } from "@deepseek/platform-contracts";
+import {
+  AGENT_MODE_COMPATIBILITY,
+  AGENT_MODE_SCHEMA_VERSION,
+  CONTEXT_PROJECTION_SCHEMA_VERSION,
+  EVIDENCE_FIRST_COMPATIBILITY,
+  EVIDENCE_FIRST_SCHEMA_VERSION,
+  HOOK_SCHEMA_VERSION,
+  INTERACTION_MODE_COMPATIBILITY,
+  INTERACTION_MODE_SCHEMA_VERSION,
+  MCP_SCHEMA_VERSION,
+  OBSERVABILITY_SCHEMA_VERSION,
+  SELF_REPAIR_COMPATIBILITY,
+  SELF_REPAIR_SCHEMA_VERSION,
+  SESSION_SCHEMA_VERSION,
+  SKILL_SCHEMA_VERSION,
+  asId,
+  type AgentModeCompletionMatrixEntry,
+  type AgentModeSessionSummary,
+  type AgentLoopBudget,
+  type AgentPhasePlan,
+  type AgentReasoningEffortMapping,
+  type AgentVerifierResult,
+  type AgentWorkOrder,
+  type AgentWorkerResult,
+  type EvidenceManifest,
+  type InteractionModeState,
+  type InteractionModeTransition,
+  type SelfRepairModelHypothesis,
+  type SelfRepairOutcomeSummary
+} from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
 import { InMemoryMcpGateway } from "@deepseek/mcp-gateway";
@@ -32,6 +61,186 @@ describe("versioning checks", () => {
     assert.deepEqual(requireSchemaVersion(resume), []);
     assert.deepEqual(requireSchemaVersion(fork), []);
     const missingSchema = { ...resume } as Partial<typeof resume>;
+    delete missingSchema.schemaVersion;
+    assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
+  });
+
+  it("requires schemaVersion on interaction mode state and transitions", () => {
+    const turnId = asId<"turn">("turn-mode-compat");
+    const state: InteractionModeState = {
+      schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+      sessionId: asId<"session">("session-mode-compat"),
+      turnId,
+      mode: "chat",
+      previousMode: "one-shot",
+      activeTargetId: "command:interactive.help",
+      activeResultListId: "result-list:command-palette",
+      degraded: false,
+      degradationReasons: [],
+      availableTransitions: ["result-list", "approval"],
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: INTERACTION_MODE_COMPATIBILITY
+    };
+    const transition: InteractionModeTransition = {
+      schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+      transitionId: "interaction-transition:compat",
+      sessionId: state.sessionId,
+      turnId,
+      previousMode: "one-shot",
+      nextMode: "chat",
+      reason: "command-requested",
+      initiator: "user",
+      at: "1970-01-01T00:00:00.000Z",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: INTERACTION_MODE_COMPATIBILITY
+    };
+
+    assert.deepEqual(requireSchemaVersion(state), []);
+    assert.deepEqual(requireSchemaVersion(transition), []);
+    assert.equal(JSON.parse(JSON.stringify(state)).compatibility.schemaVersion, INTERACTION_MODE_SCHEMA_VERSION);
+    const missingSchema = { ...transition } as { schemaVersion?: string };
+    delete missingSchema.schemaVersion;
+    assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
+  });
+
+  it("requires schemaVersion on agent mode plans, work orders, worker results, verifier results, reasoning effort mappings, and completion matrix entries", () => {
+    const budget: AgentLoopBudget = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      kind: "verification" as const,
+      requested: 2,
+      allowed: 2,
+      consumed: 1,
+      remaining: 1,
+      policy: { source: "compat-test" },
+      redaction: { class: "internal" as const },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const phasePlan: AgentPhasePlan = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      planId: "agent-phase-plan:compat",
+      sessionId: asId<"session">("session-agent-mode-compat"),
+      turnId: asId<"turn">("turn-agent-mode-compat"),
+      interactionMode: "headless",
+      agentMode: "coordinator",
+      phases: [{
+        schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+        phase: "verify",
+        status: "required",
+        required: true,
+        mode: "verifier",
+        budgets: [budget],
+        diagnostics: [],
+        redaction: { class: "internal" },
+        compatibility: AGENT_MODE_COMPATIBILITY
+      }],
+      budgets: [budget],
+      reason: "Non-trivial task requires independent verification.",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const workOrder: AgentWorkOrder = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      workOrderId: "agent-work-order:compat",
+      parentSessionId: phasePlan.sessionId,
+      parentAgentId: asId<"agent">("agent-parent"),
+      targetAgentId: asId<"agent">("agent-worker"),
+      mode: "worker",
+      purpose: "Verify generated artifact.",
+      originalUserGoal: "Generate a product website.",
+      taskSummary: "Inspect generated files and run artifact checks.",
+      evidenceIds: ["evidence:readme"],
+      targets: [{ kind: "file", id: "file:website/index.html", path: "website/index.html" }],
+      allowedTools: ["core.file.read"],
+      permissionScope: { toolProjection: "read-only" },
+      doneCriteria: ["Report pass/fail with evidence ids."],
+      verificationExpectations: ["Run artifact checker."],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const workerResult: AgentWorkerResult = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      resultId: "agent-worker-result:compat",
+      workerSessionId: asId<"session">("session-worker"),
+      parentSessionId: phasePlan.sessionId,
+      workerAgentId: asId<"agent">("agent-worker"),
+      workerInstanceId: asId<"agentInstance">("agent-instance-worker"),
+      taskId: asId<"task">("task-worker"),
+      workOrderId: workOrder.workOrderId,
+      status: "completed",
+      summary: "Artifact check passed.",
+      evidenceIds: ["evidence:artifact-check"],
+      changedScope: [],
+      usage: { totalTokens: 1 },
+      verifierVerdict: "pass",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const verifierResult: AgentVerifierResult = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      verifierResultId: "agent-verifier-result:compat",
+      verdict: "pass",
+      sessionId: phasePlan.sessionId,
+      verifierAgentId: asId<"agent">("agent-verifier"),
+      checkedTargets: workOrder.targets,
+      commandEvidenceIds: ["command:webpage-check"],
+      evidenceIds: ["evidence:artifact-check"],
+      unverifiedAreas: [],
+      summary: "Checks passed.",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const reasoning: AgentReasoningEffortMapping = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      requestedEffort: "xhigh",
+      providerEffort: "max",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      mapped: true,
+      supported: true,
+      reason: "DeepSeek maps xhigh to max.",
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const summary: AgentModeSessionSummary = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      interactionMode: "headless",
+      agentMode: "coordinator",
+      phasePlanId: phasePlan.planId,
+      phaseStatuses: phasePlan.phases,
+      budgets: [budget],
+      delegationDecisions: [],
+      workerResults: [workerResult],
+      verifierResults: [verifierResult],
+      reasoningEffort: reasoning,
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const matrixEntry: AgentModeCompletionMatrixEntry = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      mode: "verifier",
+      productRole: "verifier",
+      status: "complete",
+      implementedSurfaces: ["runtime-mode-events"],
+      missingAcceptanceEvidence: [],
+      nextTasks: [],
+      diagnostics: [],
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+    const [phase] = phasePlan.phases;
+    assert.ok(phase);
+
+    for (const subject of [phasePlan, phase, budget, workOrder, workerResult, verifierResult, reasoning, summary, matrixEntry]) {
+      assert.deepEqual(requireSchemaVersion(subject), []);
+    }
+    assert.equal(JSON.parse(JSON.stringify(reasoning)).providerEffort, "max");
+    const missingSchema = { ...workOrder } as { schemaVersion?: string };
     delete missingSchema.schemaVersion;
     assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
   });

@@ -4,6 +4,8 @@ import type { ContextProjectionResult } from "./context.js";
 import type { EvidenceFirstRuntimeContext } from "./evidence-first.js";
 import type { SelfRepairOutcomeSummary } from "./self-repair.js";
 import type { AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
+import type { AgentModeName, AgentPhasePlan, AgentReasoningEffortMapping, AgentVerifierResult, AgentWorkOrder } from "./agent-mode.js";
+import type { InteractionModeName } from "./interaction-mode.js";
 import type { ModelChatMessage, ModelProfile, ModelReasoningOptions, ModelToolChoice } from "./model.js";
 import type { AgentId, SessionId, TurnId } from "./ids.js";
 
@@ -14,9 +16,11 @@ export type PromptAssemblyStage = "normalize" | "collect-sections" | "order-sect
 export type PromptSectionKind =
   | "system.identity"
   | "system.operating-rules"
+  | "system.mode"
   | "project.instructions"
   | "task.intent"
   | "task.output-contract"
+  | "task.work-order"
   | "context.projected"
   | "context.pageindex-recall"
   | "context.semantic-recall"
@@ -172,6 +176,12 @@ export interface PromptAssemblyInput {
   readonly contextProjection?: ContextProjectionResult;
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
   readonly selfRepair?: SelfRepairOutcomeSummary;
+  readonly interactionMode?: InteractionModeName;
+  readonly agentMode?: AgentModeName;
+  readonly phasePlan?: AgentPhasePlan;
+  readonly workOrder?: AgentWorkOrder;
+  readonly verifierResult?: AgentVerifierResult;
+  readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly availableTools: readonly CapabilityManifest[];
   readonly toolPolicy: AgentLoopToolProjection;

@@ -15,7 +15,24 @@ import type {
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { generatedArtifactMetrics } from "./generated-artifacts.js";
-import { aggregateBaselines, deriveGapFindings, emptyMetrics, repairMetricsFromStdout, roundRatio } from "./evaluation-metrics.js";
+import {
+  aggregateBaselines,
+  deriveGapFindings,
+  emptyMetrics,
+  evidenceCredit,
+  extractRuntimeSignals,
+  loopBudgetMetrics,
+  metricAvailabilityForRun,
+  overDelegationFlag,
+  phaseUsageMetrics,
+  reconciliationCredit,
+  repairCredit,
+  repairQuality,
+  repairMetricsFromStdout,
+  roundRatio,
+  verificationCredit,
+  verifierQuality
+} from "./evaluation-metrics.js";
 import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
 import { checkerDiagnostics, evidenceManifestStatus, parseCheckerOutput, webpageProjectEvidence } from "./webpage-evidence.js";
 import { webpageTaskPrompt } from "./webpage-task.js";
@@ -311,6 +328,7 @@ async function executeWebpageTask(
   });
   events.record("command_finished", { exitCode: runResult.exitCode, stdoutBytes: byteLength(runResult.stdout), stderrBytes: byteLength(runResult.stderr) });
   const promptAssembly = baseline.baselineId === "deepseek-cli" ? promptAssemblyMetricsFromJsonl(runResult.stdout) : { available: false, gapReason: "not-applicable" as const };
+  const runtimeSignals = extractRuntimeSignals(runResult.stdout);
   const checkCommand = task.checkCommands[0] ?? "node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage";
   events.record("checker_started", { command: checkCommand });
   const checkerResult = await platform.runProcess(process.execPath, [join(process.cwd(), "scripts/check-webpage-generation.mjs"), generatedDir], { cwd: process.cwd(), timeoutMs: 60_000 });
@@ -411,6 +429,20 @@ async function executeWebpageTask(
       assumptionCount: checkerOutput?.evidence?.assumptionCount ?? 0,
       hallucinatedCommandCount: checkerOutput?.evidence?.hallucinatedCommandCount ?? 0,
       evidenceManifestStatus: evidenceManifestStatus(checkerOutput),
+      phaseUsage: phaseUsageMetrics(checkerOutput, runtimeSignals, checkPassed),
+      loopBudgets: loopBudgetMetrics(runtimeSignals),
+      workerFanOut: runtimeSignals.workerFanOut,
+      overDelegationFlag: overDelegationFlag(runtimeSignals, commandRunCount, task),
+      ...(overDelegationFlag(runtimeSignals, commandRunCount, task) ? { overDelegationReason: "worker fan-out exceeded useful parallelism for the scenario." } : {}),
+      verifierQuality: verifierQuality(checkerOutput, runtimeSignals, checkPassed),
+      repairQuality: repairQuality(runtimeSignals, correctionCount),
+      ...(runtimeSignals.reasoningEffort ? { reasoningEffort: runtimeSignals.reasoningEffort } : {}),
+      ...(runtimeSignals.providerMappedEffort ? { providerMappedEffort: runtimeSignals.providerMappedEffort } : {}),
+      evidenceCredit: evidenceCredit(checkerOutput),
+      verificationCredit: verificationCredit(checkerOutput, runtimeSignals, checkPassed),
+      repairCredit: repairCredit(runtimeSignals, correctionCount),
+      reconciliationCredit: reconciliationCredit(runtimeSignals, checkPassed),
+      metricAvailability: metricAvailabilityForRun(baseline, runtimeSignals, checkerOutput),
       recoveryUsed: correctionCount > 0,
       redaction: { class: "internal", fields: ["estimatedCostUsd"] }
     },

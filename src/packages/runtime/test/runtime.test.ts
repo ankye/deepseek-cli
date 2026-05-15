@@ -76,6 +76,15 @@ describe("headless runtime", () => {
       "agent.loop.started",
       "turn.started",
       "hooks.invoked",
+      "mode.interaction.changed",
+      "mode.agent.bound",
+      "agent.phase.plan.created",
+      "agent.phase.skipped",
+      "agent.phase.skipped",
+      "agent.phase.skipped",
+      "agent.phase.skipped",
+      "agent.phase.skipped",
+      "model.reasoning.effort.mapped",
       "evidence.classified",
       "context.projection.started",
       "context.memory.collected",
@@ -452,8 +461,7 @@ describe("headless runtime", () => {
     assert.equal(completed?.data.selectedNodeCount, 2);
     assert.equal(events.find((event) => event.kind === "model.requested")?.data.contextProjection !== undefined, true);
     assert.equal(gateway.requests.length, 1);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.role, "system");
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("reference plan detail"), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("reference plan detail")), true);
     const userMessage = gateway.requests[0]?.messages?.find((message) => message.role === "user");
     assert.equal(userMessage?.content, "use projected context");
     assert.equal(gateway.requests[0]?.prompt.includes("user: use projected context"), true);
@@ -482,10 +490,9 @@ describe("headless runtime", () => {
     assert.equal(projection?.referenceEvidence?.resolvedReferenceCount, 1);
     assert.equal(projection?.referenceEvidence?.unresolvedReferences?.length, 0);
     assert.equal(gateway.requests.length, 1);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.role, "system");
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("PageIndex recall page:1:test"), true);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("User prompt preview: database auth decision"), true);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("Assistant preview: use token exchange"), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("PageIndex recall page:1:test")), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("User prompt preview: database auth decision")), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("Assistant preview: use token exchange")), true);
     const userMessage = gateway.requests[0]?.messages?.find((message) => message.role === "user");
     assert.equal(userMessage?.content, "continue with recalled decision");
     await kernel.shutdown();
@@ -516,8 +523,7 @@ describe("headless runtime", () => {
     const memoryEvent = events.find((event) => event.kind === "context.memory.collected");
     assert.equal((memoryEvent?.data as { candidateCount?: number }).candidateCount, 1);
     assert.equal(events.find((event) => event.kind === "model.requested")?.data.contextProjection !== undefined, true);
-    assert.equal(gateway.requests[0]?.messages?.[0]?.role, "system");
-    assert.equal(gateway.requests[0]?.messages?.[0]?.content.includes("Use token exchange for database auth."), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("Use token exchange for database auth.")), true);
     await kernel.shutdown();
   });
 

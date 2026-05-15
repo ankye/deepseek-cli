@@ -11,6 +11,15 @@ const canonicalAgentLoopKinds = [
   "agent.loop.started",
   "turn.started",
   "hooks.invoked",
+  "mode.interaction.changed",
+  "mode.agent.bound",
+  "agent.phase.plan.created",
+  "agent.phase.skipped",
+  "agent.phase.skipped",
+  "agent.phase.skipped",
+  "agent.phase.skipped",
+  "agent.phase.skipped",
+  "model.reasoning.effort.mapped",
   "evidence.classified",
   "context.projection.started",
   "context.memory.collected",
@@ -46,8 +55,8 @@ describe("minimal chat CLI golden replay", () => {
       }
     );
     const chatRuntimeEvents = lines
-      .map((line) => JSON.parse(line) as RuntimeEvent)
-      .filter((event) => canonicalAgentLoopKinds.includes(event.kind));
+      .map((line) => JSON.parse(line) as RuntimeEvent | { readonly kind: string })
+      .filter((event): event is RuntimeEvent => event.kind !== "chat.command.result");
 
     const headlessDeps = createDeterministicRuntimeDependencies();
     await registerRuntimeCoreTools(headlessDeps, process.cwd());

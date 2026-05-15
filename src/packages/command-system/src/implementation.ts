@@ -332,6 +332,7 @@ export function renderInteractiveControlText(result: InteractiveControlResult): 
     }
     lines.push("  /cost — show accumulated token usage for the current session");
     lines.push("  /model — show the active model profile");
+    lines.push("  /mode|/agent|/workers|/verify|/plan — show local mode, agent, worker, verifier, and phase-plan status");
     lines.push("  /palette — show local command palette entries");
     lines.push("  /palette next|previous|first|last — move local palette result focus");
     lines.push("  /palette back|forward — traverse local palette jump history");

@@ -67,6 +67,7 @@ export class DefaultPromptAssembler implements PromptAssembler {
 
   async assemble(input: PromptAssemblyInput): Promise<PromptAssemblyResult> {
     const diagnostics: RedactedError[] = [];
+    diagnostics.push(...validatePromptAssemblyInput(input));
     const rawSections = await collectProviderSections(input, this.providers, diagnostics);
     const ordered = orderSections(rawSections);
     const budgeted = applyBudget(ordered, input, this.previewChars);
@@ -114,6 +115,42 @@ export class DefaultPromptAssembler implements PromptAssembler {
       compatibility: { schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION }
     };
   }
+}
+
+function validatePromptAssemblyInput(input: PromptAssemblyInput): readonly RedactedError[] {
+  const diagnostics: RedactedError[] = [];
+  if (input.workOrder) {
+    const requiredTextFields = [
+      ["purpose", input.workOrder.purpose],
+      ["originalUserGoal", input.workOrder.originalUserGoal],
+      ["taskSummary", input.workOrder.taskSummary]
+    ] as const;
+    for (const [field, value] of requiredTextFields) {
+      if (!value.trim()) {
+        diagnostics.push(providerDiagnostic("core.work-order", "PROMPT_WORK_ORDER_INCOMPLETE", `Work order ${field} is required.`));
+      }
+    }
+    if (input.workOrder.targets.length === 0 || input.workOrder.doneCriteria.length === 0 || input.workOrder.verificationExpectations.length === 0) {
+      diagnostics.push(providerDiagnostic("core.work-order", "PROMPT_WORK_ORDER_INCOMPLETE", "Work order must include targets, done criteria, and verification expectations."));
+    }
+    const lazyText = [input.workOrder.purpose, input.workOrder.taskSummary, ...input.workOrder.doneCriteria].join("\n");
+    if (isLazyDelegation(lazyText)) {
+      diagnostics.push(providerDiagnostic("core.work-order", "PROMPT_LAZY_DELEGATION_REJECTED", "Worker work order must be self-contained and cannot rely on prior findings without structured context."));
+    }
+  }
+  return diagnostics;
+}
+
+function isLazyDelegation(value: string): boolean {
+  return [
+    /\bbased on (the )?prior findings\b/i,
+    /\bcontinue from (the )?(prior|previous) findings\b/i,
+    /\bfix what (we )?(discussed|talked about)\b/i,
+    /\binspect (the )?(recent|latest) changes\b/i,
+    /基于(之前|上面|前面).*继续/,
+    /修复(刚才|之前).*问题/,
+    /检查(最近|刚才).*修改/
+  ].some((pattern) => pattern.test(value));
 }
 
 export function replayPromptAssembly(

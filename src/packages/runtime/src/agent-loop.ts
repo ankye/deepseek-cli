@@ -3,9 +3,14 @@ import type {
   AgentLoopLimits,
   AgentLoopRequest,
   AgentLoopSummary,
+  AgentModeSessionSummary,
+  AgentPhasePlan,
+  AgentReasoningEffortMapping,
   ContextProjectionResult,
   HookInvocationResult,
   HookLifecyclePoint,
+  InteractionModeState,
+  InteractionModeTransition,
   JsonObject,
   ModelChatMessage,
   RedactedError,
@@ -19,13 +24,10 @@ import type {
   SelfRepairPlan,
   SelfRepairVerificationSummary,
   SessionId,
-  ToolFeedbackStatus,
-  ToolResultFeedback,
   TraceContext,
   TurnId
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { createToolResultEvidence, createToolResultEvidenceCacheEntry } from "@deepseek/memory-cache-management";
 import { projectAgentLoopContext, projectionEventData } from "./context-projection.js";
 import { kernelError, toolIntentError } from "./errors.js";
 import { createEvidenceFirstRuntimeContext, evidenceFirstEventData, groundStrictClaims } from "./evidence-first.js";
@@ -44,13 +46,24 @@ import {
   createRepairPlan,
   createVerificationSummary,
   decideRepairPolicy,
-  emptySelfRepairOutcome,
   outcomeFromState,
   repairEvent,
   selfRepairConfig,
   stopPayload
 } from "./self-repair/index.js";
 import { runtimeTrace, stableHash } from "./trace.js";
+import { executionFeedbackStatus, referenceContextSummary, summarizeAgentLoop } from "./agent-loop-summary.js";
+import { extractSkillActivateMetadata, projectToolSet, recordToolResultEvidence } from "./agent-loop-tools.js";
+import { consumedBudgetEvents } from "./modes/budgets.js";
+import { createRuntimeModePlan } from "./modes/phase-planner.js";
+import {
+  createAgentModeBinding,
+  createInteractionModeState,
+  createInteractionModeTransition,
+  mapReasoningEffort,
+  summarizeModePlan
+} from "./modes/mode-state.js";
+import { runFinalVerification } from "./agent-loop-verification.js";
 
 export const defaultAgentLoopLimits: AgentLoopLimits = {
   maxModelIterations: 4,
@@ -83,9 +96,15 @@ export async function* runAgentLoop(
   let toolCalls = 0;
   let terminalEmitted = false;
   let repairContinuationRequested = false;
+  let toolEvidenceEvents: RuntimeEvent[] = [];
   const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
   let contextProjection: ContextProjectionResult | undefined;
   let evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined;
+  let phasePlan: AgentPhasePlan | undefined;
+  let modeSummary: AgentModeSessionSummary | undefined;
+  let interactionModeState: InteractionModeState | undefined;
+  let interactionModeTransitions: readonly InteractionModeTransition[] | undefined;
+  let reasoningEffortMapping: AgentReasoningEffortMapping | undefined = request.reasoningEffortMapping;
   let evidenceRevisionAttempted = false;
   const signal = control.signal;
 
@@ -97,11 +116,21 @@ export async function* runAgentLoop(
     stopReason: repairStopReason
   });
 
+  const summaryMode = () => ({
+    phasePlan,
+    modeSummary,
+    interactionModeState,
+    interactionModeTransitions,
+    reasoningEffortMapping,
+    selfRepair: currentRepairOutcome()
+  });
+
   const emitFailureWithRepair = async function* (
     status: AgentLoopSummary["status"],
     reason: string,
     error?: RedactedError,
-    event?: RuntimeEvent
+    event?: RuntimeEvent,
+    extraData: JsonObject = {}
   ): AsyncGenerator<RuntimeEvent, boolean, void> {
     if (error || event) {
       const classification = classifyRepairFailure({
@@ -174,15 +203,15 @@ export async function* runAgentLoop(
         yield stopped;
       }
     }
-    const summary = summarizeAgentLoop(status, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
-    const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, { ...summary, reason }, request.agentId, error);
+    const summary = summarizeAgentLoop(status, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
+    const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, { ...summary, reason, ...extraData }, request.agentId, error);
     await recordRuntimeAdapterEvent(deps, failed);
     yield failed;
     return false;
   };
 
   const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
-    const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
+    const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
     const cancelled = agentLoopEvent("agent.loop.cancelled", sessionId, turnId, trace, { ...summary, reason: "user-cancelled" }, request.agentId);
     await recordRuntimeAdapterEvent(deps, cancelled);
     yield cancelled;
@@ -261,7 +290,7 @@ export async function* runAgentLoop(
   });
   if (userInputResult.status === "blocked") {
     diagnostics.push({ code: "HOOK_BLOCKED", message: "user-input.before hook blocked this turn", retryable: false, redaction: { class: "internal" } });
-    const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()), reason: "blocked-by-hook" };
+    const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode()), reason: "blocked-by-hook" };
     const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
     await recordRuntimeAdapterEvent(deps, failed);
     yield failed;
@@ -270,6 +299,41 @@ export async function* runAgentLoop(
   }
 
   evidenceFirst = await createEvidenceFirstRuntimeContext(deps, request, sessionId, turnId, trace);
+  const modePlan = createRuntimeModePlan({ request, sessionId, turnId, trace, limits, evidenceFirst });
+  phasePlan = modePlan.phasePlan;
+  interactionModeState = createInteractionModeState({ sessionId, turnId, mode: modePlan.interactionMode, trace });
+  const transition = createInteractionModeTransition({ sessionId, turnId, nextMode: modePlan.interactionMode, trace });
+  interactionModeTransitions = [transition];
+  reasoningEffortMapping = reasoningEffortMapping ?? mapReasoningEffort({
+    ...(request.reasoning?.effort ? { requested: request.reasoning.effort } : {}),
+    ...(request.reasoning?.providerEffort ? { providerEffort: request.reasoning.providerEffort } : {}),
+    provider: String(request.profile.providerId),
+    model: request.profile.model
+  });
+  modeSummary = summarizeModePlan({ phasePlan, reasoningEffortMapping });
+  const modeChanged = agentLoopEvent("mode.interaction.changed", sessionId, turnId, trace, transition, request.agentId);
+  await recordRuntimeAdapterEvent(deps, modeChanged);
+  yield modeChanged;
+  const agentModeBinding = await createAgentModeBinding({ deps, sessionId, mode: modePlan.agentMode, interactionMode: modePlan.interactionMode });
+  const agentBound = agentLoopEvent("mode.agent.bound", sessionId, turnId, trace, agentModeBinding, request.agentId);
+  await recordRuntimeAdapterEvent(deps, agentBound);
+  yield agentBound;
+  const planEvent = agentLoopEvent("agent.phase.plan.created", sessionId, turnId, trace, phasePlan, request.agentId);
+  await recordRuntimeAdapterEvent(deps, planEvent);
+  yield planEvent;
+  for (const skippedPhase of modePlan.skippedPhases) {
+    const skipped = agentLoopEvent("agent.phase.skipped", sessionId, turnId, trace, skippedPhase, request.agentId);
+    await recordRuntimeAdapterEvent(deps, skipped);
+    yield skipped;
+  }
+  for (const budget of consumedBudgetEvents(phasePlan)) {
+    const consumed = agentLoopEvent("agent.loop.budget.consumed", sessionId, turnId, trace, budget, request.agentId);
+    await recordRuntimeAdapterEvent(deps, consumed);
+    yield consumed;
+  }
+  const reasoningMapped = agentLoopEvent("model.reasoning.effort.mapped", sessionId, turnId, trace, reasoningEffortMapping, request.agentId);
+  await recordRuntimeAdapterEvent(deps, reasoningMapped);
+  yield reasoningMapped;
   const classified = agentLoopEvent("evidence.classified", sessionId, turnId, trace, evidenceFirst.classification, request.agentId);
   await recordRuntimeAdapterEvent(deps, classified);
   yield classified;
@@ -307,7 +371,7 @@ export async function* runAgentLoop(
     yield projectionEvent;
     if (projectionEvent.kind === "context.projection.rejected") {
       diagnostics.push(projectionEvent.error ?? kernelError("KERNEL_ENVELOPE_INVALID", "Context projection rejected model dispatch"));
-      yield* emitFailureWithRepair("rejected", "context-projection-rejected", summaryError(diagnostics), projectionEvent);
+      yield* emitFailureWithRepair("rejected", "context-projection-rejected", diagnostics[0], projectionEvent);
       terminalEmitted = true;
       return;
     }
@@ -326,11 +390,14 @@ export async function* runAgentLoop(
     let iterationReasoning = "";
     let reasoningPersistedForIteration = false;
     const availableCapabilities = await deps.capabilities.listModelVisible();
-    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits, evidenceFirst, currentRepairOutcome());
+    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits, evidenceFirst, currentRepairOutcome(), {
+      phasePlan,
+      reasoningEffortMapping
+    });
     if (assembly.status === "rejected") {
       diagnostics.push(...assembly.diagnostics);
       const error = assembly.diagnostics[0] ?? kernelError("KERNEL_ENVELOPE_INVALID", "Prompt assembly rejected model dispatch");
-      yield* emitFailureWithRepair("rejected", "prompt-assembly-rejected", error);
+      yield* emitFailureWithRepair("rejected", "prompt-assembly-rejected", error, undefined, { promptAssembly: promptAssemblyEventPayload(assembly, request) });
       terminalEmitted = true;
       return;
     }
@@ -356,7 +423,7 @@ export async function* runAgentLoop(
       }, request.agentId);
       await recordRuntimeAdapterEvent(deps, blockedEvent);
       yield blockedEvent;
-      const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()), reason: "blocked-by-hook" };
+      const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode()), reason: "blocked-by-hook" };
       const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
       await recordRuntimeAdapterEvent(deps, failed);
       yield failed;
@@ -663,6 +730,7 @@ export async function* runAgentLoop(
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
+        toolEvidenceEvents = [...toolEvidenceEvents, resultEvent];
         if (toolName === "core.skill.activate" && terminal?.kind === "capability.completed") {
           const metadata = extractSkillActivateMetadata(terminal);
           if (metadata && metadata.status === "activated") {
@@ -782,7 +850,7 @@ export async function* runAgentLoop(
           });
           diagnostics.push(error);
           const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, {
-            ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()),
+            ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode()),
             reason: "evidence-unsupported-claim",
             evidenceFirst: evidenceFirstEventData(evidenceFirst)
           }, request.agentId, error);
@@ -792,13 +860,29 @@ export async function* runAgentLoop(
           return;
         }
       }
-      const summary = summarizeAgentLoop("completed", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
+      const verification = await runFinalVerification({
+        deps,
+        request,
+        sessionId,
+        turnId,
+        trace,
+        phasePlan,
+        modeSummary,
+        assistantText,
+        toolEvents: toolEvidenceEvents,
+        diagnostics,
+        iteration: iterations
+      });
+      modeSummary = verification.modeSummary;
+      for (const event of verification.events) yield event;
+      const terminalStatus = verification.terminalStatus;
+      const summary = summarizeAgentLoop(terminalStatus, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
       const completed = agentLoopEvent("turn.completed", sessionId, turnId, trace, summary, request.agentId);
       await recordRuntimeAdapterEvent(deps, completed);
       yield completed;
-      const loopCompleted = agentLoopEvent("agent.loop.completed", sessionId, turnId, trace, summary, request.agentId);
-      await recordRuntimeAdapterEvent(deps, loopCompleted);
-      yield loopCompleted;
+      const loopTerminal = agentLoopEvent(terminalStatus === "failed" ? "agent.loop.failed" : "agent.loop.completed", sessionId, turnId, trace, summary, request.agentId, terminalStatus === "failed" ? diagnostics.at(-1) : undefined);
+      await recordRuntimeAdapterEvent(deps, loopTerminal);
+      yield loopTerminal;
       terminalEmitted = true;
       return;
     }
@@ -809,60 +893,6 @@ export async function* runAgentLoop(
     diagnostics.push(error);
     yield* emitFailureWithRepair("rejected", "model-iteration-limit", error);
   }
-}
-
-function referenceContextSummary(request: AgentLoopRequest): JsonObject {
-  const context = request.referenceContext;
-  if (!context) return {};
-  return {
-    schemaVersion: context.schemaVersion,
-    source: context.source,
-    activeSetId: context.activeSetId,
-    activeItemId: context.activeItemId,
-    setCount: context.setCount,
-    itemCount: context.itemCount,
-    targets: context.sets.flatMap((set) => set.items.map((item) => ({
-      id: item.id,
-      kind: item.kind,
-      targetId: item.target.id,
-      targetKind: item.target.kind,
-      order: item.order
-    }))),
-    redaction: { class: "internal", fields: ["targets.targetId"] }
-  };
-}
-
-export function summarizeAgentLoop(
-  status: AgentLoopSummary["status"],
-  request: AgentLoopRequest,
-  sessionId: SessionId,
-  turnId: TurnId,
-  trace: TraceContext,
-  assistantText: string,
-  iterations: number,
-  toolCalls: number,
-  diagnostics: readonly RedactedError[],
-  selfRepair: SelfRepairOutcomeSummary = emptySelfRepairOutcome(false)
-): AgentLoopSummary {
-  return {
-    schemaVersion: "1.0.0",
-    status,
-    sessionId,
-    turnId,
-    traceId: String(trace.traceId),
-    assistantText: boundedModelText(assistantText, request.limits?.maxOutputBytes ?? defaultAgentLoopLimits.maxOutputBytes),
-    iterations,
-    toolCalls,
-    modelProvider: request.profile.providerId,
-    modelProfile: request.profile.id,
-    selfRepair,
-    diagnostics,
-    redaction: { class: "internal", fields: ["assistantText", "diagnostics.details", "selfRepair.classifications.diagnostics", "selfRepair.attempts.diagnostics"] }
-  };
-}
-
-function summaryError(diagnostics: readonly RedactedError[]): RedactedError | undefined {
-  return diagnostics[0];
 }
 
 function hasEligibleRepairCheckpoint(deps: RuntimeDependencies, sessionId: SessionId, turnId: TurnId): boolean {
@@ -877,7 +907,7 @@ function repairFeedbackMessage(
   plan: SelfRepairPlan,
   classification: SelfRepairFailureClassification,
   error: RedactedError | undefined
-): import("@deepseek/platform-contracts").ModelChatMessage {
+): ModelChatMessage {
   return {
     role: "tool",
     toolCallId: plan.attemptId,
@@ -892,65 +922,4 @@ function repairFeedbackMessage(
       "Make the smallest bounded correction, use only visible governed tools, then stop or verify."
     ].join("\n")
   };
-}
-
-function executionFeedbackStatus(terminal: RuntimeEvent | undefined): ToolFeedbackStatus {
-  if (!terminal) return "failed";
-  if (terminal.kind === "capability.completed") return "success";
-  if (terminal.kind === "capability.cancelled") return "cancelled";
-  if (terminal.kind === "execution.rejected") {
-    return terminal.error?.code === "KERNEL_POLICY_DENIED" ? "denied" : "rejected";
-  }
-  if (terminal.error?.code === "KERNEL_SCHEDULER_TIMEOUT") return "timeout";
-  return "failed";
-}
-
-async function recordToolResultEvidence(
-  deps: RuntimeDependencies,
-  input: {
-    readonly toolCallId: string;
-    readonly toolName: string;
-    readonly capabilityId?: string;
-    readonly terminalKind: string;
-    readonly feedback: ToolResultFeedback;
-  }
-): Promise<import("@deepseek/platform-contracts").RuntimeToolResultEvidence> {
-  const evidence = createToolResultEvidence(input);
-  await deps.cache.set(createToolResultEvidenceCacheEntry(evidence));
-  return evidence;
-}
-
-function projectToolSet(
-  capabilities: readonly import("@deepseek/platform-contracts").CapabilityManifest[],
-  request: AgentLoopRequest
-): readonly import("@deepseek/platform-contracts").CapabilityManifest[] {
-  const policy = toolProjectionPolicy(request);
-  if (policy === "all") return capabilities;
-  if (policy === "read-write") {
-    return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read" || manifest.sideEffect === "write");
-  }
-  return capabilities.filter((manifest) => manifest.sideEffect === "none" || manifest.sideEffect === "read");
-}
-
-interface SkillActivateTerminalMetadata {
-  readonly name: string;
-  readonly status: string;
-  readonly segmentCount: number;
-  readonly loadingState: string;
-}
-
-function extractSkillActivateMetadata(terminal: RuntimeEvent): SkillActivateTerminalMetadata | undefined {
-  const output = terminal.data?.output;
-  if (!output || typeof output !== "object") return undefined;
-  const evidence = (output as { evidence?: unknown }).evidence;
-  if (!evidence || typeof evidence !== "object") return undefined;
-  const metadata = (evidence as { metadata?: unknown }).metadata;
-  if (!metadata || typeof metadata !== "object") return undefined;
-  const record = metadata as Record<string, unknown>;
-  const name = typeof record.name === "string" ? record.name : undefined;
-  const status = typeof record.status === "string" ? record.status : undefined;
-  const segmentCount = typeof record.segmentCount === "number" ? record.segmentCount : undefined;
-  const loadingState = typeof record.loadingState === "string" ? record.loadingState : undefined;
-  if (!name || !status || segmentCount === undefined || !loadingState) return undefined;
-  return { name, status, segmentCount, loadingState };
 }

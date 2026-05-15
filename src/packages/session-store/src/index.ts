@@ -1,4 +1,12 @@
 import type {
+  AgentLoopBudget,
+  AgentModeSessionSummary,
+  AgentPhasePlan,
+  AgentReasoningEffortMapping,
+  AgentVerifierResult,
+  AgentWorkerResult,
+  InteractionModeState,
+  InteractionModeTransition,
   JsonObject,
   RedactedError,
   SerializableResult,
@@ -8,11 +16,12 @@ import type {
   SessionId,
   SessionLineage,
   SessionMetadata,
+  SessionModeMetadata,
   SessionResumeResult,
   SessionSnapshot,
   SessionStore
 } from "@deepseek/platform-contracts";
-import { SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, INTERACTION_MODE_COMPATIBILITY, INTERACTION_MODE_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -80,6 +89,7 @@ export class InMemorySessionStore implements SessionStore {
         lineage: metadata.lineage,
         preview: previewFor(events),
         ...(snapshot ? { snapshot } : {}),
+        ...(metadata.mode ? { mode: metadata.mode } : {}),
         redaction: { class: "internal", fields: ["preview"] }
       }
     };
@@ -92,11 +102,18 @@ export class InMemorySessionStore implements SessionStore {
     const forkPointSequence = request.forkPointSequence ?? latestSequenceOf(parentEvents);
     const inheritedEventCount = parentEvents.filter((event) => event.sequence <= forkPointSequence).length;
     const childSessionId = asId<"session">(`session-${this.next++}`);
+    const mode = request.mode ?? parentMetadata.mode;
+    const modeForkPoint = mode ? {
+      ...(mode.interactionMode ? { interactionMode: mode.interactionMode } : {}),
+      ...(mode.agentMode ? { agentMode: mode.agentMode } : {}),
+      activeWorkerPolicy: "historical-lineage-only" as const
+    } : undefined;
     const lineage: SessionLineage = {
       parentSessionId: request.parentSessionId,
       forkPointSequence,
       inheritedEventCount,
-      ...(request.reason ? { reason: request.reason } : {})
+      ...(request.reason ? { reason: request.reason } : {}),
+      ...(modeForkPoint ? { modeForkPoint } : {})
     };
     const childMetadata = this.buildMetadata(childSessionId, request.metadata ?? {}, lineage);
     const forkEvent: SessionEvent = {
@@ -109,7 +126,8 @@ export class InMemorySessionStore implements SessionStore {
         parentSessionId: request.parentSessionId,
         forkPointSequence,
         inheritedEventCount,
-        reason: request.reason ?? ""
+        reason: request.reason ?? "",
+        ...(modeForkPoint ? { modeForkPoint } : {})
       },
       redaction: { class: "internal" }
     };
@@ -126,6 +144,7 @@ export class InMemorySessionStore implements SessionStore {
         metadata: this.metadataBySession.get(childSessionId) ?? childMetadata,
         lineage,
         forkEvent,
+        ...(mode ? { mode } : {}),
         redaction: { class: "internal" }
       }
     };
@@ -137,6 +156,7 @@ export class InMemorySessionStore implements SessionStore {
 
   protected buildMetadata(sessionId: SessionId, metadata: JsonObject, lineage: SessionLineage): SessionMetadata {
     const events = this.eventsBySession.get(sessionId) ?? [];
+    const mode = modeMetadataFromEvents(sessionId, events, lineage.modeForkPoint);
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
       sessionId,
@@ -145,6 +165,7 @@ export class InMemorySessionStore implements SessionStore {
       latestSequence: latestSequenceOf(events),
       metadata: redactJson(metadata),
       lineage,
+      ...(mode ? { mode } : {}),
       redaction: { class: "internal", fields: ["metadata", "lineage.reason"] }
     };
   }
@@ -279,6 +300,157 @@ function previewFor(events: readonly SessionEvent[]): JsonObject {
     lastSequence: last?.sequence ?? 0,
     eventKinds: events.slice(-5).map((event) => event.kind)
   };
+}
+
+function modeMetadataFromEvents(
+  sessionId: SessionId,
+  events: readonly SessionEvent[],
+  forkPoint?: SessionLineage["modeForkPoint"]
+): SessionModeMetadata | undefined {
+  let interactionMode = forkPoint?.interactionMode;
+  let agentMode = forkPoint?.agentMode;
+  let interactionTransitions = interactionMode ? [] as InteractionModeTransition[] : undefined;
+  let phasePlan: AgentPhasePlan | undefined = agentMode?.phasePlanId
+    ? agentMode.phaseStatuses.length > 0
+      ? {
+          schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+          planId: agentMode.phasePlanId,
+          sessionId,
+          interactionMode: agentMode.interactionMode ?? interactionMode?.mode ?? "chat",
+          agentMode: agentMode.agentMode ?? "default",
+          phases: agentMode.phaseStatuses,
+          budgets: agentMode.budgets,
+          reason: "Restored from fork lineage mode summary.",
+          diagnostics: [],
+          redaction: { class: "internal" },
+          compatibility: AGENT_MODE_COMPATIBILITY
+        }
+      : undefined
+    : undefined;
+  let reasoningEffort = agentMode?.reasoningEffort;
+  let budgets = [...(agentMode?.budgets ?? [])];
+  let workerResults = [...(agentMode?.workerResults ?? [])];
+  let verifierResults = [...(agentMode?.verifierResults ?? [])];
+  let delegationDecisions = [...(agentMode?.delegationDecisions ?? [])];
+
+  for (const event of events) {
+    if (event.kind === "mode.interaction.changed") {
+      const transition = event.payload as unknown as InteractionModeTransition;
+      interactionTransitions = [...(interactionTransitions ?? []), transition];
+      interactionMode = {
+        schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+        sessionId,
+        ...(transition.turnId ? { turnId: transition.turnId } : {}),
+        mode: transition.nextMode,
+        ...(transition.previousMode ? { previousMode: transition.previousMode } : {}),
+        degraded: false,
+        degradationReasons: [],
+        availableTransitions: ["chat", "headless", "one-shot", "result-list", "approval"],
+        diagnostics: transition.diagnostics ?? [],
+        ...(transition.trace ? { trace: transition.trace } : {}),
+        redaction: { class: "internal" },
+        compatibility: INTERACTION_MODE_COMPATIBILITY
+      };
+      continue;
+    }
+    if (event.kind === "mode.interaction.degraded") {
+      const data = event.payload as { mode?: InteractionModeState["mode"]; degradationReasons?: InteractionModeState["degradationReasons"]; diagnostics?: InteractionModeState["diagnostics"] };
+      interactionMode = {
+        schemaVersion: INTERACTION_MODE_SCHEMA_VERSION,
+        sessionId,
+        mode: data.mode ?? interactionMode?.mode ?? "degraded",
+        ...(interactionMode?.mode ? { previousMode: interactionMode.mode } : {}),
+        degraded: true,
+        degradationReasons: data.degradationReasons ?? ["unsupported-mode"],
+        availableTransitions: ["chat", "headless", "one-shot"],
+        diagnostics: data.diagnostics ?? [],
+        redaction: { class: "internal" },
+        compatibility: INTERACTION_MODE_COMPATIBILITY
+      };
+      continue;
+    }
+    if (event.kind === "agent.phase.plan.created") {
+      phasePlan = event.payload as unknown as AgentPhasePlan;
+      budgets = [...phasePlan.budgets];
+      continue;
+    }
+    if (event.kind === "agent.loop.budget.consumed") {
+      budgets = upsertBy(budgets, event.payload as unknown as AgentLoopBudget, (budget) => budget.kind);
+      continue;
+    }
+    if (event.kind === "agent.worker.result") {
+      workerResults = upsertBy(workerResults, event.payload as unknown as AgentWorkerResult, (result) => result.resultId);
+      continue;
+    }
+    if (event.kind === "agent.worker.launched" || event.kind === "agent.worker.continued" || event.kind === "agent.worker.stopped") {
+      const decision = (event.payload as { delegationDecision?: AgentModeSessionSummary["delegationDecisions"][number] }).delegationDecision;
+      if (decision) delegationDecisions = upsertBy(delegationDecisions, decision, (item) => item.decisionId);
+      continue;
+    }
+    if (event.kind === "agent.verifier.verdict") {
+      verifierResults = upsertBy(verifierResults, event.payload as unknown as AgentVerifierResult, (result) => result.verifierResultId);
+      continue;
+    }
+    if (event.kind === "model.reasoning.effort.mapped") {
+      reasoningEffort = event.payload as unknown as AgentReasoningEffortMapping;
+      continue;
+    }
+    if (event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed" || event.kind === "agent.loop.cancelled") {
+      const summary = event.payload as {
+        modeSummary?: AgentModeSessionSummary;
+        phasePlan?: AgentPhasePlan;
+        interactionModeState?: InteractionModeState;
+        interactionModeTransitions?: readonly InteractionModeTransition[];
+        reasoningEffortMapping?: AgentReasoningEffortMapping;
+      };
+      if (summary.interactionModeState) interactionMode = summary.interactionModeState;
+      if (summary.interactionModeTransitions) interactionTransitions = [...summary.interactionModeTransitions];
+      if (summary.phasePlan) {
+        phasePlan = summary.phasePlan;
+        budgets = [...summary.phasePlan.budgets];
+      }
+      if (summary.modeSummary) {
+        agentMode = summary.modeSummary;
+        budgets = [...summary.modeSummary.budgets];
+        workerResults = [...summary.modeSummary.workerResults];
+        verifierResults = [...summary.modeSummary.verifierResults];
+        delegationDecisions = [...summary.modeSummary.delegationDecisions];
+        reasoningEffort = summary.modeSummary.reasoningEffort ?? reasoningEffort;
+      }
+      reasoningEffort = summary.reasoningEffortMapping ?? reasoningEffort;
+    }
+  }
+
+  if (phasePlan) {
+    agentMode = {
+      schemaVersion: AGENT_MODE_SCHEMA_VERSION,
+      interactionMode: phasePlan.interactionMode,
+      agentMode: phasePlan.agentMode,
+      phasePlanId: phasePlan.planId,
+      phaseStatuses: phasePlan.phases,
+      budgets,
+      delegationDecisions,
+      workerResults,
+      verifierResults,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      redaction: { class: "internal" },
+      compatibility: AGENT_MODE_COMPATIBILITY
+    };
+  }
+
+  if (!interactionMode && !agentMode) return undefined;
+  return {
+    ...(interactionMode ? { interactionMode } : {}),
+    ...(interactionTransitions ? { interactionTransitions } : {}),
+    ...(agentMode ? { agentMode } : {})
+  };
+}
+
+function upsertBy<T>(items: readonly T[], next: T, key: (item: T) => string): T[] {
+  const nextKey = key(next);
+  const index = items.findIndex((item) => key(item) === nextKey);
+  if (index < 0) return [...items, next];
+  return items.map((item, itemIndex) => itemIndex === index ? next : item);
 }
 
 function sessionError(code: string, message: string): RedactedError {
