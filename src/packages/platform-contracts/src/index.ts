@@ -42,6 +42,7 @@ export * from "./observability.js";
 export * from "./testing.js";
 export * from "./evaluation.js";
 export * from "./evidence-first.js";
+export * from "./self-repair.js";
 export * from "./prompt-assembly.js";
 export * from "./readiness.js";
 export * from "./core-tools.js";

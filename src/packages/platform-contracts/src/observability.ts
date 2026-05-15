@@ -2,7 +2,7 @@ import type { CompatibilityMetadata, JsonObject, RedactionMetadata, TraceContext
 
 export const OBSERVABILITY_SCHEMA_VERSION = "1.0.0";
 
-export type ObservabilityEventKind = "log" | "metric" | "trace" | "audit" | "usage" | "bus" | "task";
+export type ObservabilityEventKind = "log" | "metric" | "trace" | "audit" | "usage" | "bus" | "task" | "repair";
 export type ObservabilityDataPrivacyClass = "none" | "local" | "sensitive" | "secret" | "regulated";
 export type ObservabilityPersistenceScope = "none" | "memory" | "local-diagnostics" | "diagnostic-bundle";
 export type ObservabilityExportTarget = "local-bundle" | "external-telemetry" | "support-upload";

@@ -1,15 +1,12 @@
 import { join } from "node:path";
 import { deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
 import type {
-  CliEvaluationBaselineAggregate,
   CliEvaluationBaselineDefinition,
   CliEvaluationComparisonSummary,
   CliEvaluationDiagnostic,
-  CliEvaluationGapFinding,
   CliEvaluationInstrumentationEvent,
   CliEvaluationMode,
   CliEvaluationPublicBenchmarkReference,
-  CliEvaluationRunMetrics,
   CliEvaluationTaskDefinition,
   CliEvaluationTaskRunRecord,
   JsonObject,
@@ -18,6 +15,7 @@ import type {
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { generatedArtifactMetrics } from "./generated-artifacts.js";
+import { aggregateBaselines, deriveGapFindings, emptyMetrics, repairMetricsFromStdout, roundRatio } from "./evaluation-metrics.js";
 import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
 import { checkerDiagnostics, evidenceManifestStatus, parseCheckerOutput, webpageProjectEvidence } from "./webpage-evidence.js";
 import { webpageTaskPrompt } from "./webpage-task.js";
@@ -335,6 +333,7 @@ async function executeWebpageTask(
   const outcome = checkPassed ? "solved" : commandFailed ? "failed" : "invalid";
   const stdoutPreview = boundedPreview(runResult.stdout);
   const stderrPreview = boundedPreview(runResult.stderr);
+  const repairMetrics = repairMetricsFromStdout(runResult.stdout);
   await platform.writeFile(platform.resolvePath(workspaceRoot, "baseline-output.txt"), [
     `# ${baseline.baselineId}`,
     "",
@@ -388,6 +387,15 @@ async function executeWebpageTask(
       largestGeneratedFileBytes: artifactMetrics.largestFileBytes,
       codeStructureScore: artifactMetrics.structureScore,
       contextRecallQuality: "not-applicable",
+      firstPassSuccess: checkPassed && !commandFailed,
+      repairActivationCount: repairMetrics.repairActivationCount,
+      repairSuccessCount: repairMetrics.repairSuccessCount,
+      ...(repairMetrics.repairActivationCount > 0 ? { repairSuccessRate: roundRatio(repairMetrics.repairSuccessCount / repairMetrics.repairActivationCount) } : {}),
+      failedVerificationCount: 0,
+      correctedVerificationCount: correctionCount > 0 && checkPassed ? 1 : 0,
+      repeatedIneffectiveAttemptCount: 0,
+      ...(repairMetrics.repairStopReason ? { repairStopReason: repairMetrics.repairStopReason } : {}),
+      repairMetricsAvailability: baseline.baselineId === "deepseek-cli" ? "available" : "unavailable",
       promptAssemblyAvailable: promptAssembly.available,
       ...(promptAssembly.fingerprint ? { promptAssemblyFingerprint: promptAssembly.fingerprint } : {}),
       ...(promptAssembly.sectionCount !== undefined ? { promptAssemblySectionCount: promptAssembly.sectionCount } : {}),
@@ -603,127 +611,6 @@ function withRecordedEvent(
 ): readonly CliEvaluationInstrumentationEvent[] {
   events.record(kind, metadata);
   return events.events();
-}
-
-function emptyMetrics(): CliEvaluationRunMetrics {
-  return {
-    retryCount: 0,
-    userInterventionCount: 0,
-    safetyViolationCount: 0,
-    commandRunCount: 0,
-    commandSuccessCount: 0,
-    commandFailureCount: 0,
-    contextRecallQuality: "not-applicable",
-    recoveryUsed: false,
-    redaction: { class: "internal", fields: ["estimatedCostUsd"] }
-  };
-}
-
-function aggregateBaselines(taskRuns: readonly CliEvaluationTaskRunRecord[]): readonly CliEvaluationBaselineAggregate[] {
-  const ids = [...new Set(taskRuns.map((run) => run.baseline.baselineId))];
-  return ids.map((baselineId) => {
-    const runs = taskRuns.filter((run) => run.baseline.baselineId === baselineId);
-    const executed = runs.filter((run) => run.outcome !== "planned" && run.outcome !== "deferred");
-    const solved = runs.filter((run) => run.outcome === "solved");
-    const failed = runs.filter((run) => run.outcome === "failed");
-    const deferred = runs.filter((run) => run.outcome === "deferred");
-    const invalid = runs.filter((run) => run.outcome === "invalid");
-    const checkRates = runs.map((run) => run.metrics.checkPassRate).filter(isNumber);
-    const firstRun = executed.map((run) => run.metrics.firstRunSuccess).filter((value): value is boolean => typeof value === "boolean");
-    const structureScores = runs.map((run) => run.metrics.codeStructureScore).filter(isNumber);
-    const elapsed = runs.map((run) => run.metrics.elapsedMs).filter(isNumber);
-    const correctionCount = executed.reduce((sum, run) => sum + (run.metrics.correctionCount ?? 0), 0);
-    const commandRunCount = executed.reduce((sum, run) => sum + (run.metrics.commandRunCount ?? 0), 0);
-    const commandSuccessCount = executed.reduce((sum, run) => sum + (run.metrics.commandSuccessCount ?? 0), 0);
-    return {
-      baselineId,
-      taskRunCount: runs.length,
-      executedRunCount: executed.length,
-      solvedRunCount: solved.length,
-      failedRunCount: failed.length,
-      deferredRunCount: deferred.length,
-      invalidRunCount: invalid.length,
-      ...(executed.length > 0 ? { successRate: roundRatio(solved.length / executed.length) } : {}),
-      ...(firstRun.length > 0 ? { firstRunSuccessRate: roundRatio(firstRun.filter(Boolean).length / firstRun.length) } : {}),
-      ...(checkRates.length > 0 ? { checkPassRate: roundRatio(average(checkRates)) } : {}),
-      ...(executed.length > 0 ? { correctionRate: roundRatio(correctionCount / executed.length) } : {}),
-      ...(commandRunCount > 0 ? { commandRunCount, commandSuccessCount, commandSuccessRate: roundRatio(commandSuccessCount / commandRunCount) } : {}),
-      ...(structureScores.length > 0 ? { averageStructureScore: roundRatio(average(structureScores)) } : {}),
-      ...(elapsed.length > 0 ? { averageElapsedMs: Math.round(average(elapsed)) } : {}),
-      redaction: { class: "internal" }
-    };
-  });
-}
-
-function deriveGapFindings(aggregates: readonly CliEvaluationBaselineAggregate[]): readonly CliEvaluationGapFinding[] {
-  const deepseek = aggregates.find((item) => item.baselineId === "deepseek-cli");
-  if (!deepseek) return [];
-  const findings: CliEvaluationGapFinding[] = [];
-  for (const competitor of aggregates.filter((item) => item.baselineId !== "deepseek-cli")) {
-    findings.push(...metricGap("CLI_EVALUATION_SUCCESS_RATE_GAP", deepseek, competitor, "successRate", "task success rate"));
-    findings.push(...metricGap("CLI_EVALUATION_STRUCTURE_SCORE_GAP", deepseek, competitor, "averageStructureScore", "generated code structure score"));
-    findings.push(...metricGap("CLI_EVALUATION_CORRECTION_RATE_GAP", deepseek, competitor, "correctionRate", "correction rate"));
-  }
-  if (findings.length === 0 && aggregates.length > 1) {
-    return [{
-      code: "CLI_EVALUATION_GAP_PENDING_EXECUTION",
-      severity: "info",
-      baselineId: "deepseek-cli",
-      metric: "execution",
-      message: "Baseline gap findings require executed task evidence.",
-      redaction: { class: "internal", fields: ["message"] }
-    }];
-  }
-  return findings;
-}
-
-function metricGap(
-  code: string,
-  deepseek: CliEvaluationBaselineAggregate,
-  competitor: CliEvaluationBaselineAggregate,
-  key: "successRate" | "averageStructureScore" | "correctionRate",
-  label: string
-): readonly CliEvaluationGapFinding[] {
-  const ours = deepseek[key];
-  const theirs = competitor[key];
-  if (!isNumber(ours) || !isNumber(theirs)) return [];
-  const delta = roundRatio(ours - theirs);
-  if (Math.abs(delta) < 0.01) {
-    return [{
-      code,
-      severity: "info",
-      baselineId: "deepseek-cli",
-      comparedBaselineId: competitor.baselineId,
-      metric: key,
-      message: `DeepSeek CLI is comparable with ${competitor.baselineId} on ${label}.`,
-      delta,
-      redaction: { class: "internal", fields: ["message"] }
-    }];
-  }
-  return [{
-    code,
-    severity: delta < 0 ? "warn" : "info",
-    baselineId: "deepseek-cli",
-    comparedBaselineId: competitor.baselineId,
-    metric: key,
-    message: delta < 0
-      ? `DeepSeek CLI trails ${competitor.baselineId} on ${label}.`
-      : `DeepSeek CLI leads ${competitor.baselineId} on ${label}.`,
-    delta,
-    redaction: { class: "internal", fields: ["message"] }
-  }];
-}
-
-function isNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function average(values: readonly number[]): number {
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function roundRatio(value: number): number {
-  return Math.round(value * 1000) / 1000;
 }
 
 function diagnostic(code: string, severity: CliEvaluationDiagnostic["severity"], message: string): CliEvaluationDiagnostic {

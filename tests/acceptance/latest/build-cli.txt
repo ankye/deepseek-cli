@@ -1,12 +1,20 @@
+# CLI build
+
+Command: npm run build:cli
+Exit Code: 0
+Duration Ms: 836
+
+## stdout
 
 > deepseek-cli-platform@0.1.0 build:cli
 > npm run build --workspace deepseek-agent-cli
 
 
-> deepseek-agent-cli@0.1.3 build
+> deepseek-agent-cli@0.1.4 build
 > esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js
 
+## stderr
 
-  dist\index.js  707.0kb
+  dist\index.js  1.1mb
 
-Done in 27ms
+Done in 54ms

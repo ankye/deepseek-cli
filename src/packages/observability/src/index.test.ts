@@ -137,6 +137,56 @@ describe("observability privacy sink", () => {
     assert.equal(serialized.includes("pit.diagnostic-redaction.support-bundle"), true);
     assert.equal(bundle.redactionSummary.highestPrivacyClass, "secret");
   });
+
+  it("keeps self-repair diagnostic evidence local, bounded, and redacted", async () => {
+    const sink = new InMemoryObservabilitySink();
+    const longStdout = `repair stdout ${"x".repeat(1600)} ${secret}`;
+    await sink.emit({
+      kind: "repair",
+      at: new Date(0).toISOString(),
+      name: "agent.repair.verification.completed",
+      trace: {
+        traceId: asId<"trace">("trace-repair-observability"),
+        spanId: asId<"span">("span-repair-observability"),
+        correlationId: asId<"correlation">("corr-repair-observability"),
+        sessionId: asId<"session">("session-repair-observability")
+      },
+      fields: {
+        classification: {
+          classificationId: "repair-classification:observability",
+          failureSource: "build-test-error",
+          evidenceFingerprints: ["repair:h1"]
+        },
+        attempt: {
+          attemptId: "repair-attempt:observability",
+          stopReason: "verification-failed"
+        },
+        verification: {
+          verificationId: "repair-verification:observability",
+          command: "npm test",
+          stdoutPreview: longStdout,
+          stderrPreview: `Bearer ${secret}`,
+          providerReasoning: `raw provider diagnosis ${secret}`
+        }
+      }
+    });
+
+    const bundle = await sink.createDiagnosticBundle({ target: "local-bundle", reason: "repair bundle" });
+    const denied = await sink.createDiagnosticBundle({ target: "external-telemetry", reason: `repair upload ${secret}` });
+    const serialized = JSON.stringify(bundle);
+
+    assert.equal(bundle.records[0]?.kind, "repair");
+    assert.equal(bundle.records[0]?.name, "agent.repair.verification.completed");
+    assert.equal(serialized.includes(secret), false);
+    assert.equal(serialized.includes(`Bearer ${secret}`), false);
+    assert.equal(serialized.includes("raw provider diagnosis"), false);
+    assert.equal(serialized.includes("x".repeat(1300)), false);
+    assert.equal(serialized.includes("[truncated]"), true);
+    assert.equal(bundle.redactionSummary.secretLikeFields.length > 0, true);
+    assert.equal(denied.privacyDecision.action, "deny-export");
+    assert.equal(denied.records.length, 0);
+    assert.equal(JSON.stringify(denied).includes(secret), false);
+  });
 });
 
 function approvalDiagnosticRecord(): ApprovalLifecycleRecord {

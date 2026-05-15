@@ -2,6 +2,7 @@ import type { CapabilityManifest } from "./capability.js";
 import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadata, TraceContext } from "./common.js";
 import type { ContextProjectionResult } from "./context.js";
 import type { EvidenceFirstRuntimeContext } from "./evidence-first.js";
+import type { SelfRepairOutcomeSummary } from "./self-repair.js";
 import type { AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
 import type { ModelChatMessage, ModelProfile, ModelReasoningOptions, ModelToolChoice } from "./model.js";
 import type { AgentId, SessionId, TurnId } from "./ids.js";
@@ -23,6 +24,8 @@ export type PromptSectionKind =
   | "context.code-intelligence"
   | "context.tool-result"
   | "context.skill"
+  | "repair.diagnostics"
+  | "repair.verification"
   | "tools.policy"
   | "tools.available"
   | "safety.redaction";
@@ -36,6 +39,7 @@ export type PromptSectionSource =
   | "code-intelligence"
   | "tool-result"
   | "skill-system"
+  | "self-repair"
   | "capability-registry";
 export type PromptSectionBudgetClass = "required" | "high" | "normal" | "low" | "optional";
 export type PromptSectionTrust = "system" | "trusted" | "workspace" | "semantic" | "untrusted";
@@ -167,6 +171,7 @@ export interface PromptAssemblyInput {
   readonly history: readonly ModelChatMessage[];
   readonly contextProjection?: ContextProjectionResult;
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
+  readonly selfRepair?: SelfRepairOutcomeSummary;
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly availableTools: readonly CapabilityManifest[];
   readonly toolPolicy: AgentLoopToolProjection;

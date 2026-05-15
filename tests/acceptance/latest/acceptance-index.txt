@@ -1,0 +1,15 @@
+# Acceptance index
+
+Command: npm run acceptance:index
+Exit Code: 0
+Duration Ms: 410
+
+## stdout
+
+> deepseek-cli-platform@0.1.0 acceptance:index
+> node scripts/write-acceptance-index.mjs
+
+wrote tests/acceptance/acceptance-index.md
+
+## stderr
+

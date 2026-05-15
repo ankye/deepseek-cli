@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId, type EvidenceManifest } from "@deepseek/platform-contracts";
+import { CONTEXT_PROJECTION_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, HOOK_SCHEMA_VERSION, MCP_SCHEMA_VERSION, OBSERVABILITY_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, SESSION_SCHEMA_VERSION, SKILL_SCHEMA_VERSION, asId, type EvidenceManifest, type SelfRepairModelHypothesis, type SelfRepairOutcomeSummary } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
 import { InMemoryMcpGateway } from "@deepseek/mcp-gateway";
@@ -273,5 +273,59 @@ describe("versioning checks", () => {
     const missingSchema = { ...manifest } as { schemaVersion?: string };
     delete missingSchema.schemaVersion;
     assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
+  });
+
+  it("requires schemaVersion on self-repair evidence schemas", () => {
+    const trace = {
+      traceId: asId<"trace">("trace-repair-version"),
+      spanId: asId<"span">("span-repair-version"),
+      correlationId: asId<"correlation">("corr-repair-version")
+    };
+    const outcome: SelfRepairOutcomeSummary = {
+      schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+      enabled: true,
+      activated: true,
+      attemptCount: 1,
+      successCount: 1,
+      repeatedNoopCount: 0,
+      stopReason: "completed",
+      classifications: [{
+        schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+        classificationId: "repair-classification:version",
+        failureSource: "tool-error",
+        status: "classified",
+        repairability: "repairable",
+        safetyClass: "safe-read",
+        affectedScope: "tool",
+        severity: "error",
+        evidenceFingerprints: ["repair:h1"],
+        diagnostics: [],
+        trace,
+        compatibility: SELF_REPAIR_COMPATIBILITY,
+        redaction: { class: "internal" }
+      }],
+      attempts: [],
+      verification: [],
+      compatibility: SELF_REPAIR_COMPATIBILITY,
+      redaction: { class: "internal" }
+    };
+    const hypothesis: SelfRepairModelHypothesis = {
+      schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+      hypothesisId: "repair-hypothesis:version",
+      classificationId: "repair-classification:version",
+      status: "accepted",
+      hypothesisPreview: "tool input mismatch",
+      proposedActionType: "model-feedback",
+      evidenceFingerprints: ["repair:h1"],
+      diagnostics: [],
+      trace,
+      compatibility: SELF_REPAIR_COMPATIBILITY,
+      redaction: { class: "internal", fields: ["hypothesisPreview"] }
+    };
+
+    assert.deepEqual(requireSchemaVersion(outcome), []);
+    assert.ok(outcome.classifications[0]);
+    assert.deepEqual(requireSchemaVersion(outcome.classifications[0]), []);
+    assert.deepEqual(requireSchemaVersion(hypothesis), []);
   });
 });

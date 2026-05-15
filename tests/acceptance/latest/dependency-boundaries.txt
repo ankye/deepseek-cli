@@ -1,1 +1,11 @@
-dependency boundaries passed for 27 packages from src (16 rules)
+# Dependency boundaries
+
+Command: node scripts/check-boundaries.mjs
+Exit Code: 0
+Duration Ms: 3719
+
+## stdout
+dependency boundaries passed for 29 packages from src (18 rules)
+
+## stderr
+

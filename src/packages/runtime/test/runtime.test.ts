@@ -127,6 +127,55 @@ describe("headless runtime", () => {
     await kernel.shutdown();
   });
 
+  it("revises unsupported evidence-first claims once before completing", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new EvidenceRevisionModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await loopDeps.platform.writeFile("/workspace/README.md", "DeepSeek CLI repository evidence\n");
+    await loopDeps.platform.writeFile("/workspace/src/apps/cli/package.json", JSON.stringify({ name: "deepseek-agent-cli", bin: { deepseek: "dist/index.js" } }));
+    await loopDeps.platform.writeFile("/workspace/docs/reference/command-index.md", "deepseek run <prompt>\n");
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "生成 DeepSeek CLI 产品介绍",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      limits: { maxModelIterations: 3 }
+    }));
+
+    assert.equal(events.some((event) => event.kind === "evidence.claims.grounded"), true);
+    assert.equal(events.some((event) => event.kind === "evidence.unsupported-claim"), true);
+    assert.equal(gateway.requests.length, 2);
+    assert.equal(gateway.requests[1]?.messages?.some((message) => message.role === "tool" && message.toolName === "evidence-first.claim-grounding"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    assert.equal(String(events.at(-1)?.data.assistantText).includes("npx deepseek-cli init"), false);
+    await kernel.shutdown();
+  });
+
+  it("fails closed when unsupported evidence-first claims remain after revision", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const loopDeps = { ...deps, models: new StubbornUnsupportedClaimModelGateway() };
+    await loopDeps.platform.writeFile("/workspace/README.md", "DeepSeek CLI repository evidence\n");
+    await loopDeps.platform.writeFile("/workspace/src/apps/cli/package.json", JSON.stringify({ name: "deepseek-agent-cli", bin: { deepseek: "dist/index.js" } }));
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "生成 DeepSeek CLI 产品介绍",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      limits: { maxModelIterations: 3 }
+    }));
+
+    assert.equal(events.filter((event) => event.kind === "evidence.unsupported-claim").length >= 1, true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.failed");
+    assert.equal(events.at(-1)?.data.reason, "evidence-unsupported-claim");
+    await kernel.shutdown();
+  });
+
   it("classifies speculative tasks without mandatory evidence discovery", async () => {
     const deps = createDeterministicRuntimeDependencies();
     const gateway = new CapturingModelGateway();
@@ -186,6 +235,133 @@ describe("headless runtime", () => {
     assert.equal(events.some((event) => event.kind === "runtime.error" && event.error?.code === "MODEL_FAILED"), true);
     assert.equal(events.at(-1)?.kind, "agent.loop.failed");
     assert.equal(events.at(-1)?.data.status, "failed");
+    await kernel.shutdown();
+  });
+
+  it("classifies failures without activating repair when self-repair is disabled", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const loopDeps = { ...deps, models: new ErrorModelGateway() };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "provider failure",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    assert.equal(events.some((event) => event.kind === "agent.repair.classified"), true);
+    assert.equal(events.some((event) => event.kind === "agent.repair.plan.created"), false);
+    const terminalData = events.at(-1)?.data as { selfRepair?: { enabled?: boolean; activated?: boolean } } | undefined;
+    assert.equal(terminalData?.selfRepair?.enabled, false);
+    assert.equal(terminalData?.selfRepair?.activated, false);
+    await kernel.shutdown();
+  });
+
+  it("runs one bounded self-repair model-feedback attempt before terminal failure", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new RepairingProviderErrorModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "provider failure then repair",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      selfRepair: { enabled: true, maxAttempts: 1, requireCheckpointForWrites: false, verificationMode: "minimal" },
+      limits: { maxModelIterations: 3, maxRepairAttempts: 1 }
+    }));
+
+    assert.equal(events.some((event) => event.kind === "agent.repair.started"), true);
+    assert.equal(events.some((event) => event.kind === "agent.repair.plan.created"), true);
+    assert.equal(events.some((event) => event.kind === "agent.repair.attempt.completed"), true);
+    assert.equal(gateway.requests.length, 2);
+    assert.equal(gateway.requests[1]?.messages?.some((message) => message.role === "tool" && message.toolName === "agent.self-repair"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    const terminalData = events.at(-1)?.data as { selfRepair?: { activated?: boolean; attemptCount?: number } } | undefined;
+    assert.equal(terminalData?.selfRepair?.activated, true);
+    assert.equal(terminalData?.selfRepair?.attemptCount, 1);
+    await kernel.shutdown();
+  });
+
+  it("stops write-capable self-repair when checkpoint evidence is unavailable", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const loopDeps = { ...deps, models: new TypecheckErrorModelGateway() };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "typecheck failure needing repair",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      selfRepair: { enabled: true, maxAttempts: 1, requireCheckpointForWrites: true, verificationMode: "targeted" },
+      limits: { maxModelIterations: 3, maxRepairAttempts: 1 }
+    }));
+
+    const stopped = events.find((event) => event.kind === "agent.repair.stopped")?.data as { stopReason?: string } | undefined;
+    const terminalData = events.at(-1)?.data as { selfRepair?: { stopReason?: string; attemptCount?: number; classifications?: readonly { failureSource?: string }[] } } | undefined;
+    assert.equal(events.some((event) => event.kind === "agent.repair.plan.created"), true);
+    assert.equal(events.some((event) => event.kind === "agent.repair.attempt.started"), false);
+    assert.equal(stopped?.stopReason, "checkpoint-unavailable");
+    assert.equal(events.at(-1)?.kind, "agent.loop.failed");
+    assert.equal(terminalData?.selfRepair?.stopReason, "checkpoint-unavailable");
+    assert.equal(terminalData?.selfRepair?.attemptCount, 0);
+    assert.equal(terminalData?.selfRepair?.classifications?.[0]?.failureSource, "build-test-error");
+    await kernel.shutdown();
+  });
+
+  it("stops self-repair without mutation for non-repairable credential failures", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const loopDeps = { ...deps, models: new MissingCredentialModelGateway() };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "provider credential failure",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      selfRepair: { enabled: true, maxAttempts: 1, requireCheckpointForWrites: false, verificationMode: "minimal" }
+    }));
+
+    const stopped = events.find((event) => event.kind === "agent.repair.stopped")?.data as { stopReason?: string; classification?: { repairability?: string } } | undefined;
+    const terminalData = events.at(-1)?.data as { selfRepair?: { stopReason?: string; attemptCount?: number } } | undefined;
+    assert.equal(stopped?.stopReason, "not-repairable");
+    assert.equal(stopped?.classification?.repairability, "not-repairable");
+    assert.equal(events.some((event) => event.kind === "agent.repair.attempt.started"), false);
+    assert.equal(terminalData?.selfRepair?.stopReason, "not-repairable");
+    assert.equal(terminalData?.selfRepair?.attemptCount, 0);
+    await kernel.shutdown();
+  });
+
+  it("fails closed when a bounded self-repair attempt does not clear the failure", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new PersistentRepairFailureModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "provider failure persists after repair",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      selfRepair: { enabled: true, maxAttempts: 1, requireCheckpointForWrites: false, verificationMode: "minimal" },
+      limits: { maxModelIterations: 3, maxRepairAttempts: 1 }
+    }));
+
+    const stops = events.filter((event) => event.kind === "agent.repair.stopped").map((event) => event.data as { stopReason?: string });
+    const terminalData = events.at(-1)?.data as { selfRepair?: { stopReason?: string; attemptCount?: number; successCount?: number } } | undefined;
+    assert.deepEqual(stops.map((stop) => stop.stopReason), ["completed", "budget-exhausted"]);
+    assert.equal(events.at(-1)?.kind, "agent.loop.failed");
+    assert.equal(terminalData?.selfRepair?.stopReason, "budget-exhausted");
+    assert.equal(terminalData?.selfRepair?.attemptCount, 1);
+    assert.equal(terminalData?.selfRepair?.successCount, 0);
+    assert.equal(gateway.requests.length, 2);
     await kernel.shutdown();
   });
 
@@ -481,6 +657,125 @@ class ErrorModelGateway implements ModelGateway {
         redaction: { class: "public" }
       }
     };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class RepairingProviderErrorModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    if (request.messages?.some((message) => message.role === "tool" && message.toolName === "agent.self-repair")) {
+      yield { kind: "delta", text: "Recovered after repair feedback." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield {
+      kind: "error",
+      error: {
+        code: "MODEL_FAILED",
+        message: "model failed once",
+        retryable: true,
+        redaction: { class: "public" }
+      }
+    };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class PersistentRepairFailureModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    yield {
+      kind: "error",
+      error: {
+        code: "MODEL_FAILED",
+        message: request.messages?.some((message) => message.role === "tool" && message.toolName === "agent.self-repair")
+          ? "model still failed after repair"
+          : "model failed before repair",
+        retryable: true,
+        redaction: { class: "public" }
+      }
+    };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class MissingCredentialModelGateway implements ModelGateway {
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield {
+      kind: "error",
+      error: {
+        code: "MISSING_CREDENTIAL",
+        message: "credential is unavailable",
+        retryable: false,
+        redaction: { class: "public" }
+      }
+    };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class TypecheckErrorModelGateway implements ModelGateway {
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield {
+      kind: "error",
+      error: {
+        code: "TYPECHECK_FAILED",
+        message: "typecheck failed",
+        retryable: true,
+        redaction: { class: "public" }
+      }
+    };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class EvidenceRevisionModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    if (request.messages?.some((message) => message.role === "tool" && message.toolName === "evidence-first.claim-grounding")) {
+      yield { kind: "delta", text: "DeepSeek CLI package is deepseek-agent-cli." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "delta", text: "Run npx deepseek-cli init to start." };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+}
+
+class StubbornUnsupportedClaimModelGateway implements ModelGateway {
+  async *stream(_request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    yield { kind: "delta", text: "Run npx deepseek-cli init to start." };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
   }
 
   async countTokens(text: string): Promise<number> {

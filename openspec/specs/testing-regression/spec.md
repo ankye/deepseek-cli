@@ -1543,3 +1543,95 @@ Regression tests 必须覆盖 plugin updates 增加或移除 credential requirem
 - **WHEN** a plugin update adds a credential requirement compared with a lockfile baseline
 - **THEN** tests assert lifecycle evidence reports the exact auth requirement diff, permission diff remains exact, and audit metadata cites the relevant pit fixtures
 - **中文** 当 plugin update 相比 lockfile baseline 增加 credential requirement 时，测试必须断言 lifecycle evidence 报告精确 auth requirement diff、permission diff 保持精确，并且 audit metadata 引用相关 pit fixtures。
+
+### Requirement: Evidence-First Regression Coverage / 证据优先回归覆盖
+
+The regression suite SHALL cover evidence-first behavior for repository facts, product pages, command recommendations, code explanations, reports, and generated artifacts.
+
+regression suite 必须覆盖 repository facts、product pages、command recommendations、code explanations、reports 与 generated artifacts 的 evidence-first behavior。
+
+#### Scenario: Fact-sensitive task requires evidence events / 事实敏感任务要求证据事件
+- **WHEN** a deterministic runtime test submits a fact-sensitive project prompt
+- **THEN** tests assert evidence classification, evidence plan, selected evidence summary, prompt boundary preservation, and claim grounding evidence before terminal output
+- **中文** 当 deterministic runtime test 提交 fact-sensitive project prompt 时，测试必须断言 terminal output 之前存在 evidence classification、evidence plan、selected evidence summary、prompt boundary preservation 与 claim grounding evidence。
+
+#### Scenario: Speculative task labels assumptions / 推测任务标注假设
+- **WHEN** a deterministic runtime test submits an explicitly speculative or brainstorming prompt
+- **THEN** tests assert mandatory evidence is skipped or reduced only with task classification evidence and assumption labeling
+- **中文** 当 deterministic runtime test 提交明确 speculative 或 brainstorming prompt 时，测试必须断言只有带 task classification evidence 与 assumption labeling 时，mandatory evidence 才可跳过或降低。
+
+### Requirement: Unsupported Claim Regression Fixtures / 未支持声明回归 Fixtures
+
+The regression suite SHALL include fixtures that fail when generated project/product output contains unsupported commands, package names, feature claims, release states, or evaluation conclusions.
+
+regression suite 必须包含当生成项目/产品输出含 unsupported commands、package names、feature claims、release states 或 evaluation conclusions 时会失败的 fixtures。
+
+#### Scenario: Hallucinated CLI command is rejected / 幻觉 CLI 命令被拒绝
+- **WHEN** a generated webpage or report claims `npx deepseek-cli init` without direct evidence
+- **THEN** tests assert the checker or evaluation runner reports unsupported-command and does not mark the task solved
+- **中文** 当生成网页或报告在没有直接证据时声明 `npx deepseek-cli init`，测试必须断言 checker 或 evaluation runner 报告 unsupported-command，且不将任务标为 solved。
+
+#### Scenario: Evidence manifest is required for product webpage / 产品网页需要证据清单
+- **WHEN** a generated product webpage passes structural HTML/CSS/JS checks but lacks an evidence manifest
+- **THEN** tests assert the webpage checker fails with a missing-evidence-manifest diagnostic
+- **中文** 当生成产品网页通过结构性 HTML/CSS/JS 检查但缺少 evidence manifest 时，测试必须断言 webpage checker 以 missing-evidence-manifest diagnostic 失败。
+
+### Requirement: Evidence Schema Versioning / 证据 Schema 版本化
+
+Evidence-first DTOs, events, manifests, and evaluation metrics SHALL be covered by schema versioning tests.
+
+evidence-first DTOs、events、manifests 与 evaluation metrics 必须被 schema versioning tests 覆盖。
+
+#### Scenario: Evidence artifacts declare schema versions / 证据产物声明 Schema 版本
+- **WHEN** tests serialize evidence plans, evidence items, claim groundings, manifests, or unsupported-claim diagnostics
+- **THEN** every artifact includes a supported schema version, compatibility metadata, stable ids, and redaction metadata
+- **中文** 当测试序列化 evidence plans、evidence items、claim groundings、manifests 或 unsupported-claim diagnostics 时，每个 artifact 必须包含 supported schema version、compatibility metadata、stable ids 与 redaction metadata。
+
+### Requirement: Self-Repair Regression Coverage / 自修复回归覆盖
+
+The regression suite SHALL cover deterministic self-repair scenarios from failure classification through repair attempt, verification, and terminal decision.
+
+regression suite 必须覆盖从 failure classification 到 repair attempt、verification 与 terminal decision 的确定性 self-repair scenarios。
+
+#### Scenario: Tool failure repair replay is tested / 工具失败修复 Replay 被测试
+- **WHEN** a deterministic runtime fixture triggers a repairable tool or artifact failure
+- **THEN** regression tests assert classification, repair plan evidence, governed tool execution, verification result, terminal summary, and stable replay ordering
+- **中文** 当 deterministic runtime fixture 触发可修复 tool 或 artifact failure 时，regression tests 必须断言 classification、repair plan evidence、受治理工具执行、verification result、terminal summary 与稳定 replay ordering。
+
+#### Scenario: Non-repairable failure replay is tested / 不可修复失败 Replay 被测试
+- **WHEN** a deterministic fixture triggers missing credentials, policy denial, approval-required, unsafe path, or external-service unavailable failure
+- **THEN** regression tests assert the repair loop stops or escalates without workspace mutation and records a typed non-repairable reason
+- **中文** 当 deterministic fixture 触发 missing credentials、policy denial、approval-required、unsafe path 或 external-service unavailable failure 时，regression tests 必须断言 repair loop 在不修改 workspace 的情况下停止或升级，并记录 typed non-repairable reason。
+
+### Requirement: Self-Repair Evidence Contract Tests / 自修复证据契约测试
+
+Contract tests SHALL validate self-repair DTOs, runtime events, observability records, evaluation metrics, redaction metadata, and schema versioning.
+
+contract tests 必须验证 self-repair DTOs、runtime events、observability records、evaluation metrics、redaction metadata 与 schema versioning。
+
+#### Scenario: Repair DTOs require schema and redaction / 修复 DTO 要求 Schema 与脱敏
+- **WHEN** self-repair DTOs or events are serialized in tests
+- **THEN** every public artifact includes schema version, stable ids, typed status, redaction metadata, compatibility metadata, and no raw secret fixture values
+- **中文** 当 self-repair DTOs 或 events 在测试中序列化时，每个公共 artifact 必须包含 schema version、stable ids、typed status、redaction metadata、compatibility metadata，且不含 raw secret fixture values。
+
+#### Scenario: Golden replay detects decision drift / Golden Replay 检测决策漂移
+- **WHEN** self-repair golden traces are replayed
+- **THEN** the harness detects drift in classification, repair policy decision, attempt ordering, verification ladder, stop reason, or redaction summary
+- **中文** 当 self-repair golden traces 被 replay 时，harness 必须检测 classification、repair policy decision、attempt ordering、verification ladder、stop reason 或 redaction summary 的漂移。
+
+### Requirement: Self-Repair Evaluation Fixtures / 自修复评估 Fixtures
+
+The testing framework SHALL provide fixtures that intentionally fail first and require bounded correction before the task can be scored as solved.
+
+testing framework 必须提供会先失败、并要求有界纠正后任务才能评分为 solved 的 fixtures。
+
+#### Scenario: Failing webpage fixture requires repair / 失败网页 Fixture 要求修复
+- **WHEN** the webpage-generation repair fixture is run
+- **THEN** the initial artifact check fails deterministically and the task can only be scored solved after the generated webpage is repaired and the checker passes
+- **中文** 当 webpage-generation repair fixture 运行时，初始 artifact check 必须确定性失败，且只有生成网页被修复并通过 checker 后，该任务才能评分为 solved。
+
+#### Scenario: Failing code fixture requires targeted repair / 失败代码 Fixture 要求目标修复
+- **WHEN** a code fixture intentionally triggers a typecheck, lint, import, or boundary failure
+- **THEN** the task can only be scored solved after the targeted check passes and unrelated files remain outside the allowed changed-scope evidence
+- **中文** 当 code fixture 有意触发 typecheck、lint、import 或 boundary failure 时，只有 targeted check 通过且无关文件保持在 allowed changed-scope evidence 外，该任务才能评分为 solved。
+

@@ -1,3 +1,10 @@
+# E2E tests
+
+Command: npm run test:e2e
+Exit Code: 0
+Duration Ms: 5674
+
+## stdout
 
 > deepseek-cli-platform@0.1.0 test:e2e
 > tsx --test "tests/e2e/**/*.test.ts"
@@ -7,178 +14,223 @@ TAP version 13
     # Subtest: runs CLI jsonl and activates VSCode bridge
     ok 1 - runs CLI jsonl and activates VSCode bridge
       ---
-      duration_ms: 10.6241
+      duration_ms: 141.5414
       type: 'test'
       ...
     # Subtest: runs CLI one-shot command in JSON summary mode
     ok 2 - runs CLI one-shot command in JSON summary mode
       ---
-      duration_ms: 2.9621
+      duration_ms: 122.0324
       type: 'test'
       ...
     # Subtest: runs CLI core tools smoke through runtime events without live provider access
     ok 3 - runs CLI core tools smoke through runtime events without live provider access
       ---
-      duration_ms: 14.8239
+      duration_ms: 23.1694
       type: 'test'
       ...
     # Subtest: runs scripted chat prompts and exits cleanly
     ok 4 - runs scripted chat prompts and exits cleanly
       ---
-      duration_ms: 4.8288
+      duration_ms: 118.1854
       type: 'test'
       ...
     # Subtest: runs scriptable session resume and fork failures without live provider access
     ok 5 - runs scriptable session resume and fork failures without live provider access
       ---
-      duration_ms: 8.651
+      duration_ms: 160.9994
       type: 'test'
       ...
     # Subtest: runs the built CLI binary with traceable runtime metadata
     ok 6 - runs the built CLI binary with traceable runtime metadata
       ---
-      duration_ms: 56.9631
+      duration_ms: 268.4037
       type: 'test'
       ...
     # Subtest: keeps raw secret fixtures out of CLI text and jsonl output
     ok 7 - keeps raw secret fixtures out of CLI text and jsonl output
       ---
-      duration_ms: 605.4324
+      duration_ms: 2080.7144
       type: 'test'
       ...
     # Subtest: runs the built CLI binary in scripted chat mode
     ok 8 - runs the built CLI binary in scripted chat mode
       ---
-      duration_ms: 59.8094
+      duration_ms: 256.3288
       type: 'test'
       ...
     # Subtest: keeps the VSCode bridge transport-backed and isolated from CLI rendering
     ok 9 - keeps the VSCode bridge transport-backed and isolated from CLI rendering
       ---
-      duration_ms: 0.4063
+      duration_ms: 0.7736
       type: 'test'
       ...
     # Subtest: lets VSCode project runtime kernel events without importing CLI
     ok 10 - lets VSCode project runtime kernel events without importing CLI
       ---
-      duration_ms: 2.7438
+      duration_ms: 4.498
       type: 'test'
       ...
     1..10
 ok 1 - host adapter smoke
   ---
-  duration_ms: 767.9685
+  duration_ms: 3178.0227
   type: 'suite'
   ...
 # Subtest: local readiness CLI
     # Subtest: renders init as text
     ok 1 - renders init as text
       ---
-      duration_ms: 13.598
+      duration_ms: 27.9889
       type: 'test'
       ...
     # Subtest: renders init as JSON
     ok 2 - renders init as JSON
       ---
-      duration_ms: 7.5179
+      duration_ms: 17.525
       type: 'test'
       ...
     # Subtest: renders config as text
     ok 3 - renders config as text
       ---
-      duration_ms: 1.6844
+      duration_ms: 6.1164
       type: 'test'
       ...
     # Subtest: renders config as JSON
     ok 4 - renders config as JSON
       ---
-      duration_ms: 1.5888
+      duration_ms: 5.7657
       type: 'test'
       ...
     # Subtest: renders auth as text
     ok 5 - renders auth as text
       ---
-      duration_ms: 2.7485
+      duration_ms: 7.8171
       type: 'test'
       ...
     # Subtest: renders auth as JSON
     ok 6 - renders auth as JSON
       ---
-      duration_ms: 1.518
+      duration_ms: 5.6485
       type: 'test'
       ...
     # Subtest: renders doctor as text
     ok 7 - renders doctor as text
       ---
-      duration_ms: 1.7529
+      duration_ms: 9.6404
       type: 'test'
       ...
     # Subtest: renders doctor as JSON
     ok 8 - renders doctor as JSON
       ---
-      duration_ms: 1.3972
+      duration_ms: 6.8327
       type: 'test'
       ...
     # Subtest: renders privacy as text
     ok 9 - renders privacy as text
       ---
-      duration_ms: 1.6932
+      duration_ms: 6.6857
       type: 'test'
       ...
     # Subtest: renders privacy as JSON
     ok 10 - renders privacy as JSON
       ---
-      duration_ms: 1.5161
+      duration_ms: 4.7968
       type: 'test'
       ...
     # Subtest: renders verify-install as text
     ok 11 - renders verify-install as text
       ---
-      duration_ms: 1.2399
+      duration_ms: 4.41
       type: 'test'
       ...
     # Subtest: renders verify-install as JSON
     ok 12 - renders verify-install as JSON
       ---
-      duration_ms: 1.2705
+      duration_ms: 5.1883
       type: 'test'
       ...
     # Subtest: sets config values with redacted structured output
     ok 13 - sets config values with redacted structured output
       ---
-      duration_ms: 3.158
+      duration_ms: 9.9798
       type: 'test'
       ...
     # Subtest: initializes workspace metadata with non-secret defaults
     ok 14 - initializes workspace metadata with non-secret defaults
       ---
-      duration_ms: 6.5009
+      duration_ms: 17.8921
       type: 'test'
       ...
     # Subtest: runs fake live doctor without network and returns structural evidence
     ok 15 - runs fake live doctor without network and returns structural evidence
       ---
-      duration_ms: 1.932
+      duration_ms: 6.167
       type: 'test'
       ...
     # Subtest: reports platform provider diagnostics while doctor stays offline
     ok 16 - reports platform provider diagnostics while doctor stays offline
       ---
-      duration_ms: 1.695
+      duration_ms: 16.7587
       type: 'test'
       ...
-    1..16
+    # Subtest: renders index provider status and set downgrade evidence locally
+    ok 17 - renders index provider status and set downgrade evidence locally
+      ---
+      duration_ms: 11.8679
+      type: 'test'
+      ...
+    # Subtest: renders index provider activation evidence in text output
+    ok 18 - renders index provider activation evidence in text output
+      ---
+      duration_ms: 9.6149
+      type: 'test'
+      ...
+    # Subtest: renders diagnostics release readiness as JSON
+    ok 19 - renders diagnostics release readiness as JSON
+      ---
+      duration_ms: 4.1713
+      type: 'test'
+      ...
+    # Subtest: renders diagnostics release acceptance evidence in text output
+    ok 20 - renders diagnostics release acceptance evidence in text output
+      ---
+      duration_ms: 3.0542
+      type: 'test'
+      ...
+    # Subtest: renders diagnostics verify as a local pre-publish decision
+    ok 21 - renders diagnostics verify as a local pre-publish decision
+      ---
+      duration_ms: 3.3929
+      type: 'test'
+      ...
+    # Subtest: renders diagnostics refresh dry-run as a local evidence plan
+    ok 22 - renders diagnostics refresh dry-run as a local evidence plan
+      ---
+      duration_ms: 2.1237
+      type: 'test'
+      ...
+    # Subtest: renders diagnostics evaluate without invoking external baselines
+    ok 23 - renders diagnostics evaluate without invoking external baselines
+      ---
+      duration_ms: 3.5167
+      type: 'test'
+      ...
+    1..23
 ok 2 - local readiness CLI
   ---
-  duration_ms: 52.061
+  duration_ms: 199.8399
   type: 'suite'
   ...
 1..2
-# tests 26
+# tests 33
 # suites 2
-# pass 26
+# pass 33
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 1588.6193
+# duration_ms 5104.423
+
+## stderr
+

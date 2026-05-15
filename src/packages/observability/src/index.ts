@@ -26,6 +26,8 @@ export const defaultPrivacySettings: PrivacySettings = {
   redaction: { class: "internal", fields: ["fields", "trace"] }
 };
 
+const MAX_OBSERVABILITY_TEXT_CHARS = 1200;
+
 const localBundlePolicy: ObservabilityExportPolicy = {
   target: "local-bundle",
   allowSensitive: true,
@@ -207,12 +209,13 @@ function redactJson(value: unknown, path = "fields"): RedactedJsonResult {
   const visit = (input: unknown, currentPath: string): unknown => {
     if (typeof input === "string") {
       const redacted = redactSecretText(input);
-      if (redacted !== input) {
+      const bounded = boundObservabilityText(redacted);
+      if (redacted !== input || bounded !== redacted) {
         redactedFields.push(currentPath);
-        secretLikeFields.push(currentPath);
+        if (redacted !== input) secretLikeFields.push(currentPath);
         redactedValueCount += 1;
       }
-      return redacted;
+      return bounded;
     }
     if (Array.isArray(input)) {
       return input.map((item, index) => visit(item, `${currentPath}[${index}]`));
@@ -225,6 +228,10 @@ function redactJson(value: unknown, path = "fields"): RedactedJsonResult {
           output[key] = "[REDACTED:secret]";
           redactedFields.push(childPath);
           secretLikeFields.push(childPath);
+          redactedValueCount += 1;
+        } else if (isProviderReasoningKey(key)) {
+          output[key] = "[REDACTED:provider-reasoning]";
+          redactedFields.push(childPath);
           redactedValueCount += 1;
         } else {
           output[key] = visit(item, childPath);
@@ -244,7 +251,11 @@ function redactJson(value: unknown, path = "fields"): RedactedJsonResult {
 }
 
 function summarizeRedactedJson(redacted: RedactedJsonResult): ObservabilityRedactionSummary {
-  const highestPrivacyClass: ObservabilityDataPrivacyClass = redacted.redactedValueCount > 0 ? "secret" : "local";
+  const highestPrivacyClass: ObservabilityDataPrivacyClass = redacted.secretLikeFields.length > 0
+    ? "secret"
+    : redacted.redactedValueCount > 0
+      ? "sensitive"
+      : "local";
   return {
     schemaVersion: OBSERVABILITY_SCHEMA_VERSION,
     redactedFields: redacted.redactedFields,
@@ -253,6 +264,10 @@ function summarizeRedactedJson(redacted: RedactedJsonResult): ObservabilityRedac
     highestPrivacyClass,
     redaction: { class: redactionClassForPrivacy(highestPrivacyClass), fields: redacted.redactedFields }
   };
+}
+
+function boundObservabilityText(value: string): string {
+  return value.length > MAX_OBSERVABILITY_TEXT_CHARS ? `${value.slice(0, MAX_OBSERVABILITY_TEXT_CHARS)}... [truncated]` : value;
 }
 
 function redactSecretText(value: string): string {
@@ -268,6 +283,10 @@ function redactSecretText(value: string): string {
 
 function isSecretKey(key: string): boolean {
   return /api[_-]?key|token|secret|password|credential/i.test(key);
+}
+
+function isProviderReasoningKey(key: string): boolean {
+  return /providerReasoning|rawReasoning|reasoningTrace/i.test(key);
 }
 
 function redactionClassForPrivacy(dataPrivacyClass: ObservabilityDataPrivacyClass): RedactionMetadata["class"] {

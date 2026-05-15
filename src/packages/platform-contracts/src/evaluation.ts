@@ -87,6 +87,15 @@ export interface CliEvaluationRunMetrics extends JsonObject {
   readonly codeStructureScore?: number;
   readonly contextRecallQuality?: "good" | "partial" | "missing" | "not-applicable";
   readonly recoveryUsed: boolean;
+  readonly firstPassSuccess?: boolean;
+  readonly repairActivationCount?: number;
+  readonly repairSuccessCount?: number;
+  readonly repairSuccessRate?: number;
+  readonly failedVerificationCount?: number;
+  readonly correctedVerificationCount?: number;
+  readonly repeatedIneffectiveAttemptCount?: number;
+  readonly repairStopReason?: string;
+  readonly repairMetricsAvailability?: "available" | "unavailable" | "inferred";
   readonly estimatedCostUsd?: number;
   readonly promptAssemblyAvailable?: boolean;
   readonly promptAssemblySectionCount?: number;
@@ -169,6 +178,9 @@ export interface CliEvaluationBaselineAggregate extends JsonObject {
   readonly commandSuccessRate?: number;
   readonly averageStructureScore?: number;
   readonly averageElapsedMs?: number;
+  readonly repairActivationCount?: number;
+  readonly repairSuccessCount?: number;
+  readonly repairSuccessRate?: number;
   readonly redaction: RedactionMetadata;
 }
 

@@ -1,4 +1,13 @@
+# Typecheck
+
+Command: npm run typecheck
+Exit Code: 0
+Duration Ms: 4348
+
+## stdout
 
 > deepseek-cli-platform@0.1.0 typecheck
 > tsc -p tsconfig.json --noEmit
+
+## stderr
 

@@ -442,7 +442,8 @@ export class NodePlatformRuntime implements PlatformRuntime {
     }
     return new Promise((resolvePromise) => {
       const scopedEnv = isStringRecord(options.env) ? options.env : {};
-      const child = spawn(command, [...args], {
+      const invocation = processSpawnInvocation(this.os, command, args);
+      const child = spawn(invocation.command, [...invocation.args], {
         cwd: typeof options.cwd === "string" ? options.cwd : undefined,
         env: Object.keys(scopedEnv).length > 0 ? { ...process.env, ...scopedEnv } : process.env,
         shell: false
@@ -823,6 +824,13 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
       metadata: providerMetadata("argv", "available", [], undefined, [])
     };
   }
+}
+
+function processSpawnInvocation(os: PlatformOsFamily, command: string, args: readonly string[]): { readonly command: string; readonly args: readonly string[] } {
+  if (os === "windows" && /\.(?:cmd|bat)$/i.test(command)) {
+    return { command: "cmd.exe", args: ["/d", "/s", "/c", command, ...args] };
+  }
+  return { command, args };
 }
 
 export function createPlatformRuntime(os: PlatformOsFamily): PlatformRuntime {

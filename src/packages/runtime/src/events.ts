@@ -98,7 +98,7 @@ export async function recordRuntimeAdapterEvent(deps: RuntimeDependencies, event
     replayable: true
   });
   await deps.observability.emit({
-    kind: event.kind === "context.projection.rejected" ? "audit" : "trace",
+    kind: event.kind.startsWith("agent.repair.") ? "repair" : event.kind === "context.projection.rejected" ? "audit" : "trace",
     at: event.createdAt,
     name: event.kind,
     fields: event.data

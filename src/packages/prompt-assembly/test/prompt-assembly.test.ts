@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection } from "@deepseek/platform-contracts";
-import { EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
+import { EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
 describe("prompt assembly", () => {
@@ -66,6 +66,49 @@ describe("prompt assembly", () => {
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("evidence.json")), true);
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("website/index.html")), true);
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("generated-webpage/index.html")), false);
+  });
+
+  it("weaves self-repair sections without mutating the exact user prompt", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "fix failing test",
+      selfRepair: selfRepairOutcome()
+    }));
+
+    assert.equal(result.status, "assembled");
+    assert.equal(result.messages.at(-1)?.role, "user");
+    assert.equal(result.messages.at(-1)?.content, "fix failing test");
+    assert.equal(result.sections.some((section) => section.kind === "repair.diagnostics" && section.included), true);
+    assert.equal(result.sections.some((section) => section.kind === "repair.verification" && section.included), true);
+    assert.deepEqual(
+      result.sections.filter((section) => section.source === "self-repair" && section.included).map((section) => section.id),
+      [
+        "section.self-repair-operating-rules",
+        "section.self-repair-failure-evidence",
+        "section.self-repair-attempts",
+        "section.self-repair-verification"
+      ]
+    );
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Self-repair operating rules:")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("TEST_FAILED")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Evidence fingerprints: repair:h1")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Allowed actions: model-feedback")), true);
+    assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("Output digest: sha256:prompt")), true);
+  });
+
+  it("records self-repair prompt budget exclusions with replayable fingerprints", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "fix failing test",
+      hardLimitTokens: 65,
+      selfRepair: selfRepairOutcome()
+    }));
+    const excluded = result.budget.exclusions.filter((section) => section.source === "self-repair");
+
+    assert.equal(result.budget.status, "degraded");
+    assert.equal(excluded.length > 0, true);
+    assert.equal(excluded.every((section) => section.exclusionReason === "budget-exceeded"), true);
+    assert.equal(excluded.every((section) => typeof section.evidenceFingerprint === "string" && section.evidenceFingerprint.length > 0), true);
   });
 
   it("records budget exclusions", async () => {
@@ -149,6 +192,7 @@ function input(options: {
   readonly hardLimitTokens?: number;
   readonly mode?: PromptAssemblyInput["mode"];
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
+  readonly selfRepair?: SelfRepairOutcomeSummary;
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -173,6 +217,7 @@ function input(options: {
     },
     history: [{ role: "user", content: options.prompt }],
     ...(options.evidenceFirst ? { evidenceFirst: options.evidenceFirst } : {}),
+    ...(options.selfRepair ? { selfRepair: options.selfRepair } : {}),
     ...(selectedNodes.length > 0 ? {
       contextProjection: {
         schemaVersion: "1.0.0",
@@ -200,6 +245,68 @@ function input(options: {
     toolPolicy: "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
+function selfRepairOutcome(): SelfRepairOutcomeSummary {
+  const trace = {
+    traceId: asId<"trace">("trace-self-repair-prompt"),
+    spanId: asId<"span">("span-self-repair-prompt"),
+    correlationId: asId<"correlation">("corr-self-repair-prompt")
+  };
+  const classification: SelfRepairFailureClassification = {
+    schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+    classificationId: "repair-classification:prompt",
+    failureSource: "build-test-error" as const,
+    status: "classified" as const,
+    repairability: "repairable" as const,
+    safetyClass: "safe-write" as const,
+    affectedScope: "test" as const,
+    severity: "error" as const,
+    evidenceFingerprints: ["repair:h1"],
+    diagnostics: [{ code: "TEST_FAILED", message: "targeted test failed", retryable: true, redaction: { class: "internal" as const } }],
+    trace,
+    compatibility: SELF_REPAIR_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["diagnostics.details"] }
+  };
+  const verification: SelfRepairVerificationSummary = {
+    schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+    verificationId: "repair-verification:prompt",
+    command: "npm test -- target",
+    status: "skipped" as const,
+    decision: "escalate" as const,
+    outputDigest: "sha256:prompt",
+    compatibility: SELF_REPAIR_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["command"] }
+  };
+  const attempt: SelfRepairAttemptRecord = {
+    schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+    attemptId: "repair-attempt:prompt",
+    planId: "repair-plan:prompt",
+    status: "completed" as const,
+    actionType: "model-feedback" as const,
+    toolIds: ["agent.self-repair"],
+    touchedFiles: [],
+    materialChangeFingerprint: "model-feedback",
+    diagnostics: [],
+    verification: [verification],
+    trace,
+    compatibility: SELF_REPAIR_COMPATIBILITY,
+    redaction: { class: "internal" as const, fields: ["diagnostics.details", "verification.stdoutPreview"] }
+  };
+  return {
+    schemaVersion: SELF_REPAIR_SCHEMA_VERSION,
+    enabled: true,
+    activated: true,
+    attemptCount: 1,
+    successCount: 1,
+    repeatedNoopCount: 0,
+    stopReason: "completed",
+    classifications: [classification],
+    attempts: [attempt],
+    verification: [verification],
+    compatibility: SELF_REPAIR_COMPATIBILITY,
+    redaction: { class: "internal", fields: ["classifications.diagnostics"] }
   };
 }
 

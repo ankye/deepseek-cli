@@ -28,9 +28,11 @@ deepseek revert apply --request request-id --output json
 
 This package exposes the first runtime-owned agent loop through thin CLI adapters. Local runs are deterministic by default; live DeepSeek provider behavior is opt-in through `--live` and local credentials.
 
+Fact-sensitive repository, product, command, release, and evaluation tasks run evidence-first by default: the runtime classifies the task, selects bounded local evidence, keeps the user prompt exact, and rejects unsupported strict claims after one revision attempt. One-shot CLI tasks also carry a bounded self-repair loop for repairable failures; repair events and diagnostics record classification, attempts, verification summaries, stop reasons, and redacted replay evidence.
+
 Chat slash help is projected from shared command composition records. Host controls such as `/exit`, `/clear`, and `/cancel` remain CLI-visible but are not model-visible commands.
 
-Diagnostics commands are local and redacted by default. `diagnostics bundle` creates support-bundle evidence without uploading it, `diagnostics refresh` regenerates allowlisted acceptance evidence under `tests/acceptance/latest/`, `diagnostics evaluate` plans DeepSeek-owned task-completion comparison evidence while keeping Claude Code and Codex baselines opt-in/deferred by default, `diagnostics release` reports package surface, build artifact presence, acceptance evidence file status, ignored generated bundles, and required release verification commands, and `diagnostics verify` summarizes those gates into a read-only pre-publish decision.
+Diagnostics commands are local and redacted by default. `diagnostics bundle` creates support-bundle evidence without uploading it, `diagnostics refresh` regenerates allowlisted acceptance evidence under `tests/acceptance/latest/`, `diagnostics evaluate` plans DeepSeek-owned task-completion comparison evidence with evidence-grounding and repair metrics while keeping Claude Code and Codex baselines opt-in/deferred by default, `diagnostics release` reports package surface, build artifact presence, acceptance evidence file status, ignored generated bundles, and required release verification commands, and `diagnostics verify` summarizes those gates into a read-only pre-publish decision.
 
 External evaluation baselines require explicit opt-in. `--allow-external-baseline --baseline-command <cmd>` only probes the configured CLI and records planned task runs; it does not send task prompts or allow the external tool to mutate the workspace in this slice.
 

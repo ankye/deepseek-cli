@@ -5,15 +5,15 @@ TBD - created by archiving change add-cli-task-completion-evaluation. Update Pur
 ## Requirements
 ### Requirement: CLI Evaluation Defines Repeatable Task Completion Protocol / CLI 评估定义可重复任务完成协议
 
-The system SHALL define a repeatable CLI task-completion evaluation protocol that runs each baseline against the same task prompt, repository snapshot, allowed capabilities, resource limits, checks, and scoring rubric.
+The system SHALL define a repeatable CLI task-completion evaluation protocol that runs each baseline against the same task prompt, repository snapshot, allowed capabilities, resource limits, checks, scoring rubric, instrumentation event schema, and baseline comparison metrics.
 
-系统必须定义可重复的 CLI task-completion evaluation protocol，让每个 baseline 在相同 task prompt、repository snapshot、allowed capabilities、resource limits、checks 与 scoring rubric 下运行。
+系统必须定义可重复的 CLI task-completion evaluation protocol，让每个 baseline 在相同 task prompt、repository snapshot、allowed capabilities、resource limits、checks、scoring rubric、instrumentation event schema 与 baseline comparison metrics 下运行。
 
 #### Scenario: Same task constraints across baselines / Baseline 使用相同任务约束
 
 - **WHEN** an evaluation task is selected for DeepSeek CLI, Claude Code, Codex, or another baseline
-- **THEN** the evaluation record includes the same task id, fixture id, prompt digest, workspace snapshot id, allowed capability profile, time budget, check commands, and scoring rubric id for every baseline run
-- **中文** 当一个 evaluation task 被用于 DeepSeek CLI、Claude Code、Codex 或其他 baseline 时，evaluation record 必须为每个 baseline run 记录相同 task id、fixture id、prompt digest、workspace snapshot id、allowed capability profile、time budget、check commands 与 scoring rubric id。
+- **THEN** the evaluation record includes the same task id, fixture id, prompt digest, workspace snapshot id, allowed capability profile, time budget, check commands, scoring rubric id, instrumentation event schema, and metric schema for every baseline run
+- **中文** 当一个 evaluation task 被用于 DeepSeek CLI、Claude Code、Codex 或其他 baseline 时，evaluation record 必须为每个 baseline run 记录相同 task id、fixture id、prompt digest、workspace snapshot id、allowed capability profile、time budget、check commands、scoring rubric id、instrumentation event schema 与 metric schema。
 
 ### Requirement: CLI Evaluation Scores Outcomes And Product Mechanics / CLI 评估同时评分结果与产品机制
 
@@ -24,8 +24,8 @@ The system SHALL score task completion outcomes and product operating quality us
 #### Scenario: Run summary records completion and diagnostics / Run Summary 记录完成度与诊断
 
 - **WHEN** a baseline finishes an evaluation task
-- **THEN** the run summary records outcome as `solved`, `partial`, `failed`, or `invalid`, plus check results, patch metadata, elapsed time, retries, user interventions, safety violations, context recall evidence, recovery/revert usage, cost estimate when available, diagnostics, and redaction metadata
-- **中文** 当一个 baseline 完成 evaluation task 后，run summary 必须记录 `solved`、`partial`、`failed` 或 `invalid`，并包含 check results、patch metadata、elapsed time、retries、user interventions、safety violations、context recall evidence、recovery/revert usage、可用时的 cost estimate、diagnostics 与 redaction metadata。
+- **THEN** the run summary records outcome as `solved`, `partial`, `failed`, or `invalid`, plus instrumentation events, check results, patch metadata, elapsed time, retries, user interventions, safety violations, first-run success, command success rate, check pass rate, correction count, command failure count, generated artifact structure metrics, context recall evidence, recovery/revert usage, cost estimate when available, diagnostics, and redaction metadata
+- **中文** 当一个 baseline 完成 evaluation task 后，run summary 必须记录 `solved`、`partial`、`failed` 或 `invalid`，并包含 instrumentation events、check results、patch metadata、elapsed time、retries、user interventions、safety violations、首轮成功、命令成功率、check pass rate、纠错次数、命令失败次数、生成产物结构指标、context recall evidence、recovery/revert usage、可用时的 cost estimate、diagnostics 与 redaction metadata。
 
 ### Requirement: CLI Evaluation Separates Public Benchmarks From Product Evidence / CLI 评估区分公开榜单与产品证据
 
@@ -41,15 +41,21 @@ The system SHALL treat public benchmark references as advisory context and SHALL
 
 ### Requirement: CLI Evaluation External Baselines Are Opt-In / CLI 评估外部 Baseline 默认 Opt-In
 
-The system SHALL not invoke external proprietary CLIs or live providers unless a maintainer explicitly configures the executable, credentials, allowed scope, and evaluation mode.
+The system SHALL not invoke external proprietary CLIs or live providers unless a maintainer explicitly configures the executable, credentials, allowed scope, evaluation mode, and task execution request.
 
-系统不得调用外部专有 CLI 或 live providers，除非维护者显式配置 executable、credentials、allowed scope 与 evaluation mode。
+系统不得调用外部专有 CLI 或 live providers，除非维护者显式配置 executable、credentials、allowed scope、evaluation mode 与 task execution request。
 
 #### Scenario: Unconfigured external baseline is deferred / 未配置外部 Baseline 被延后
 
 - **WHEN** an evaluation includes Claude Code, Codex, or another external baseline without a configured adapter
 - **THEN** the runner records that baseline as `deferred` or `unavailable`, emits typed diagnostics, and continues deterministic DeepSeek CLI evaluation without executing the external command
 - **中文** 当 evaluation 包含 Claude Code、Codex 或其他 external baseline 但没有 configured adapter 时，runner 必须把该 baseline 记录为 `deferred` 或 `unavailable`，发出 typed diagnostics，并在不执行外部命令的情况下继续 deterministic DeepSeek CLI evaluation。
+
+#### Scenario: Configured external baseline is not enough for task execution / 仅配置 External Baseline 不足以执行任务
+
+- **WHEN** an external baseline command is configured without `--execute-task`
+- **THEN** the runner may probe the baseline, but it records selected task runs as `planned` and does not send task prompts
+- **中文** 当 external baseline command 已配置但没有 `--execute-task` 时，runner 可以 probe baseline，但必须把 selected task runs 记录为 `planned`，且不得发送 task prompt。
 
 ### Requirement: CLI Evaluation Evidence Is Redacted And Replayable / CLI 评估证据脱敏且可回放
 
@@ -89,18 +95,137 @@ CLI evaluation 必须允许维护者显式配置 external baseline command，用
 
 ### Requirement: CLI Evaluation Includes Webpage Generation Task / CLI 评估包含网页生成任务
 
-CLI task-completion evaluation SHALL include a deterministic webpage-generation task with local artifact validation.
+CLI task-completion evaluation SHALL include a deterministic webpage-generation task with local artifact validation and SHALL allow DeepSeek-owned live execution only when explicitly requested.
 
-CLI task-completion evaluation 必须包含带本地产物校验的 deterministic webpage-generation task。
+CLI task-completion evaluation 必须包含带本地产物校验的 deterministic webpage-generation task，并且只有在显式请求时才允许 DeepSeek 自有 live execution。
 
-#### Scenario: Webpage generation task is planned in full mode / 网页生成任务在 Full 模式规划
+#### Scenario: DeepSeek live webpage execution is opt-in / DeepSeek Live 网页执行显式开启
 
-- **WHEN** `deepseek diagnostics evaluate --full --dry-run --output json` runs
-- **THEN** the task catalog includes a webpage-generation task with prompt summary, fixture id, snapshot id, capability profile, time budget, check command, scoring rubric id, and `mode: "full"`
-- **中文** 当 `deepseek diagnostics evaluate --full --dry-run --output json` 运行时，task catalog 必须包含 webpage-generation task，并带有 prompt summary、fixture id、snapshot id、capability profile、time budget、check command、scoring rubric id 与 `mode: "full"`。
+- **WHEN** `deepseek diagnostics evaluate --live --full --execute-task eval.webpage.generation --compare-baseline deepseek-cli` runs with live credentials available
+- **THEN** the DeepSeek baseline command uses the live provider path, receives the webpage task prompt in an isolated workspace, exposes write-capable local file tools for the task profile, and the checker evaluates `generated-webpage`
+- **中文** 当带可用 live credentials 运行 `deepseek diagnostics evaluate --live --full --execute-task eval.webpage.generation --compare-baseline deepseek-cli` 时，DeepSeek baseline command 必须使用 live provider path，在隔离 workspace 中接收网页任务 prompt，为该任务 profile 暴露可写本地文件工具，并由 checker 校验 `generated-webpage`。
 
-#### Scenario: Webpage artifact checker validates generated output / 网页产物检查器校验生成输出
+#### Scenario: Non-live evaluation remains deterministic / 非 Live 评估保持确定性
 
-- **WHEN** the webpage artifact checker runs against a generated webpage directory
-- **THEN** it verifies a local HTML entry, viewport metadata, stylesheet or inline style, JavaScript interaction hook, accessible label or heading, and absence of remote CDN/script dependencies
-- **中文** 当 webpage artifact checker 对生成网页目录运行时，它必须验证 local HTML entry、viewport metadata、stylesheet 或 inline style、JavaScript interaction hook、accessible label 或 heading，以及不存在 remote CDN/script dependencies。
+- **WHEN** `deepseek diagnostics evaluate --full --execute-task eval.webpage.generation --compare-baseline deepseek-cli` runs without `--live`
+- **THEN** the DeepSeek baseline does not call the live provider and records the deterministic outcome and diagnostics without requiring credentials
+- **中文** 当未带 `--live` 运行 `deepseek diagnostics evaluate --full --execute-task eval.webpage.generation --compare-baseline deepseek-cli` 时，DeepSeek baseline 不得调用 live provider，必须记录 deterministic outcome 与 diagnostics，且不要求 credentials。
+
+#### Scenario: Checker gates live success / Checker 决定 Live 成功
+
+- **WHEN** the live DeepSeek model returns text but does not create valid local webpage artifacts
+- **THEN** the task run is not marked solved; success requires the generated local HTML/CSS/JS artifacts to pass the webpage checker
+- **中文** 当 live DeepSeek 模型返回文本但没有创建有效本地网页产物时，task run 不得标记为 solved；成功必须要求生成的本地 HTML/CSS/JS 产物通过 webpage checker。
+
+### Requirement: CLI Evaluation Records Prompt Assembly Evidence / CLI 评估记录 Prompt Assembly 证据
+
+CLI task-completion evaluation SHALL record prompt assembly evidence for DeepSeek CLI runs so task outcomes can be correlated with prompt structure, context inclusion, tool projection, and provider readiness.
+
+CLI task-completion evaluation 必须为 DeepSeek CLI runs 记录 prompt assembly evidence，使 task outcomes 可以与 prompt structure、context inclusion、tool projection 与 provider readiness 关联。
+
+#### Scenario: DeepSeek run includes assembly metrics / DeepSeek Run 包含 Assembly 指标
+- **WHEN** an evaluation executes a DeepSeek CLI task through the runtime event stream
+- **THEN** the task record includes prompt assembly fingerprint, section counts, excluded section counts, budget status, visible tool count, tool projection policy, and redacted diagnostics when `prompt.assembled` evidence is available
+- **中文** 当 evaluation 通过 runtime event stream 执行 DeepSeek CLI task 时，如果存在 `prompt.assembled` evidence，task record 必须包含 prompt assembly fingerprint、section counts、excluded section counts、budget status、visible tool count、tool projection policy 与 redacted diagnostics。
+
+#### Scenario: Missing assembly evidence is diagnostic / 缺少 Assembly 证据是诊断项
+- **WHEN** a DeepSeek CLI evaluation task reaches model dispatch or task completion without prompt assembly evidence
+- **THEN** the evaluation records a typed diagnostic instead of silently treating prompt assembly as unknown
+- **中文** 当 DeepSeek CLI evaluation task 到达 model dispatch 或 task completion 但没有 prompt assembly evidence 时，evaluation 必须记录 typed diagnostic，而不是静默将 prompt assembly 视为 unknown。
+
+### Requirement: CLI Evaluation Uses Assembly Evidence For Gap Analysis / CLI 评估用 Assembly 证据分析差距
+
+CLI evaluation SHALL use prompt assembly evidence to identify product gaps separately from model capability gaps.
+
+CLI evaluation 必须使用 prompt assembly evidence 区分产品机制差距与模型能力差距。
+
+#### Scenario: Webpage generation failure distinguishes product gap / 网页生成失败区分产品差距
+- **WHEN** DeepSeek CLI fails the webpage generation task
+- **THEN** the evaluation can report whether the run lacked write-capable tool visibility, lacked output contract sections, dropped relevant context, failed provider readiness, or failed after a complete prompt/tool plan was assembled
+- **中文** 当 DeepSeek CLI 未通过 webpage generation task 时，evaluation 必须能报告该 run 是缺少 write-capable tool visibility、缺少 output contract sections、丢弃相关 context、provider readiness 失败，还是在完整 prompt/tool plan 已组装后仍失败。
+
+#### Scenario: Comparison reports assembly readiness / 对比报告 Assembly Readiness
+- **WHEN** a comparison summary includes DeepSeek CLI, Claude, Codex, or future baselines
+- **THEN** DeepSeek-owned records include prompt assembly readiness metrics separately from external baseline outcome metrics, because external CLIs may not expose equivalent assembly traces
+- **中文** 当 comparison summary 包含 DeepSeek CLI、Claude、Codex 或未来 baselines 时，DeepSeek 自有 records 必须将 prompt assembly readiness metrics 与 external baseline outcome metrics 分开记录，因为 external CLIs 可能不暴露等价 assembly traces。
+
+### Requirement: CLI Evaluation Scores Evidence Grounding / CLI 评估评分证据接地
+
+CLI task-completion evaluation SHALL score evidence grounding quality for tasks that produce project facts, product copy, generated artifacts, reports, command recommendations, or competitive conclusions.
+
+CLI task-completion evaluation 必须为产出项目事实、产品文案、生成产物、报告、命令建议或竞争结论的任务评分 evidence grounding quality。
+
+#### Scenario: Task run records evidence metrics / 任务运行记录证据指标
+- **WHEN** an evaluation task completes with factual project output
+- **THEN** the task run record includes evidence plan presence, evidence item count, source coverage, claim grounding rate, unsupported claim count, assumption count, hallucinated command count, and evidence manifest status
+- **中文** 当 evaluation task 完成并产生事实性项目输出时，task run record 必须包含 evidence plan presence、evidence item count、source coverage、claim grounding rate、unsupported claim count、assumption count、hallucinated command count 与 evidence manifest status。
+
+#### Scenario: Unsupported claims reduce outcome / 未支持声明降低结果评分
+- **WHEN** a generated artifact or report contains unsupported package, command, feature, release, architecture, or evaluation claims
+- **THEN** evaluation records diagnostics and MUST NOT mark the run fully solved unless the unsupported claims are removed or explicitly labeled as assumptions under an allowed speculative task
+- **中文** 当生成产物或报告包含 unsupported package、command、feature、release、architecture 或 evaluation claims 时，evaluation 必须记录 diagnostics，且除非 unsupported claims 被移除或在允许的 speculative task 中明确标为 assumptions，否则不得将运行标为 fully solved。
+
+### Requirement: Webpage Evaluation Requires Evidence Manifest / 网页评估要求证据清单
+
+CLI webpage-generation evaluation SHALL require generated product webpages to include an evidence manifest and pass unsupported-claim checks.
+
+CLI webpage-generation evaluation 必须要求生成的产品网页包含 evidence manifest，并通过 unsupported-claim checks。
+
+#### Scenario: Product webpage without manifest fails / 缺少清单的产品网页失败
+- **WHEN** the webpage artifact checker evaluates a generated product webpage
+- **THEN** it fails if `evidence.json` or equivalent manifest is missing, malformed, lacks source coverage, or reports unsupported strict claims
+- **中文** 当 webpage artifact checker 评估生成产品网页时，如果缺少 `evidence.json` 或等价 manifest、manifest 格式错误、缺少 source coverage 或报告 unsupported strict claims，必须失败。
+
+#### Scenario: Hallucinated command fails webpage check / 幻觉命令导致网页检查失败
+- **WHEN** generated webpage content includes an install or run command not supported by evidence manifest sources
+- **THEN** the checker reports an unsupported-command diagnostic and the task run is not solved
+- **中文** 当生成网页内容包含 evidence manifest sources 不支持的安装或运行命令时，checker 必须报告 unsupported-command diagnostic，且 task run 不得为 solved。
+
+### Requirement: CLI Evaluation Records Self-Repair Metrics / CLI 评估记录自修复指标
+
+CLI task-completion evaluation SHALL record self-repair metrics for DeepSeek CLI and comparable baseline runs when evidence is available.
+
+CLI task-completion evaluation 必须在有证据时为 DeepSeek CLI 与可比较 baseline runs 记录 self-repair metrics。
+
+#### Scenario: DeepSeek run records repair metrics / DeepSeek 运行记录修复指标
+- **WHEN** a DeepSeek CLI evaluation task completes with repair-loop evidence
+- **THEN** the task run record includes first-pass success, repair activation count, repair success count, failed verification count, corrected verification count, repeated ineffective attempt count, stop reason, and redaction metadata
+- **中文** 当 DeepSeek CLI evaluation task 带 repair-loop evidence 完成时，task run record 必须包含 first-pass success、repair activation count、repair success count、failed verification count、corrected verification count、repeated ineffective attempt count、stop reason 与 redaction metadata。
+
+#### Scenario: Baseline without repair evidence is explicit / 缺少修复证据的 Baseline 明确标记
+- **WHEN** Codex, Claude, or another baseline does not expose structured repair evidence
+- **THEN** the evaluation record marks repair metrics as unavailable or inferred, separates them from instrumented DeepSeek metrics, and avoids claiming exact parity
+- **中文** 当 Codex、Claude 或其他 baseline 不暴露结构化 repair evidence 时，evaluation record 必须将 repair metrics 标记为 unavailable 或 inferred，与已插桩的 DeepSeek metrics 分离，并避免声称精确等价。
+
+### Requirement: CLI Evaluation Scores Repair-Aware Task Quality / CLI 评估评分修复感知任务质量
+
+CLI task-completion evaluation SHALL score task quality using final outcome plus repair-aware operating quality dimensions rather than only generated artifact existence.
+
+CLI task-completion evaluation 必须使用最终结果加 repair-aware operating quality dimensions 评分，而不是只看生成产物是否存在。
+
+#### Scenario: Report compares success and repair quality / 报告同时比较成功与修复质量
+- **WHEN** a competitive report compares DeepSeek CLI with Codex, Claude, or another baseline
+- **THEN** the report includes run success rate, first-pass success rate, repair success rate when available, verification quality, code or artifact structure score, user intervention count, elapsed time, and task evidence ids
+- **中文** 当 competitive report 比较 DeepSeek CLI 与 Codex、Claude 或其他 baseline 时，报告必须包含 run success rate、first-pass success rate、可用时的 repair success rate、verification quality、代码或产物结构评分、user intervention count、elapsed time 与 task evidence ids。
+
+#### Scenario: Unverified repair is not scored as full success / 未验证修复不得满分
+- **WHEN** a run modifies files after a failed check but does not rerun the relevant verification or artifact checker
+- **THEN** the evaluation records verification quality as incomplete and MUST NOT score the run as fully solved solely from file changes
+- **中文** 当一次运行在 failed check 后修改文件但没有复跑相关 verification 或 artifact checker 时，evaluation 必须将 verification quality 记录为 incomplete，且不得仅凭文件变化将该运行评分为 fully solved。
+
+### Requirement: CLI Evaluation Includes Failure-To-Repair Scenarios / CLI 评估包含失败到修复场景
+
+CLI task-completion evaluation SHALL include scenarios that intentionally trigger repairable failures and measure whether the agent diagnoses, fixes, verifies, or stops correctly.
+
+CLI task-completion evaluation 必须包含有意触发可修复失败的场景，并衡量 agent 是否正确诊断、修复、验证或停止。
+
+#### Scenario: Webpage generation repair scenario is evaluated / 网页生成修复场景被评估
+- **WHEN** a webpage generation task omits a required file, breaks JavaScript syntax, or violates local-artifact rules during the first attempt
+- **THEN** the evaluation checks whether the agent detects the failed artifact check, repairs the webpage, reruns the checker, and records repair evidence
+- **中文** 当网页生成任务在首次尝试中缺失必要文件、破坏 JavaScript syntax 或违反 local-artifact rules 时，evaluation 必须检查 agent 是否检测 failed artifact check、修复网页、复跑 checker 并记录 repair evidence。
+
+#### Scenario: Coding task repair scenario is evaluated / 编码任务修复场景被评估
+- **WHEN** a coding task introduces a typecheck, lint, test, import, or architecture-boundary failure
+- **THEN** the evaluation checks whether the agent classifies the failure, applies the smallest targeted repair, reruns the relevant command, and avoids unrelated refactors
+- **中文** 当编码任务引入 typecheck、lint、test、import 或 architecture-boundary failure 时，evaluation 必须检查 agent 是否分类失败、应用最小目标修复、复跑相关命令并避免无关重构。
+

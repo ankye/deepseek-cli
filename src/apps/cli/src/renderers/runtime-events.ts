@@ -99,6 +99,7 @@ export async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, event
     traceId: String(terminal?.trace.traceId ?? fallback?.trace.traceId ?? ""),
     assistantText: String(terminal?.data.assistantText ?? ""),
     diagnostics: Array.isArray(terminal?.data.diagnostics) ? terminal?.data.diagnostics : [],
+    ...(terminal?.data.selfRepair && typeof terminal.data.selfRepair === "object" ? { selfRepair: terminal.data.selfRepair } : {}),
     resumeCommand: sessionId ? `deepseek session resume ${sessionId}` : "",
     redaction: terminal?.data.redaction ?? { class: "internal" }
   }));

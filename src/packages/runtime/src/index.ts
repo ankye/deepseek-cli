@@ -6,7 +6,8 @@ export { InProcessRuntimeKernel, createRuntimeKernel, createDefaultRuntimeKernel
 export { HeadlessAgentRuntime, createHeadlessRuntime, executeProjectedRuntimeTurn } from "./headless.js";
 export type { ProjectedRuntimeTurnRequest } from "./headless.js";
 export { runAgentLoop } from "./agent-loop.js";
-export { classifyEvidenceTask, createEvidenceFirstRuntimeContext, createEvidencePlan } from "./evidence-first.js";
+export { classifyEvidenceTask, createEvidenceFirstRuntimeContext, createEvidencePlan, explainEvidenceCandidateSelection, groundStrictClaims } from "./evidence-first.js";
+export * from "./self-repair/index.js";
 export { collectRuntimeEvents } from "./events.js";
 export { createAgentSpawner } from "./agent-spawner.js";
 export { loadUserHooks } from "./user-hooks.js";

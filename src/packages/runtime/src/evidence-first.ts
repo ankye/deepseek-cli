@@ -2,11 +2,15 @@ import type {
   EvidenceFactClass,
   EvidenceFirstRuntimeContext,
   EvidenceFirstSummary,
+  EvidenceCandidateExclusion,
+  EvidenceCandidateExclusionReason,
   EvidenceItem,
   EvidencePlan,
+  ClaimGrounding,
   EvidenceSourceCoverage,
   EvidenceSourceGroup,
   EvidenceSourceRequirement,
+  UnsupportedClaimDiagnostic,
   EvidenceTaskClassification,
   EvidenceTaskIntent,
   JsonObject,
@@ -103,18 +107,21 @@ export async function createEvidenceFirstRuntimeContext(
 ): Promise<EvidenceFirstRuntimeContext> {
   const classification = classifyEvidenceTask(request.prompt, request.workspaceRoot, sessionId, turnId, trace);
   const plan = classification.evidenceRequired ? createEvidencePlan(classification) : undefined;
-  const selectedEvidence = plan ? await selectProjectEvidence(deps, request.workspaceRoot, plan, classification, sessionId, turnId, trace) : [];
+  const projection = plan ? await selectProjectEvidence(deps, request.workspaceRoot, plan, classification, sessionId, turnId, trace) : { selectedEvidence: [], excludedCandidates: [] };
+  const selectedEvidence = projection.selectedEvidence;
+  const excludedCandidates = projection.excludedCandidates;
   const sourceCoverage = plan ? summarizeSourceCoverage(plan, selectedEvidence) : [];
-  const summary = summarizeEvidenceFirst(classification, plan, selectedEvidence, sourceCoverage);
+  const summary = summarizeEvidenceFirst(classification, plan, selectedEvidence, sourceCoverage, excludedCandidates);
   return {
     schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
     classification,
     ...(plan ? { plan } : {}),
     selectedEvidence,
+    ...(excludedCandidates.length > 0 ? { excludedCandidates } : {}),
     sourceCoverage,
     summary,
     compatibility: EVIDENCE_FIRST_COMPATIBILITY,
-    redaction: { class: "internal", fields: ["selectedEvidence.preview", "classification.reason"] }
+    redaction: { class: "internal", fields: ["selectedEvidence.preview", "excludedCandidates.sourcePath", "classification.reason"] }
   };
 }
 
@@ -335,7 +342,7 @@ async function selectProjectEvidence(
   sessionId: SessionId,
   turnId: TurnId,
   trace: TraceContext
-): Promise<readonly EvidenceItem[]> {
+): Promise<{ readonly selectedEvidence: readonly EvidenceItem[]; readonly excludedCandidates: readonly EvidenceCandidateExclusion[] }> {
   const requiredGroups = new Set(plan.candidateSourceGroups.map((source) => source.sourceGroup));
   const requiredFactClasses = new Set(plan.requiredFactClasses);
   const sources = candidateSources
@@ -343,14 +350,41 @@ async function selectProjectEvidence(
     .sort((left, right) => sourcePriority(left, requiredGroups, requiredFactClasses) - sourcePriority(right, requiredGroups, requiredFactClasses))
     .slice(0, MAX_EVIDENCE_ITEMS * 2);
   const items: EvidenceItem[] = [];
+  const exclusions: EvidenceCandidateExclusion[] = [];
+  const selectedFingerprints = new Set<string>();
+  const selectedPaths = new Set<string>();
 
   for (const source of sources) {
-    if (items.length >= MAX_EVIDENCE_ITEMS) break;
+    if (items.length >= MAX_EVIDENCE_ITEMS) {
+      exclusions.push(candidateExclusion(classification, source, "over-budget"));
+      continue;
+    }
     const resolved = deps.platform.resolveWorkspacePath(workspaceRoot, source.sourcePath);
-    if (!resolved.ok || !resolved.value) continue;
+    if (!resolved.ok || !resolved.value) {
+      exclusions.push(candidateExclusion(classification, source, "out-of-scope"));
+      continue;
+    }
     const content = await deps.platform.readFile(resolved.value.path).catch(() => undefined);
-    if (typeof content !== "string" || looksSecretOnly(content)) continue;
+    if (typeof content !== "string") {
+      exclusions.push(candidateExclusion(classification, source, "missing"));
+      continue;
+    }
+    if (looksStale(content)) {
+      exclusions.push(candidateExclusion(classification, source, "stale"));
+      continue;
+    }
+    if (looksSecretOnly(content)) {
+      exclusions.push(candidateExclusion(classification, source, "secret-like"));
+      continue;
+    }
     const preview = boundedPreview(content);
+    const fingerprint = `fnv1a:${stableHash(`${source.sourcePath}:${content}`)}`;
+    if (selectedPaths.has(source.sourcePath) || selectedFingerprints.has(fingerprint)) {
+      exclusions.push(candidateExclusion(classification, source, "duplicate", fingerprint));
+      continue;
+    }
+    selectedPaths.add(source.sourcePath);
+    selectedFingerprints.add(fingerprint);
     items.push({
       schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
       evidenceId: `evidence:${stableHash(`${classification.classificationId}:${source.sourcePath}`)}`,
@@ -359,7 +393,7 @@ async function selectProjectEvidence(
       sourceLabel: source.sourceLabel,
       factClasses: source.factClasses.filter((factClass) => requiredFactClasses.size === 0 || requiredFactClasses.has(factClass)),
       preview,
-      fingerprint: `fnv1a:${stableHash(`${source.sourcePath}:${content}`)}`,
+      fingerprint,
       freshness: { status: "current", observedAt: new Date(0).toISOString() },
       trace: { traceId: trace.traceId, sessionId, turnId },
       compatibility: EVIDENCE_FIRST_COMPATIBILITY,
@@ -367,7 +401,29 @@ async function selectProjectEvidence(
     });
   }
 
-  return items;
+  return { selectedEvidence: items, excludedCandidates: exclusions };
+}
+
+export async function explainEvidenceCandidateSelection(
+  deps: Pick<RuntimeDependencies, "platform">,
+  input: {
+    readonly prompt: string;
+    readonly workspaceRoot: string;
+    readonly sessionId?: SessionId;
+    readonly turnId?: TurnId;
+    readonly trace?: TraceContext;
+  }
+): Promise<{ readonly selectedEvidence: readonly EvidenceItem[]; readonly excludedCandidates: readonly EvidenceCandidateExclusion[] }> {
+  const sessionId = input.sessionId ?? ("session-evidence-explain" as SessionId);
+  const turnId = input.turnId ?? ("turn-evidence-explain" as TurnId);
+  const trace = input.trace ?? {
+    traceId: "trace-evidence-explain" as import("@deepseek/platform-contracts").TraceId,
+    spanId: "span-evidence-explain" as import("@deepseek/platform-contracts").SpanId,
+    correlationId: "corr-evidence-explain" as import("@deepseek/platform-contracts").CorrelationId
+  };
+  const classification = classifyEvidenceTask(input.prompt, input.workspaceRoot, sessionId, turnId, trace);
+  const plan = createEvidencePlan(classification);
+  return selectProjectEvidence(deps, input.workspaceRoot, plan, classification, sessionId, turnId, trace);
 }
 
 function summarizeSourceCoverage(plan: EvidencePlan, items: readonly EvidenceItem[]): readonly EvidenceSourceCoverage[] {
@@ -393,7 +449,8 @@ function summarizeEvidenceFirst(
   classification: EvidenceTaskClassification,
   plan: EvidencePlan | undefined,
   items: readonly EvidenceItem[],
-  coverage: readonly EvidenceSourceCoverage[]
+  coverage: readonly EvidenceSourceCoverage[],
+  exclusions: readonly EvidenceCandidateExclusion[] = []
 ): EvidenceFirstSummary {
   const covered = coverage.filter((item) => item.covered).length;
   const sourceCoverageRate = coverage.length === 0 ? 0 : covered / coverage.length;
@@ -404,6 +461,7 @@ function summarizeEvidenceFirst(
     ...(plan ? { plan } : {}),
     manifestStatus: classification.evidenceRequired ? "missing" : "missing",
     evidenceItemCount: items.length,
+    ...(exclusions.length > 0 ? { excludedCandidateCount: exclusions.length } : {}),
     sourceCoverageRate,
     claimGroundingRate: 0,
     unsupportedClaimCount: 0,
@@ -468,6 +526,28 @@ function looksSecretOnly(content: string): boolean {
   return /^(DEEPSEEK_API_KEY|DEEPSEEK_TOKEN)\s*=/.test(trimmed) || /^sk-[A-Za-z0-9_-]{8,}$/.test(trimmed);
 }
 
+function looksStale(content: string): boolean {
+  return /(?:stale|deprecated|outdated|obsolete|过期|废弃)/i.test(content.slice(0, 400));
+}
+
+function candidateExclusion(
+  classification: EvidenceTaskClassification,
+  source: CandidateEvidenceSource,
+  reason: EvidenceCandidateExclusionReason,
+  fingerprint?: string
+): EvidenceCandidateExclusion {
+  return {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    exclusionId: `evidence-exclusion:${stableHash(`${classification.classificationId}:${source.sourcePath}:${reason}:${fingerprint ?? ""}`)}`,
+    sourceGroup: source.sourceGroup,
+    sourcePath: source.sourcePath,
+    reason,
+    ...(fingerprint ? { fingerprint } : {}),
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal", fields: ["sourcePath", "fingerprint"] }
+  };
+}
+
 function matchesAny(value: string, needles: readonly string[]): boolean {
   return needles.some((needle) => value.includes(needle));
 }
@@ -494,5 +574,132 @@ export function evidenceFirstEventData(context: EvidenceFirstRuntimeContext): Js
     summary: context.summary,
     redaction: context.redaction,
     compatibility: context.compatibility
+  };
+}
+
+export function groundStrictClaims(
+  text: string,
+  context: EvidenceFirstRuntimeContext,
+  outputScope = "agent.loop.answer"
+): { readonly claimGroundings: readonly ClaimGrounding[]; readonly unsupportedClaims: readonly UnsupportedClaimDiagnostic[]; readonly summary: EvidenceFirstSummary } {
+  const claims = extractStrictClaims(text);
+  const evidenceText = context.selectedEvidence.map((item) => item.preview).join("\n");
+  const claimGroundings = claims.map((claim) => {
+    const matchingEvidence = context.selectedEvidence.filter((item) => item.factClasses.includes(claim.factClass) && item.preview.toLowerCase().includes(claim.value.toLowerCase()));
+    const inferredEvidence = matchingEvidence.length === 0 && !strictDirectEvidenceRequired(claim.factClass)
+      ? context.selectedEvidence.filter((item) => item.factClasses.includes(claim.factClass) && hasTokenOverlap(item.preview, claim.value))
+      : [];
+    const supportEvidence = matchingEvidence.length > 0 ? matchingEvidence : inferredEvidence;
+    const certainty = matchingEvidence.length > 0 ? "verified" : inferredEvidence.length > 0 ? "inferred" : claim.assumption ? "assumption" : "unsupported";
+    return {
+      schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+      claimId: `claim:${stableHash(`${claim.factClass}:${claim.value}`)}`,
+      claimPreview: claim.value,
+      claimFingerprint: `claim:${stableHash(claim.value)}`,
+      factClass: claim.factClass,
+      certainty,
+      evidenceIds: supportEvidence.map((item) => item.evidenceId),
+      outputScope,
+      ...(certainty === "unsupported" ? { remediation: "rewrite-as-unknown" as const } : {}),
+      compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+      redaction: { class: "internal", fields: ["claimPreview"] }
+    } satisfies ClaimGrounding;
+  });
+  const unsupportedClaims = claimGroundings
+    .filter((claim) => claim.certainty === "unsupported")
+    .map((claim) => unsupportedDiagnostic(claim, outputScope, evidenceText));
+  const verifiedOrInferred = claimGroundings.filter((claim) => claim.certainty !== "unsupported" && claim.certainty !== "assumption").length;
+  const summary: EvidenceFirstSummary = {
+    ...context.summary,
+    claimGroundingRate: claimGroundings.length === 0 ? 1 : verifiedOrInferred / claimGroundings.length,
+    unsupportedClaimCount: unsupportedClaims.length,
+    assumptionCount: claimGroundings.filter((claim) => claim.certainty === "assumption").length,
+    hallucinatedCommandCount: unsupportedClaims.filter((claim) => claim.code === "unsupported-command").length
+  };
+  return { claimGroundings, unsupportedClaims, summary };
+}
+
+interface ExtractedStrictClaim {
+  readonly value: string;
+  readonly factClass: EvidenceFactClass;
+  readonly assumption: boolean;
+}
+
+function extractStrictClaims(text: string): readonly ExtractedStrictClaim[] {
+  const claims: ExtractedStrictClaim[] = [];
+  const seen = new Set<string>();
+  const add = (value: string, factClass: EvidenceFactClass) => {
+    const normalized = value.trim().replace(/\s+/g, " ");
+    if (!normalized || seen.has(`${factClass}:${normalized}`)) return;
+    seen.add(`${factClass}:${normalized}`);
+    claims.push({ value: normalized, factClass, assumption: isAssumption(text, normalized) });
+  };
+
+  for (const match of text.matchAll(/\b(?:npm|npx|pnpm|yarn|node|tsx)\s+[^\n`"']{2,120}/gi)) add(cleanClaim(match[0]), "command");
+  for (const match of text.matchAll(/\bdeepseek-agent-cli\b|\bdeepseek-cli-platform\b|\b@deepseek\/[a-z0-9-]+\b/gi)) add(match[0], "package");
+  for (const match of text.matchAll(/\bdeepseek\b(?=\s+(?:run|chat|diagnostics|palette|revert|index-provider|mcp|extension|readiness)\b)/gi)) add(match[0], "executable");
+  for (const match of text.matchAll(/\b(?:published|release-ready|ready to publish|can publish|already published|发布就绪|可以发布|已发布)\b[^\n.。]{0,100}/gi)) add(cleanClaim(match[0]), "release");
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (/^(?:assumption|assume|假设|推测)\s*[:：]/i.test(trimmed)) add(trimmed.replace(/^(?:assumption|assume|假设|推测)\s*[:：]\s*/i, ""), "feature");
+    if (/^[-*]\s+\S/.test(trimmed)) add(trimmed.replace(/^[-*]\s+/, ""), "feature");
+    if (/\b(runtime|platform-contracts|host adapter|monorepo|架构|契约|运行时)\b/i.test(trimmed)) add(trimmed, "architecture");
+    if (/\b(success rate|benchmark|evaluation|Codex|Claude|评估|对比|成功率)\b/i.test(trimmed)) add(trimmed, "evaluation");
+  }
+  return claims.slice(0, 20);
+}
+
+function strictDirectEvidenceRequired(factClass: EvidenceFactClass): boolean {
+  return factClass === "command" || factClass === "package" || factClass === "executable" || factClass === "install" || factClass === "release";
+}
+
+function hasTokenOverlap(evidence: string, claim: string): boolean {
+  const evidenceTokens = tokenSet(evidence);
+  const claimTokens = tokenSet(claim);
+  const meaningful = [...claimTokens].filter((token) => token.length >= 5);
+  if (meaningful.length === 0) return false;
+  const overlap = meaningful.filter((token) => evidenceTokens.has(token)).length;
+  return overlap >= Math.min(2, meaningful.length);
+}
+
+function tokenSet(value: string): ReadonlySet<string> {
+  return new Set(value.toLowerCase().match(/[a-z0-9][a-z0-9-]{2,}|[\u4e00-\u9fff]{2,}/g) ?? []);
+}
+
+function cleanClaim(value: string): string {
+  return value.replace(/[.;。；,，]+$/g, "").trim();
+}
+
+function isAssumption(text: string, value: string): boolean {
+  const index = text.indexOf(value);
+  const lineStart = index >= 0 ? Math.max(text.lastIndexOf("\n", index - 1) + 1, text.lastIndexOf("\r", index - 1) + 1, 0) : 0;
+  const prefix = index >= 0 ? text.slice(lineStart, index).toLowerCase() : "";
+  return /assum|假设|推测|inferred|可能|maybe/.test(prefix);
+}
+
+function unsupportedDiagnostic(claim: ClaimGrounding, outputScope: string, evidenceText: string): UnsupportedClaimDiagnostic {
+  const code = claim.factClass === "command"
+    ? "unsupported-command"
+    : claim.factClass === "package"
+      ? "unsupported-package"
+      : claim.factClass === "release"
+        ? "unsupported-release"
+        : claim.factClass === "feature"
+          ? "unsupported-feature"
+          : "unsupported-claim";
+  const evidenceHint = evidenceText.length > 0 ? "Selected evidence did not contain this strict claim." : "No selected evidence was available.";
+  return {
+    schemaVersion: EVIDENCE_FIRST_SCHEMA_VERSION,
+    diagnosticId: `unsupported:${stableHash(`${claim.claimFingerprint}:${outputScope}`)}`,
+    code,
+    severity: "error",
+    claimId: claim.claimId,
+    claimFingerprint: claim.claimFingerprint,
+    claimPreview: claim.claimPreview,
+    missingFactClass: claim.factClass,
+    artifactId: outputScope,
+    remediationHint: `${evidenceHint} Remove it, rewrite it as unknown, or cite direct evidence.`,
+    compatibility: EVIDENCE_FIRST_COMPATIBILITY,
+    redaction: { class: "internal", fields: ["claimPreview", "remediationHint"] }
   };
 }

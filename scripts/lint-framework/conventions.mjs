@@ -177,7 +177,8 @@ export const lintConventions = {
       "src/packages/mcp-gateway/src/index.ts",
       "src/packages/model-gateway/src/index.ts",
       "src/packages/context-engine/src/index.ts",
-      "src/packages/policy-sandbox/src/index.ts"
+      "src/packages/policy-sandbox/src/index.ts",
+      "src/packages/runtime/src/agent-loop.ts"
     ])
   }
 };

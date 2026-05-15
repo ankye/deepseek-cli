@@ -220,12 +220,15 @@ describe("cli host adapter", () => {
     await runCli(["run", "summary", "--output", "json"], (line: string) => {
       lines.push(line);
     });
-    const summary = JSON.parse(lines[0] ?? "{}") as { status?: string; assistantText?: string; traceId?: string };
+    const summary = JSON.parse(lines[0] ?? "{}") as { status?: string; assistantText?: string; traceId?: string; selfRepair?: { enabled?: boolean; activated?: boolean; stopReason?: string } };
 
     assert.equal(lines.length, 1);
     assert.equal(summary.status, "completed");
     assert.equal(summary.assistantText?.includes("DeepSeek mock response"), true);
     assert.equal(typeof summary.traceId, "string");
+    assert.equal(summary.selfRepair?.enabled, true);
+    assert.equal(summary.selfRepair?.activated, false);
+    assert.equal(summary.selfRepair?.stopReason, "completed");
   });
 
   it("runs scripted chat turns with one session id", async () => {
@@ -2512,7 +2515,7 @@ describe("cli host adapter", () => {
         dryRun?: boolean;
         taskCatalogVersion?: string;
         baselines?: readonly { baselineId?: string; status?: string; configured?: boolean }[];
-        taskRuns?: readonly { outcome?: string; baseline?: { baselineId?: string }; task?: { taskId?: string; mode?: string } }[];
+        taskRuns?: readonly { outcome?: string; baseline?: { baselineId?: string }; task?: { taskId?: string; mode?: string }; metrics?: { repairMetricsAvailability?: string; repairActivationCount?: number; repairSuccessCount?: number } }[];
         publicBenchmarkReferences?: readonly { name?: string; advisoryOnly?: boolean }[];
       };
     };
@@ -2521,14 +2524,26 @@ describe("cli host adapter", () => {
     assert.equal(parsed.status, "pass");
     assert.equal(parsed.evaluation?.mode, "smoke");
     assert.equal(parsed.evaluation?.dryRun, true);
-    assert.equal(parsed.evaluation?.taskCatalogVersion, "2026-05-13.smoke");
+    assert.equal(parsed.evaluation?.taskCatalogVersion, "2026-05-15.repair");
     assert.equal(parsed.evaluation?.baselines?.[0]?.baselineId, "deepseek-cli");
     assert.equal(parsed.evaluation?.baselines?.[0]?.status, "available");
     assert.equal(parsed.evaluation?.taskRuns?.length, 3);
     assert.equal(parsed.evaluation?.taskRuns?.every((run) => run.outcome === "planned" && run.baseline?.baselineId === "deepseek-cli" && run.task?.mode === "smoke"), true);
+    assert.equal(parsed.evaluation?.taskRuns?.every((run) => run.metrics?.repairMetricsAvailability === "unavailable" && run.metrics.repairActivationCount === 0), true);
     assert.equal(parsed.evaluation?.taskRuns?.some((run) => run.task?.taskId === "eval.webpage.generation"), false);
     assert.equal(parsed.evaluation?.publicBenchmarkReferences?.some((reference) => reference.name === "SWE-bench Verified" && reference.advisoryOnly === true), true);
     assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("renders diagnostics evaluate repair metrics in text output", async () => {
+    const lines: string[] = [];
+    await runCli(["diagnostics", "evaluate", "--dry-run", "--output", "text"], (line: string) => {
+      lines.push(line);
+    });
+    const text = lines.join("\n");
+
+    assert.equal(text.includes("repair=unavailable:0/0"), true);
+    assert.equal(text.includes("\u001b["), false);
   });
 
   it("includes webpage generation in diagnostics evaluate full dry-run", async () => {
@@ -2543,11 +2558,17 @@ describe("cli host adapter", () => {
       };
     };
     const webpage = parsed.evaluation?.taskRuns?.find((run) => run.task?.taskId === "eval.webpage.generation")?.task;
+    const webpageRepair = parsed.evaluation?.taskRuns?.find((run) => run.task?.taskId === "eval.webpage.failing-first-repair")?.task;
+    const codingRepair = parsed.evaluation?.taskRuns?.find((run) => run.task?.taskId === "eval.coding.failing-first-typecheck")?.task;
 
     assert.equal(parsed.evaluation?.mode, "full");
     assert.equal(webpage?.category, "webpage-generation");
     assert.equal(webpage?.mode, "full");
     assert.equal(webpage?.checkCommands?.includes("node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"), true);
+    assert.equal(webpageRepair?.category, "webpage-repair");
+    assert.equal(webpageRepair?.checkCommands?.includes("node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"), true);
+    assert.equal(codingRepair?.category, "coding-repair");
+    assert.equal(codingRepair?.checkCommands?.includes("npm run typecheck"), true);
   });
 
   it("defers diagnostics evaluate external baselines by default", async () => {
@@ -2605,17 +2626,19 @@ describe("cli host adapter", () => {
         baselines?: readonly { baselineId?: string; status?: string }[];
         baselineAggregates?: readonly { baselineId?: string; executedRunCount?: number; deferredRunCount?: number; commandSuccessRate?: number }[];
         gapFindings?: readonly { code?: string }[];
-        taskRuns?: readonly { outcome?: string }[];
+        taskRuns?: readonly { outcome?: string; metrics?: { repairMetricsAvailability?: string } }[];
       };
       aggregate?: { baselineId?: string; executedRunCount?: number };
       finding?: { code?: string };
+      run?: { metrics?: { repairMetricsAvailability?: string } };
     });
     const summary = records.find((record) => record.kind === "diagnostics.evaluate.summary")?.summary;
 
     assert.deepEqual(summary?.baselines?.map((baseline) => baseline.baselineId), ["deepseek-cli", "codex", "claude-code"]);
     assert.equal(summary?.taskRuns?.every((run) => run.outcome === "planned" || run.outcome === "deferred"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.task-run" && record.run?.metrics?.repairMetricsAvailability === "unavailable"), true);
     assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "deepseek-cli")?.executedRunCount, 0);
-    assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "codex")?.deferredRunCount, 7);
+    assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "codex")?.deferredRunCount, 9);
     assert.equal(summary?.baselineAggregates?.find((item) => item.baselineId === "codex")?.commandSuccessRate, undefined);
     assert.equal(summary?.gapFindings?.some((finding) => finding.code === "CLI_EVALUATION_GAP_PENDING_EXECUTION"), true);
     assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.baseline-aggregate" && record.aggregate?.baselineId === "deepseek-cli"), true);
@@ -2759,6 +2782,10 @@ describe("cli host adapter", () => {
     assert.equal(webpageRun?.metrics.promptAssemblyVisibleToolCount, 4);
     assert.equal(webpageRun?.metrics.promptAssemblyGapReason, "post-assembly-model-failure");
     assert.equal(webpageRun?.metrics.evidenceManifestStatus, "passed");
+    assert.equal(webpageRun?.metrics.repairMetricsAvailability, "available");
+    assert.equal(webpageRun?.metrics.repairActivationCount, 1);
+    assert.equal(webpageRun?.metrics.repairSuccessCount, 1);
+    assert.equal(webpageRun?.metrics.repairSuccessRate, 1);
     assert.equal(webpageRun?.diagnostics.some((item) => item.code === "CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING"), false);
   });
 
@@ -3477,6 +3504,15 @@ class FakeWebpageAgentPlatform extends NodePlatformRuntime {
               ]
             }
           }
+        })}\n${JSON.stringify({
+          kind: "agent.repair.started",
+          data: { schemaVersion: "1.0.0", enabled: true, attemptBudget: 1 }
+        })}\n${JSON.stringify({
+          kind: "agent.repair.stopped",
+          data: { schemaVersion: "1.0.0", stopReason: "completed" }
+        })}\n${JSON.stringify({
+          kind: "agent.loop.completed",
+          data: { selfRepair: { stopReason: "completed" } }
         })}\n`,
         stderr: ""
       };

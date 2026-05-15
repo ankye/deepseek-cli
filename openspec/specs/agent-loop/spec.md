@@ -128,3 +128,126 @@ Agent loop 必须将工具执行结果转换为有界、脱敏、可 replay 的 
 - **WHEN** a tool execution completes with stdout, stderr, diagnostics, changed files, or model feedback
 - **THEN** the runtime records stable ids, capability ids, status, bounded summaries, replay hashes, and redaction metadata without persisting raw unbounded stdout/stderr
 - **中文** 当工具执行完成并包含 stdout、stderr、diagnostics、changed files 或 model feedback 时，runtime 必须记录 stable ids、capability ids、status、有界 summaries、replay hashes 与 redaction metadata，不得持久化 raw unbounded stdout/stderr。
+
+### Requirement: Agent Loop Uses Prompt Assembly Plan / Agent Loop 使用 Prompt Assembly Plan
+
+The agent loop SHALL obtain model-visible messages, prompt text, tool visibility, and prompt metadata from the prompt assembly package before dispatching each model request.
+
+Agent loop 在派发每次 model request 前，必须从 prompt assembly package 获取 model-visible messages、prompt text、tool visibility 与 prompt metadata。
+
+#### Scenario: Assembly occurs before model request / Model Request 前执行 Assembly
+- **WHEN** the agent loop is ready to call the model for an iteration
+- **THEN** it invokes the configured `PromptAssembler`, receives a provider-neutral assembly result, and builds the `ModelRequest` from that result rather than constructing messages inline
+- **中文** 当 agent loop 准备在某次 iteration 调用模型时，必须调用配置的 `PromptAssembler`，接收 provider-neutral assembly result，并从该 result 构建 `ModelRequest`，而不是内联构造 messages。
+
+#### Scenario: Existing prompt semantics are preserved / 保持现有 Prompt 语义
+- **WHEN** only the current user prompt and projected reference context are available
+- **THEN** the assembled model request preserves the existing behavior of a system context message followed by the exact user prompt message
+- **中文** 当只有当前用户 prompt 与 projected reference context 可用时，组装后的 model request 必须保持现有行为：system context message 后跟精确的 user prompt message。
+
+#### Scenario: Assembly failure fails closed / Assembly 失败安全关闭
+- **WHEN** prompt assembly rejects a turn due to hard budget, invalid required section, incompatible provider metadata, or policy exclusion of required context
+- **THEN** the agent loop emits a typed terminal failure and does not call the model gateway
+- **中文** 当 prompt assembly 因 hard budget、invalid required section、incompatible provider metadata 或 required context 被 policy exclusion 而拒绝某个 turn 时，agent loop 必须发出 typed terminal failure，且不得调用 model gateway。
+
+### Requirement: Agent Loop Emits Prompt Assembly Evidence / Agent Loop 发出 Prompt Assembly 证据
+
+The agent loop SHALL emit a host-neutral `prompt.assembled` runtime event before `model.requested` for every model dispatch attempt.
+
+Agent loop 必须在每次 model dispatch attempt 的 `model.requested` 之前发出 host-neutral `prompt.assembled` runtime event。
+
+#### Scenario: Prompt assembled event precedes model requested / Prompt Assembled 事件先于 Model Requested
+- **WHEN** a model request is successfully assembled
+- **THEN** the runtime event stream includes `prompt.assembled` before `model.requested`, with assembly fingerprint, section summary, budget report summary, tool plan summary, provider target metadata, compatibility metadata, and redaction metadata
+- **中文** 当 model request 成功组装时，runtime event stream 必须在 `model.requested` 之前包含 `prompt.assembled`，并带有 assembly fingerprint、section summary、budget report summary、tool plan summary、provider target metadata、compatibility metadata 与 redaction metadata。
+
+#### Scenario: Prompt assembled event is replayable / Prompt Assembled 事件可 Replay
+- **WHEN** a golden replay captures a turn that dispatches a model request
+- **THEN** the captured `prompt.assembled` event contains enough redacted structural evidence to compare future assembly output without persisting raw unbounded prompt content
+- **中文** 当 golden replay 捕获一个派发 model request 的 turn 时，捕获的 `prompt.assembled` event 必须包含足够的脱敏结构证据，用于对比未来 assembly output，且不持久化 raw unbounded prompt content。
+
+#### Scenario: Tool visibility is recorded / Tool Visibility 被记录
+- **WHEN** tools are projected into or excluded from a model request
+- **THEN** the prompt assembly evidence records visible tool count, excluded tool count, projection policy, and bounded exclusion reasons
+- **中文** 当 tools 被投影进或排除出 model request 时，prompt assembly evidence 必须记录 visible tool count、excluded tool count、projection policy 与有界 exclusion reasons。
+
+### Requirement: Agent Loop Runs Evidence Discovery Before Fact-Sensitive Dispatch / Agent Loop 在事实敏感派发前执行搜证
+
+The agent loop SHALL run task-intent classification and evidence discovery before model dispatch for fact-sensitive repository, product, code, documentation, release, or evaluation tasks.
+
+agent loop 必须在 fact-sensitive repository、product、code、documentation、release 或 evaluation tasks 的 model dispatch 前运行 task-intent classification 与 evidence discovery。
+
+#### Scenario: Fact-sensitive run emits evidence events / 事实敏感运行发出证据事件
+- **WHEN** `deepseek run` receives a prompt that asks for current-project product copy, command guidance, code changes, docs, release, or evaluation conclusions
+- **THEN** the event stream includes evidence classification, evidence plan, selected evidence summary, and evidence manifest or unsupported-claim decision before final output
+- **中文** 当 `deepseek run` 收到要求当前项目产品文案、命令指导、代码修改、文档、发布或评估结论的 prompt 时，event stream 必须在最终输出前包含 evidence classification、evidence plan、selected evidence summary 与 evidence manifest 或 unsupported-claim decision。
+
+#### Scenario: Non-fact task can skip evidence with classification / 非事实任务可带分类跳过搜证
+- **WHEN** a task is classified as casual, explicitly fictional, or pure brainstorming
+- **THEN** the agent loop may skip mandatory evidence discovery but records the classification and prevents the output from being treated as factual project evidence
+- **中文** 当任务被分类为 casual、明确虚构或纯 brainstorming 时，agent loop 可以跳过强制 evidence discovery，但必须记录分类，并防止输出被当作 factual project evidence。
+
+### Requirement: Agent Loop Preserves Prompt Boundary With Evidence Context / Agent Loop 通过证据上下文保留 Prompt 边界
+
+The agent loop SHALL preserve the exact user prompt while adding evidence plan and selected evidence as runtime-owned model context.
+
+agent loop 必须保留用户 prompt 的精确内容，同时将 evidence plan 与 selected evidence 作为 runtime-owned model context 加入。
+
+#### Scenario: Evidence context does not mutate user prompt / 证据上下文不修改用户 Prompt
+- **WHEN** evidence-first context is projected into a model request
+- **THEN** the user message remains byte-equivalent to the submitted prompt and evidence appears only in runtime-owned context sections or messages
+- **中文** 当 evidence-first context 被投影到 model request 时，user message 必须与提交 prompt 字节等价，evidence 只能出现在 runtime-owned context sections 或 messages 中。
+
+#### Scenario: Unsupported claim feedback reaches model / 未支持声明反馈给模型
+- **WHEN** the workflow detects unsupported strict claims before final output acceptance
+- **THEN** the agent loop can feed bounded diagnostics back to the model for revision, or fail closed if retry policy is exhausted
+- **中文** 当 workflow 在最终输出接受前检测到 unsupported strict claims 时，agent loop 可以将有界 diagnostics 回传给模型进行修订，或在 retry policy 耗尽时安全失败。
+
+### Requirement: Agent Loop Supports Governed Self-Repair Phase / Agent Loop 支持受治理自修复阶段
+
+The agent loop SHALL support a governed self-repair phase between repairable failure detection and terminal failure emission when request policy, safety gates, and budgets allow repair.
+
+agent loop 必须在检测到可修复失败与发出 terminal failure 之间支持受治理 self-repair phase，前提是 request policy、safety gates 与 budgets 允许修复。
+
+#### Scenario: Repairable failure enters repair phase / 可修复失败进入修复阶段
+- **WHEN** a tool execution, model provider event, artifact checker, or verification command fails with a repairable classification
+- **THEN** the agent loop emits self-repair classification and planning events before either attempting a governed repair or failing with a typed stop reason
+- **中文** 当 tool execution、model provider event、artifact checker 或 verification command 以可修复分类失败时，agent loop 必须在尝试受治理修复或以 typed stop reason 失败之前，发出 self-repair classification 与 planning events。
+
+#### Scenario: Non-repairable failure remains fail-closed / 不可修复失败保持安全失败
+- **WHEN** a failure is classified as non-repairable, unsafe, missing approval, missing credential, or outside allowed tool projection
+- **THEN** the agent loop emits terminal failure or escalation evidence without mutating the workspace or creating an extra model repair turn
+- **中文** 当 failure 被分类为 non-repairable、unsafe、missing approval、missing credential 或 outside allowed tool projection 时，agent loop 必须发出 terminal failure 或 escalation evidence，且不得修改 workspace 或创建额外 model repair turn。
+
+### Requirement: Agent Loop Summary Includes Repair Outcome / Agent Loop Summary 包含修复结果
+
+The agent loop SHALL include repair-loop outcome summaries in terminal events whenever repair classification or repair attempts occur.
+
+只要发生 repair classification 或 repair attempts，agent loop 必须在 terminal events 中包含 repair-loop outcome summaries。
+
+#### Scenario: Completed turn includes repair success summary / 完成回合包含修复成功摘要
+- **WHEN** a turn initially fails, performs a repair attempt, passes verification, and completes
+- **THEN** `agent.loop.completed` includes repair activation count, successful attempt id, verification summary, touched-scope summary, and redaction metadata
+- **中文** 当一个 turn 先失败、执行 repair attempt、通过 verification 并完成时，`agent.loop.completed` 必须包含 repair activation count、successful attempt id、verification summary、touched-scope summary 与 redaction metadata。
+
+#### Scenario: Failed turn includes repair stop summary / 失败回合包含修复停止摘要
+- **WHEN** a turn stops after repair attempts fail or are blocked
+- **THEN** `agent.loop.failed` includes failure classification, attempt count, last verification summary, stop reason, escalation action when any, and redaction metadata
+- **中文** 当一个 turn 在 repair attempts 失败或被阻止后停止时，`agent.loop.failed` 必须包含 failure classification、attempt count、last verification summary、stop reason、可能的 escalation action 与 redaction metadata。
+
+### Requirement: Agent Loop Preserves Existing Tool Governance During Repair / Agent Loop 在修复中保留工具治理
+
+The agent loop SHALL route repair tool calls through the same model-visible capability projection, tool-intent preflight, policy engine, runtime kernel, hooks, and tool-result evidence path as normal tool calls.
+
+agent loop 必须让 repair tool calls 经过与普通 tool calls 相同的 model-visible capability projection、tool-intent preflight、policy engine、runtime kernel、hooks 与 tool-result evidence path。
+
+#### Scenario: Repair tool call uses normal execution path / 修复工具调用使用普通执行路径
+- **WHEN** a repair attempt requests a file read, file write, shell, artifact check, or other capability
+- **THEN** the request is validated, preflighted, governed, executed, recorded, and fed back to the model using the existing runtime tool path
+- **中文** 当 repair attempt 请求 file read、file write、shell、artifact check 或其他 capability 时，该请求必须通过现有 runtime tool path 完成 validate、preflight、govern、execute、record 与 model feedback。
+
+#### Scenario: Repair cannot bypass rejected tool intent / 修复不得绕过被拒绝工具意图
+- **WHEN** tool-intent preflight rejects or repairs a repair-mode tool request
+- **THEN** the agent loop records the preflight decision as repair evidence and MUST NOT execute the original unsafe intent
+- **中文** 当 tool-intent preflight 拒绝或修复 repair-mode tool request 时，agent loop 必须将 preflight decision 记录为 repair evidence，且不得执行原始 unsafe intent。
+

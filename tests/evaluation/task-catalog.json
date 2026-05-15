@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "catalogVersion": "2026-05-13.smoke",
+  "catalogVersion": "2026-05-15.repair",
   "tasks": [
     {
       "taskId": "eval.bugfix.failing-test",
@@ -98,6 +98,34 @@
       "timeBudgetMs": 900000,
       "checkCommands": ["node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"],
       "scoringRubricId": "rubric.eval.webpage-static-quality",
+      "mode": "full"
+    },
+    {
+      "taskId": "eval.webpage.failing-first-repair",
+      "title": "Repair a failing generated webpage",
+      "category": "webpage-repair",
+      "fixtureId": "fixture.eval.webpage.failing-first-repair",
+      "workspaceSnapshotId": "snapshot.eval.full.v1",
+      "promptDigest": "sha256:eval-webpage-failing-first-repair",
+      "promptSummary": "Start from a generated webpage that fails local artifact and evidence checks, then repair it until the deterministic webpage checker passes.",
+      "allowedCapabilityProfile": "local-create-web-assets",
+      "timeBudgetMs": 900000,
+      "checkCommands": ["node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage"],
+      "scoringRubricId": "rubric.eval.webpage-repair-evidence",
+      "mode": "full"
+    },
+    {
+      "taskId": "eval.coding.failing-first-typecheck",
+      "title": "Repair a failing TypeScript check",
+      "category": "coding-repair",
+      "fixtureId": "fixture.eval.coding.failing-first-typecheck",
+      "workspaceSnapshotId": "snapshot.eval.full.v1",
+      "promptDigest": "sha256:eval-coding-failing-first-typecheck",
+      "promptSummary": "Start from a small TypeScript regression, diagnose the first failing check, make a focused repair, then rerun typecheck and the targeted tests.",
+      "allowedCapabilityProfile": "local-edit-test",
+      "timeBudgetMs": 900000,
+      "checkCommands": ["npm run typecheck", "npm test"],
+      "scoringRubricId": "rubric.eval.coding-repair-verification",
       "mode": "full"
     }
   ]

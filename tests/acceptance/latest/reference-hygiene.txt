@@ -1,1 +1,7 @@
-no matches
+# Reference Hygiene
+
+Command: git ls-files | Select-String -Pattern "^参考/|^参考\\"
+Exit Code: 0
+Output: no tracked reference-directory files matched.
+
+Ignored local paths observed separately include .env, node_modules/, and src/apps/cli/dist/.

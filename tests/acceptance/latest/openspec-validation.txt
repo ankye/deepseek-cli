@@ -1,12 +1,28 @@
+# OpenSpec Specs Validation
+
+Command: openspec validate --specs --strict
+Exit Code: 0
+
+## output
 - Validating...
 ✓ spec/agent-loop
 ✓ spec/agent-management
+✓ spec/agent-self-repair-loop
+✓ spec/architecture-scale-guardrails
+✓ spec/baseline-comparison-evaluation
 ✓ spec/bilingual-openspec-documentation
 ✓ spec/capability-execution-governance
 ✓ spec/capability-registry
 ✓ spec/checkpoint-undo
+✓ spec/cli-diagnostics-release-readiness
+✓ spec/cli-extension-auth-management
+✓ spec/cli-first-product-route
+✓ spec/cli-permission-approval-ux
+✓ spec/cli-task-completion-evaluation
 ✓ spec/code-intelligence
 ✓ spec/code-intelligence-local-analyzer
+✓ spec/command-palette-vi-actions
+✓ spec/command-skill-hook-composition
 ✓ spec/command-system
 ✓ spec/communication-protocol
 ✓ spec/concurrency-orchestration
@@ -17,15 +33,18 @@
 ✓ spec/credential-auth-management
 ✓ spec/cross-platform-runtime
 ✓ spec/distribution-update-management
+✓ spec/evidence-first-agent-workflow
 ✓ spec/evolution-engine
 ✓ spec/extension-system
 ✓ spec/framework-acceptance
 ✓ spec/future-capability-landings
 ✓ spec/hook-system
+✓ spec/index-provider-boundary
 ✓ spec/live-agent-tool-execution
 ✓ spec/live-provider-smoke
 ✓ spec/local-readiness
 ✓ spec/mcp-gateway
+✓ spec/mcp-plugin-auth-boundaries
 ✓ spec/memory-cache-management
 ✓ spec/minimal-chat-cli
 ✓ spec/model-gateway
@@ -35,6 +54,8 @@
 ✓ spec/plugin-system
 ✓ spec/policy-sandbox
 ✓ spec/product-roadmap
+✓ spec/prompt-assembly
+✓ spec/reference-pit-fixtures
 ✓ spec/remote-runtime-connectivity
 ✓ spec/runtime-event-loop
 ✓ spec/runtime-execution-kernel
@@ -43,9 +64,11 @@
 ✓ spec/session-resume-fork
 ✓ spec/session-store
 ✓ spec/skill-system
+✓ spec/terminal-capability-rendering
 ✓ spec/testing-regression
 ✓ spec/usage-budget-management
+✓ spec/vi-inspired-cli-composition
 ✓ spec/vscode-extension-adapter
 ✓ spec/workflow-orchestration
 ✓ spec/workspace-state-management
-Totals: 49 passed, 0 failed (49 items)
+Totals: 66 passed, 0 failed (66 items)

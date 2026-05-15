@@ -23,6 +23,12 @@ export async function runOneShotCommand(
       profile: defaultDeepSeekProfile,
       live: options.live,
       ...(options.live ? { reasoning: { enabled: false } } : {}),
+      selfRepair: {
+        enabled: true,
+        maxAttempts: 1,
+        requireCheckpointForWrites: true,
+        verificationMode: "targeted"
+      },
       ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
       ...(isGeneratedWebpageTask(options.prompt) ? {

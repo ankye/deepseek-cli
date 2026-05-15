@@ -18,6 +18,7 @@ import type { HookSystem } from "./hook.js";
 import type { McpGateway } from "./mcp.js";
 import type { ModelGateway, ModelProfile, ModelReasoningOptions } from "./model.js";
 import type { PromptAssembler } from "./prompt-assembly.js";
+import type { SelfRepairConfig, SelfRepairOutcomeSummary } from "./self-repair.js";
 import type { ToolFeedbackStatus, ToolIntentPreflightService } from "./tool-intent.js";
 import type { ObservabilitySink } from "./observability.js";
 import type { PlatformRuntime } from "./platform.js";
@@ -68,6 +69,14 @@ export type RuntimeEventKind =
   | "agent.loop.completed"
   | "agent.loop.failed"
   | "agent.loop.cancelled"
+  | "agent.repair.started"
+  | "agent.repair.classified"
+  | "agent.repair.plan.created"
+  | "agent.repair.attempt.started"
+  | "agent.repair.attempt.completed"
+  | "agent.repair.verification.started"
+  | "agent.repair.verification.completed"
+  | "agent.repair.stopped"
   | "evidence.classified"
   | "evidence.plan.created"
   | "evidence.selected"
@@ -240,6 +249,7 @@ export interface AgentLoopLimits extends JsonObject {
   readonly toolTimeoutMs: number;
   readonly maxOutputBytes: number;
   readonly maxRetries: number;
+  readonly maxRepairAttempts: number;
 }
 
 export type AgentLoopToolProjection = "read-only" | "read-write" | "all";
@@ -292,6 +302,8 @@ export interface AgentLoopRequest extends JsonObject {
   readonly limits?: Partial<AgentLoopLimits>;
   readonly live?: boolean;
   readonly toolProjection?: AgentLoopToolProjection;
+  readonly selfRepair?: Partial<SelfRepairConfig>;
+  readonly evidenceFirst?: { readonly enabled?: boolean };
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly trace?: TraceContext;
 }
@@ -311,6 +323,7 @@ export interface AgentLoopSummary extends JsonObject {
   readonly toolCalls: number;
   readonly modelProvider?: ModelProviderId;
   readonly modelProfile?: ModelProfileId;
+  readonly selfRepair?: SelfRepairOutcomeSummary;
   readonly diagnostics: readonly RedactedError[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
 }

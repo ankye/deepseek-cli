@@ -124,6 +124,25 @@ export interface EvidenceSourceCoverage extends JsonObject {
   readonly redaction: RedactionMetadata;
 }
 
+export type EvidenceCandidateExclusionReason =
+  | "stale"
+  | "missing"
+  | "duplicate"
+  | "secret-like"
+  | "out-of-scope"
+  | "over-budget";
+
+export interface EvidenceCandidateExclusion extends JsonObject {
+  readonly schemaVersion: typeof EVIDENCE_FIRST_SCHEMA_VERSION;
+  readonly exclusionId: string;
+  readonly sourceGroup: EvidenceSourceGroup;
+  readonly sourcePath: string;
+  readonly reason: EvidenceCandidateExclusionReason;
+  readonly fingerprint?: string;
+  readonly compatibility: EvidenceCompatibility;
+  readonly redaction: RedactionMetadata;
+}
+
 export interface ClaimGrounding extends JsonObject {
   readonly schemaVersion: typeof EVIDENCE_FIRST_SCHEMA_VERSION;
   readonly claimId: string;
@@ -178,6 +197,7 @@ export interface EvidenceFirstSummary extends JsonObject {
   readonly plan?: EvidencePlan;
   readonly manifestStatus: EvidenceManifestStatus;
   readonly evidenceItemCount: number;
+  readonly excludedCandidateCount?: number;
   readonly sourceCoverageRate: number;
   readonly claimGroundingRate: number;
   readonly unsupportedClaimCount: number;
@@ -193,6 +213,7 @@ export interface EvidenceFirstRuntimeContext extends JsonObject {
   readonly classification: EvidenceTaskClassification;
   readonly plan?: EvidencePlan;
   readonly selectedEvidence: readonly EvidenceItem[];
+  readonly excludedCandidates?: readonly EvidenceCandidateExclusion[];
   readonly sourceCoverage: readonly EvidenceSourceCoverage[];
   readonly summary: EvidenceFirstSummary;
   readonly compatibility: EvidenceCompatibility;

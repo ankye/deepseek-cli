@@ -203,3 +203,63 @@ diagnostic bundle outputs 必须保留用于 redaction 与 environment snapshot 
 - **WHEN** diagnostics include startup environment or credential-presence metadata
 - **THEN** evidence includes `pit.env-snapshot.immutable-startup` or an explicit deferral, and never reads mutable env values after the diagnostics snapshot is assembled
 - **中文** 当 diagnostics 包含 startup environment 或 credential-presence metadata 时，evidence 必须包含 `pit.env-snapshot.immutable-startup` 或明确 deferred，且在 diagnostics snapshot 组装后不得读取 mutable env values。
+
+### Requirement: Evidence-First Records Are Redacted And Replayable / 证据优先记录脱敏且可回放
+
+Observability SHALL normalize evidence-first workflow events into redacted canonical records suitable for replay, diagnostics, and local support bundles.
+
+observability 必须将 evidence-first workflow events 归一化为脱敏 canonical records，适用于 replay、diagnostics 与 local support bundles。
+
+#### Scenario: Evidence plan is observable / 证据计划可观测
+- **WHEN** a fact-sensitive task creates an evidence plan
+- **THEN** observability records plan id, task classification, required fact classes, source groups, source coverage, stop conditions, trace metadata, schema version, and redaction metadata
+- **中文** 当 fact-sensitive task 创建 evidence plan 时，observability 必须记录 plan id、task classification、required fact classes、source groups、source coverage、stop conditions、trace metadata、schema version 与 redaction metadata。
+
+#### Scenario: Evidence manifest excludes raw secrets / 证据清单排除原始 Secrets
+- **WHEN** evidence items or claim groundings are stored, rendered, or exported
+- **THEN** records contain bounded previews, fingerprints, source references, fact classes, and redaction summaries without raw secrets, unbounded private file content, provider raw reasoning, or authorization material
+- **中文** 当 evidence items 或 claim groundings 被存储、展示或导出时，records 必须包含 bounded previews、fingerprints、source references、fact classes 与 redaction summaries，不得包含 raw secrets、无界私有文件内容、provider raw reasoning 或 authorization material。
+
+### Requirement: Unsupported Claim Diagnostics Are Safe / 未支持声明诊断安全
+
+Observability SHALL record unsupported-claim diagnostics without leaking unsafe source content or overstating unverified conclusions.
+
+observability 必须记录 unsupported-claim diagnostics，同时不泄漏 unsafe source content，也不夸大未经验证的结论。
+
+#### Scenario: Unsupported command diagnostic is bounded / 未支持命令诊断有界
+- **WHEN** generated output includes an unsupported command or package claim
+- **THEN** observability records the claim fingerprint, bounded claim preview, missing evidence class, output artifact id, and remediation hint without persisting full generated artifact content by default
+- **中文** 当生成输出包含 unsupported command 或 package claim 时，observability 必须记录 claim fingerprint、有界 claim preview、missing evidence class、output artifact id 与 remediation hint，默认不持久化完整生成产物内容。
+
+### Requirement: Self-Repair Evidence Is Canonical And Redacted / 自修复证据标准化且脱敏
+
+Observability SHALL normalize self-repair loop events into canonical redacted records before storage, replay, diagnostics, or host projection.
+
+observability 必须在 storage、replay、diagnostics 或 host projection 之前，将 self-repair loop events 归一化为标准脱敏记录。
+
+#### Scenario: Repair evidence becomes canonical record / 修复证据成为标准记录
+- **WHEN** the repair loop emits classification, plan, attempt, verification, stop, revert, or escalation evidence
+- **THEN** observability records schema version, record id, event kind, session id, turn id, trace id, repair attempt id, evidence fingerprints, redaction metadata, privacy class, and compatibility metadata
+- **中文** 当 repair loop 发出 classification、plan、attempt、verification、stop、revert 或 escalation evidence 时，observability 必须记录 schema version、record id、event kind、session id、turn id、trace id、repair attempt id、evidence fingerprints、redaction metadata、privacy class 与 compatibility metadata。
+
+#### Scenario: Repair evidence excludes raw unsafe content / 修复证据排除不安全原文
+- **WHEN** repair evidence contains command output, model diagnosis, file snippets, provider errors, or verification logs
+- **THEN** stored and rendered records include bounded redacted previews, byte counts, digests, and redaction summaries without raw secrets, unbounded stdout/stderr, private file contents beyond policy, or raw provider reasoning
+- **中文** 当 repair evidence 包含 command output、model diagnosis、file snippets、provider errors 或 verification logs 时，存储和展示的 records 必须包含有界脱敏 previews、byte counts、digests 与 redaction summaries，不得包含 raw secrets、无界 stdout/stderr、超出 policy 的私有文件内容或 raw provider reasoning。
+
+### Requirement: Self-Repair Diagnostic Bundles Are Replayable / 自修复诊断包可回放
+
+Diagnostic bundles SHALL include enough redacted self-repair evidence to replay repair decisions and explain why the loop completed, retried, reverted, escalated, or failed.
+
+diagnostic bundles 必须包含足够的脱敏 self-repair evidence，以回放 repair decisions 并解释 loop 为何 completed、retried、reverted、escalated 或 failed。
+
+#### Scenario: Bundle explains repair stop reason / 诊断包解释修复停止原因
+- **WHEN** a diagnostic bundle is generated for a turn that entered self-repair
+- **THEN** the bundle includes failure classification, repair policy decisions, attempt summaries, verification summaries, stop reason, replay fingerprints, and redaction summaries
+- **中文** 当为进入 self-repair 的 turn 生成 diagnostic bundle 时，bundle 必须包含 failure classification、repair policy decisions、attempt summaries、verification summaries、stop reason、replay fingerprints 与 redaction summaries。
+
+#### Scenario: Bundle remains local and safe by default / 诊断包默认本地安全
+- **WHEN** self-repair diagnostic evidence is generated without explicit external export settings
+- **THEN** it remains local, external upload is denied by default, and export-denial evidence contains no raw repair artifacts or secrets
+- **中文** 当生成 self-repair diagnostic evidence 且没有显式 external export settings 时，它必须保持本地，默认拒绝 external upload，且 export-denial evidence 不包含 raw repair artifacts 或 secrets。
+

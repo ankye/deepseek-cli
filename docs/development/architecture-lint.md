@@ -34,6 +34,18 @@ Key files:
 - Secret/sandbox/platform primitive bypasses. / secret、sandbox、platform 原语绕过。
 - Context projection bypasses. / context projection 绕过。
 
+## Split-Plan Baselines / 拆分计划基线
+
+`scripts/lint-framework/conventions.mjs` may list a source file in `scaleGuardrails.plannedOversizedFiles` only when the file already has a bounded split plan. These entries are not exemptions from ownership; they are visible debt for the next architecture slice.
+
+`scripts/lint-framework/conventions.mjs` 只有在文件已有有界拆分计划时，才可以把 source file 列入 `scaleGuardrails.plannedOversizedFiles`。这些条目不是责任豁免，而是下一轮架构切分的显式债务。
+
+Current runtime baseline:
+
+当前 runtime 基线：
+
+- `src/packages/runtime/src/agent-loop.ts`: split evidence-first orchestration, self-repair orchestration, hook firing, model dispatch, and terminal summary helpers into focused runtime modules while keeping `runAgentLoop` as the state-machine coordinator.
+
 ## Adding A Rule / 新增规则
 
 1. Add shared ownership data to `conventions.mjs` when needed. / 需要时在 `conventions.mjs` 增加共享 ownership 数据。

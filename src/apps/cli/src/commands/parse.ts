@@ -152,7 +152,10 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek revert apply --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
     "  deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate [--baseline <id>] [--full] [--dry-run] [--live] [--output text|json|jsonl]",
     "  deepseek tools-smoke [--output text|jsonl]",
-    "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]"
+    "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]",
+    "Notes:",
+    "  fact-sensitive run/chat turns classify and select bounded local evidence before model dispatch",
+    "  one-shot run turns use bounded self-repair for repairable failures and emit redacted repair evidence"
   ];
 }
 

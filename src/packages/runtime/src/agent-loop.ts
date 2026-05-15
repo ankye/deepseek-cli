@@ -13,6 +13,11 @@ import type {
   RuntimeEvent,
   RuntimeKernel,
   RuntimeKernelRequest,
+  SelfRepairAttemptRecord,
+  SelfRepairFailureClassification,
+  SelfRepairOutcomeSummary,
+  SelfRepairPlan,
+  SelfRepairVerificationSummary,
   SessionId,
   ToolFeedbackStatus,
   ToolResultFeedback,
@@ -23,7 +28,7 @@ import { asId } from "@deepseek/platform-contracts";
 import { createToolResultEvidence, createToolResultEvidenceCacheEntry } from "@deepseek/memory-cache-management";
 import { projectAgentLoopContext, projectionEventData } from "./context-projection.js";
 import { kernelError, toolIntentError } from "./errors.js";
-import { createEvidenceFirstRuntimeContext, evidenceFirstEventData } from "./evidence-first.js";
+import { createEvidenceFirstRuntimeContext, evidenceFirstEventData, groundStrictClaims } from "./evidence-first.js";
 import { agentLoopEvent, collectRuntimeEvents, lastRuntimeEvent, recordRuntimeAdapterEvent } from "./events.js";
 import {
   boundedModelText,
@@ -33,6 +38,18 @@ import {
   resolveCapabilityId
 } from "./model-tooling.js";
 import { assemblePromptForIteration, promptAssemblyEventPayload, toolProjectionPolicy } from "./prompt-assembly-integration.js";
+import {
+  classifyRepairFailure,
+  createAttemptRecord,
+  createRepairPlan,
+  createVerificationSummary,
+  decideRepairPolicy,
+  emptySelfRepairOutcome,
+  outcomeFromState,
+  repairEvent,
+  selfRepairConfig,
+  stopPayload
+} from "./self-repair/index.js";
 import { runtimeTrace, stableHash } from "./trace.js";
 
 export const defaultAgentLoopLimits: AgentLoopLimits = {
@@ -41,7 +58,8 @@ export const defaultAgentLoopLimits: AgentLoopLimits = {
   turnTimeoutMs: 120_000,
   toolTimeoutMs: 30_000,
   maxOutputBytes: 16_000,
-  maxRetries: 0
+  maxRetries: 0,
+  maxRepairAttempts: 1
 };
 
 export async function* runAgentLoop(
@@ -55,17 +73,116 @@ export async function* runAgentLoop(
   const turnId = asId<"turn">(`turn-${stableHash(`${sessionId}:${request.prompt}`)}`);
   const limits = { ...defaultAgentLoopLimits, ...(request.limits ?? {}) };
   const diagnostics: RedactedError[] = [];
+  const selfRepair = selfRepairConfig(request.selfRepair, limits.maxRepairAttempts);
+  const repairClassifications: SelfRepairFailureClassification[] = [];
+  const repairAttempts: SelfRepairAttemptRecord[] = [];
+  const repairVerification: SelfRepairVerificationSummary[] = [];
+  let repairStopReason: SelfRepairOutcomeSummary["stopReason"] = selfRepair.enabled ? "completed" : "disabled";
   let assistantText = "";
   let iterations = 0;
   let toolCalls = 0;
   let terminalEmitted = false;
+  let repairContinuationRequested = false;
   const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
   let contextProjection: ContextProjectionResult | undefined;
   let evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined;
+  let evidenceRevisionAttempted = false;
   const signal = control.signal;
 
+  const currentRepairOutcome = (): SelfRepairOutcomeSummary => outcomeFromState({
+    enabled: selfRepair.enabled,
+    classifications: repairClassifications,
+    attempts: repairAttempts,
+    verification: repairVerification,
+    stopReason: repairStopReason
+  });
+
+  const emitFailureWithRepair = async function* (
+    status: AgentLoopSummary["status"],
+    reason: string,
+    error?: RedactedError,
+    event?: RuntimeEvent
+  ): AsyncGenerator<RuntimeEvent, boolean, void> {
+    if (error || event) {
+      const classification = classifyRepairFailure({
+        terminalKind: event?.kind ?? reason,
+        ...(error ? { error } : {}),
+        ...(event ? { event } : {}),
+        trace,
+        ...(event ? { evidenceFingerprint: `event:${stableHash(JSON.stringify({ kind: event.kind, data: event.data, error: event.error?.code }))}` } : {})
+      });
+      repairClassifications.push(classification);
+      const startedRepair = await repairEvent(deps, "agent.repair.started", sessionId, turnId, trace, {
+        reason,
+        enabled: selfRepair.enabled,
+        attemptBudget: selfRepair.maxAttempts,
+        redaction: { class: "internal", fields: ["reason"] }
+      }, request.agentId);
+      yield startedRepair;
+      const classifiedRepair = await repairEvent(deps, "agent.repair.classified", sessionId, turnId, trace, { classification }, request.agentId);
+      yield classifiedRepair;
+      const decision = decideRepairPolicy(selfRepair, classification, currentRepairOutcome());
+      repairStopReason = decision.stopReason;
+      if (decision.allowed) {
+        const plan = createRepairPlan({
+          classification,
+          attemptNumber: repairAttempts.length + 1,
+          requiresCheckpoint: decision.requiresCheckpoint,
+          verificationMode: selfRepair.verificationMode,
+          trace
+        });
+        const planEvent = await repairEvent(deps, "agent.repair.plan.created", sessionId, turnId, trace, { plan }, request.agentId);
+        yield planEvent;
+        if (plan.requiresCheckpoint && !hasEligibleRepairCheckpoint(deps, sessionId, turnId)) {
+          repairStopReason = "checkpoint-unavailable";
+          const stopped = await repairEvent(deps, "agent.repair.stopped", sessionId, turnId, trace, stopPayload({ stopReason: "checkpoint-unavailable", classification, plan }), request.agentId);
+          yield stopped;
+        } else {
+          const verification = createVerificationSummary({ status: "skipped", command: plan.expectedVerification[0] ?? "next model iteration" });
+          repairVerification.push(verification);
+          const verificationStarted = await repairEvent(deps, "agent.repair.verification.started", sessionId, turnId, trace, { verification }, request.agentId);
+          yield verificationStarted;
+          const attempt = createAttemptRecord({
+            plan,
+            status: "started",
+            verification: [verification],
+            materialChangeFingerprint: "pending-model-feedback"
+          });
+          repairAttempts.push(attempt);
+          const attemptStarted = await repairEvent(deps, "agent.repair.attempt.started", sessionId, turnId, trace, { attempt }, request.agentId);
+          yield attemptStarted;
+          messages.push(repairFeedbackMessage(plan, classification, error));
+          const attemptCompleted = createAttemptRecord({
+            plan,
+            status: "completed",
+            verification: [verification],
+            materialChangeFingerprint: "model-feedback"
+          });
+          repairAttempts[repairAttempts.length - 1] = attemptCompleted;
+          const attemptCompletedEvent = await repairEvent(deps, "agent.repair.attempt.completed", sessionId, turnId, trace, { attempt: attemptCompleted }, request.agentId);
+          yield attemptCompletedEvent;
+          const verificationCompleted = await repairEvent(deps, "agent.repair.verification.completed", sessionId, turnId, trace, { verification }, request.agentId);
+          yield verificationCompleted;
+          const stopped = await repairEvent(deps, "agent.repair.stopped", sessionId, turnId, trace, stopPayload({ stopReason: "completed", classification, plan, attempt: attemptCompleted }), request.agentId);
+          repairStopReason = "completed";
+          repairContinuationRequested = true;
+          yield stopped;
+          return true;
+        }
+      } else {
+        const stopped = await repairEvent(deps, "agent.repair.stopped", sessionId, turnId, trace, stopPayload({ stopReason: decision.stopReason, classification }), request.agentId);
+        yield stopped;
+      }
+    }
+    const summary = summarizeAgentLoop(status, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
+    const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, { ...summary, reason }, request.agentId, error);
+    await recordRuntimeAdapterEvent(deps, failed);
+    yield failed;
+    return false;
+  };
+
   const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
-    const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
+    const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
     const cancelled = agentLoopEvent("agent.loop.cancelled", sessionId, turnId, trace, { ...summary, reason: "user-cancelled" }, request.agentId);
     await recordRuntimeAdapterEvent(deps, cancelled);
     yield cancelled;
@@ -144,7 +261,7 @@ export async function* runAgentLoop(
   });
   if (userInputResult.status === "blocked") {
     diagnostics.push({ code: "HOOK_BLOCKED", message: "user-input.before hook blocked this turn", retryable: false, redaction: { class: "internal" } });
-    const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics), reason: "blocked-by-hook" };
+    const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()), reason: "blocked-by-hook" };
     const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
     await recordRuntimeAdapterEvent(deps, failed);
     yield failed;
@@ -190,10 +307,7 @@ export async function* runAgentLoop(
     yield projectionEvent;
     if (projectionEvent.kind === "context.projection.rejected") {
       diagnostics.push(projectionEvent.error ?? kernelError("KERNEL_ENVELOPE_INVALID", "Context projection rejected model dispatch"));
-      const summary = summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
-      const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId, summary.diagnostics[0]);
-      await recordRuntimeAdapterEvent(deps, failed);
-      yield failed;
+      yield* emitFailureWithRepair("rejected", "context-projection-rejected", summaryError(diagnostics), projectionEvent);
       terminalEmitted = true;
       return;
     }
@@ -202,6 +316,7 @@ export async function* runAgentLoop(
   contextProjection = projectionStep.value?.projection;
 
   while (iterations < limits.maxModelIterations) {
+    repairContinuationRequested = false;
     if (signal?.aborted) {
       yield* emitCancelled();
       terminalEmitted = true;
@@ -211,17 +326,11 @@ export async function* runAgentLoop(
     let iterationReasoning = "";
     let reasoningPersistedForIteration = false;
     const availableCapabilities = await deps.capabilities.listModelVisible();
-    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits, evidenceFirst);
+    const assembly = await assemblePromptForIteration(deps, request, sessionId, turnId, trace, messages, contextProjection, availableCapabilities, limits, evidenceFirst, currentRepairOutcome());
     if (assembly.status === "rejected") {
       diagnostics.push(...assembly.diagnostics);
       const error = assembly.diagnostics[0] ?? kernelError("KERNEL_ENVELOPE_INVALID", "Prompt assembly rejected model dispatch");
-      const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, {
-        ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics),
-        reason: "prompt-assembly-rejected",
-        promptAssembly: promptAssemblyEventPayload(assembly, request)
-      }, request.agentId, error);
-      await recordRuntimeAdapterEvent(deps, failed);
-      yield failed;
+      yield* emitFailureWithRepair("rejected", "prompt-assembly-rejected", error);
       terminalEmitted = true;
       return;
     }
@@ -247,7 +356,7 @@ export async function* runAgentLoop(
       }, request.agentId);
       await recordRuntimeAdapterEvent(deps, blockedEvent);
       yield blockedEvent;
-      const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics), reason: "blocked-by-hook" };
+      const summary = { ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()), reason: "blocked-by-hook" };
       const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId);
       await recordRuntimeAdapterEvent(deps, failed);
       yield failed;
@@ -369,10 +478,7 @@ export async function* runAgentLoop(
           }, request.agentId, error);
           await recordRuntimeAdapterEvent(deps, rejected);
           yield rejected;
-          const summary = summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
-          const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId, error);
-          await recordRuntimeAdapterEvent(deps, failed);
-          yield failed;
+          yield* emitFailureWithRepair("rejected", "tool-call-limit", error, rejected);
           terminalEmitted = true;
           return;
         }
@@ -587,10 +693,10 @@ export async function* runAgentLoop(
             : terminal.kind === "execution.rejected"
               ? "rejected"
               : "failed";
-          const summary = summarizeAgentLoop(status, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
-          const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId, terminal.error);
-          await recordRuntimeAdapterEvent(deps, failed);
-          yield failed;
+          const repairQueued = yield* emitFailureWithRepair(status, "tool-terminal-error", terminal.error, terminal);
+          if (repairQueued && iterations < limits.maxModelIterations) {
+            break;
+          }
           terminalEmitted = true;
           return;
         }
@@ -620,10 +726,10 @@ export async function* runAgentLoop(
         }, request.agentId, modelEvent.error);
         await recordRuntimeAdapterEvent(deps, failed);
         yield failed;
-        const summary = summarizeAgentLoop("failed", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
-        const terminal = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId, modelEvent.error);
-        await recordRuntimeAdapterEvent(deps, terminal);
-        yield terminal;
+        const repairQueued = yield* emitFailureWithRepair("failed", "model-provider-error", modelEvent.error, failed);
+        if (repairQueued && iterations < limits.maxModelIterations) {
+          break;
+        }
         terminalEmitted = true;
         return;
       }
@@ -633,8 +739,60 @@ export async function* runAgentLoop(
       toolRequested: requestedTool,
       messageCount: messages.length
     });
+    if (repairContinuationRequested && iterations < limits.maxModelIterations) {
+      continue;
+    }
     if (!requestedTool) {
-      const summary = summarizeAgentLoop("completed", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
+      if (evidenceFirst?.classification.evidenceRequired) {
+        const grounding = groundStrictClaims(assistantText, evidenceFirst);
+        evidenceFirst = { ...evidenceFirst, summary: grounding.summary };
+        const groundedEvent = agentLoopEvent("evidence.claims.grounded", sessionId, turnId, trace, {
+          schemaVersion: evidenceFirst.schemaVersion,
+          claimGroundingCount: grounding.claimGroundings.length,
+          unsupportedClaimCount: grounding.unsupportedClaims.length,
+          claimGroundings: grounding.claimGroundings,
+          summary: grounding.summary,
+          redaction: { class: "internal", fields: ["claimGroundings.claimPreview"] }
+        }, request.agentId);
+        await recordRuntimeAdapterEvent(deps, groundedEvent);
+        yield groundedEvent;
+        for (const unsupported of grounding.unsupportedClaims) {
+          const unsupportedEvent = agentLoopEvent("evidence.unsupported-claim", sessionId, turnId, trace, unsupported, request.agentId);
+          await recordRuntimeAdapterEvent(deps, unsupportedEvent);
+          yield unsupportedEvent;
+        }
+        if (grounding.unsupportedClaims.length > 0 && !evidenceRevisionAttempted && iterations < limits.maxModelIterations) {
+          evidenceRevisionAttempted = true;
+          assistantText = "";
+          messages.push({
+            role: "tool",
+            toolCallId: `evidence-revision:${stableHash(grounding.unsupportedClaims.map((claim) => claim.claimFingerprint).join("|"))}`,
+            toolName: "evidence-first.claim-grounding",
+            content: [
+              "Evidence-first revision required:",
+              `Unsupported strict claims: ${grounding.unsupportedClaims.map((claim) => `${claim.code}:${claim.claimPreview}`).join("; ")}`,
+              "Revise once by removing unsupported claims, rewriting them as unknown, or labeling explicit assumptions. Preserve the original user task."
+            ].join("\n")
+          });
+          continue;
+        }
+        if (grounding.unsupportedClaims.length > 0) {
+          const error = kernelError("KERNEL_ENVELOPE_INVALID", "Evidence-first unsupported strict claims remained after revision", {
+            unsupportedClaimCount: grounding.unsupportedClaims.length
+          });
+          diagnostics.push(error);
+          const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, {
+            ...summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome()),
+            reason: "evidence-unsupported-claim",
+            evidenceFirst: evidenceFirstEventData(evidenceFirst)
+          }, request.agentId, error);
+          await recordRuntimeAdapterEvent(deps, failed);
+          yield failed;
+          terminalEmitted = true;
+          return;
+        }
+      }
+      const summary = summarizeAgentLoop("completed", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, currentRepairOutcome());
       const completed = agentLoopEvent("turn.completed", sessionId, turnId, trace, summary, request.agentId);
       await recordRuntimeAdapterEvent(deps, completed);
       yield completed;
@@ -649,10 +807,7 @@ export async function* runAgentLoop(
   if (!terminalEmitted) {
     const error = kernelError("KERNEL_QUEUE_BACKPRESSURE", "Agent loop model iteration limit exceeded", { maxModelIterations: limits.maxModelIterations });
     diagnostics.push(error);
-    const summary = summarizeAgentLoop("rejected", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics);
-    const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, summary, request.agentId, error);
-    await recordRuntimeAdapterEvent(deps, failed);
-    yield failed;
+    yield* emitFailureWithRepair("rejected", "model-iteration-limit", error);
   }
 }
 
@@ -686,7 +841,8 @@ export function summarizeAgentLoop(
   assistantText: string,
   iterations: number,
   toolCalls: number,
-  diagnostics: readonly RedactedError[]
+  diagnostics: readonly RedactedError[],
+  selfRepair: SelfRepairOutcomeSummary = emptySelfRepairOutcome(false)
 ): AgentLoopSummary {
   return {
     schemaVersion: "1.0.0",
@@ -699,8 +855,42 @@ export function summarizeAgentLoop(
     toolCalls,
     modelProvider: request.profile.providerId,
     modelProfile: request.profile.id,
+    selfRepair,
     diagnostics,
-    redaction: { class: "internal", fields: ["assistantText", "diagnostics.details"] }
+    redaction: { class: "internal", fields: ["assistantText", "diagnostics.details", "selfRepair.classifications.diagnostics", "selfRepair.attempts.diagnostics"] }
+  };
+}
+
+function summaryError(diagnostics: readonly RedactedError[]): RedactedError | undefined {
+  return diagnostics[0];
+}
+
+function hasEligibleRepairCheckpoint(deps: RuntimeDependencies, sessionId: SessionId, turnId: TurnId): boolean {
+  return deps.workspaceState.checkpoints().some((checkpoint) =>
+    checkpoint.status === "eligible" &&
+    checkpoint.sessionId === sessionId &&
+    (!checkpoint.turnId || checkpoint.turnId === turnId)
+  );
+}
+
+function repairFeedbackMessage(
+  plan: SelfRepairPlan,
+  classification: SelfRepairFailureClassification,
+  error: RedactedError | undefined
+): import("@deepseek/platform-contracts").ModelChatMessage {
+  return {
+    role: "tool",
+    toolCallId: plan.attemptId,
+    toolName: "agent.self-repair",
+    content: [
+      "Self-repair feedback:",
+      `Failure source: ${classification.failureSource}.`,
+      `Affected scope: ${classification.affectedScope}.`,
+      `Repair action: ${plan.actionType}.`,
+      `Verification: ${plan.expectedVerification.join(", ") || "next model iteration"}.`,
+      error ? `Diagnostic: ${error.code}: ${error.message}` : "Diagnostic: unavailable.",
+      "Make the smallest bounded correction, use only visible governed tools, then stop or verify."
+    ].join("\n")
   };
 }
 

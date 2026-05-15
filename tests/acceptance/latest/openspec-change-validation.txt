@@ -1,1 +1,16 @@
-Change 'implement-plugin-lockfile-v1' is valid
+# OpenSpec Change Validation
+
+Command: openspec validate evidence-first-agent-workflow --strict
+Exit Code: 0
+Output: Change 'evidence-first-agent-workflow' is valid
+
+Command: openspec validate teach-agent-self-repair-loop --strict
+Exit Code: 0
+Output: Change 'teach-agent-self-repair-loop' is valid
+
+Archive:
+- evidence-first-agent-workflow -> openspec/changes/archive/2026-05-15-evidence-first-agent-workflow
+- teach-agent-self-repair-loop -> openspec/changes/archive/2026-05-15-teach-agent-self-repair-loop
+
+Post-archive command: openspec list
+Output: No active changes found.
