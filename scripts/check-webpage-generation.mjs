@@ -31,7 +31,7 @@ if (!/(<h1[\s>]|aria-label=|role=["']main["']|<main[\s>])/i.test(html)) diagnost
 if (/https?:\/\/|\/\/cdn\.|unpkg\.com|jsdelivr\.net|cdnjs\.cloudflare\.com/i.test(combined)) diagnostics.push("remote-dependency-detected");
 if (!evidenceFile) diagnostics.push("missing-evidence-manifest");
 
-const commandDiagnostics = unsupportedCommandDiagnostics(combined, evidence);
+const commandDiagnostics = await unsupportedCommandDiagnostics(combined, evidence);
 diagnostics.push(...commandDiagnostics);
 
 const result = {
@@ -115,9 +115,9 @@ function pathIncludes(value, required) {
   return typeof value === "string" && value.replace(/\\/g, "/").endsWith(required);
 }
 
-function unsupportedCommandDiagnostics(text, manifest) {
+async function unsupportedCommandDiagnostics(text, manifest) {
   const commands = extractCommands(stripMarkup(text));
-  const verifiedCommands = verifiedCommandClaims(manifest);
+  const verifiedCommands = new Set([...verifiedCommandClaims(manifest), ...await repositoryCommandEvidence()]);
   const diagnostics = [];
   for (const command of commands) {
     const normalized = normalizeCommand(command);
@@ -128,6 +128,34 @@ function unsupportedCommandDiagnostics(text, manifest) {
     if (!verifiedCommands.has(normalized)) diagnostics.push(`unsupported-command:${normalized}`);
   }
   return diagnostics;
+}
+
+async function repositoryCommandEvidence() {
+  const values = await Promise.all([
+    readFile(resolve("README.md"), "utf8").catch(() => ""),
+    readFile(resolve("docs/reference/command-index.md"), "utf8").catch(() => ""),
+    readFile(resolve("package.json"), "utf8").catch(() => ""),
+    readFile(resolve("src/apps/cli/package.json"), "utf8").catch(() => "")
+  ]);
+  const commands = new Set(values.flatMap(extractCommands));
+  for (const raw of values.filter(Boolean)) {
+    try {
+      const parsed = JSON.parse(raw);
+      const scripts = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.scripts : undefined;
+      if (scripts && typeof scripts === "object" && !Array.isArray(scripts)) {
+        for (const scriptName of Object.keys(scripts)) {
+          commands.add(normalizeCommand(scriptName === "test" ? "npm test" : `npm run ${scriptName}`));
+        }
+      }
+      const bin = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.bin : undefined;
+      if (bin && typeof bin === "object" && !Array.isArray(bin)) {
+        for (const binName of Object.keys(bin)) commands.add(normalizeCommand(`${binName} run`));
+      }
+    } catch {
+      // Non-JSON evidence files are handled by extractCommands above.
+    }
+  }
+  return commands;
 }
 
 function verifiedCommandClaims(manifest) {
@@ -159,7 +187,7 @@ function isCommandLike(command) {
   if (program === "npx") return Boolean(firstArg);
   if (program === "node") return Boolean(firstArg);
   if (program === "openspec") return Boolean(firstArg);
-  if (program === "deepseek") return Boolean(firstArg);
+  if (program === "deepseek") return ["run", "chat", "diagnostics", "palette", "revert", "index-provider", "mcp", "extension", "readiness", "mode", "session", "tools-smoke", "help"].includes(firstArg ?? "");
   if (program === "npm") return ["install", "run", "test", "publish", "exec"].includes(firstArg ?? "");
   return false;
 }
@@ -167,6 +195,7 @@ function isCommandLike(command) {
 function normalizeCommand(value) {
   return value
     .replace(/[`"'<>]/g, "")
+    .replace(/:\s+.*$/, "")
     .replace(/\s+/g, " ")
     .replace(/[.,;:!?]+$/g, "")
     .trim();

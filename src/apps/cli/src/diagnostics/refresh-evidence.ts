@@ -33,6 +33,7 @@ const defaultRefreshPlan: readonly RefreshPlanStep[] = [
   step("dependency-boundaries", "Dependency boundaries", "node", ["scripts/check-boundaries.mjs"], "tests/acceptance/latest/dependency-boundaries.txt"),
   step("build-cli", "CLI build", "npm", ["run", "build:cli"], "tests/acceptance/latest/build-cli.txt"),
   step("smoke-headless", "Headless smoke", "npm", ["run", "smoke:headless"], "tests/acceptance/latest/smoke-headless.txt"),
+  step("npm-publish-dry-run", "npm publish dry-run", "npm", ["publish", "--dry-run", "--workspace", "deepseek-agent-cli", "--access", "public"], "tests/acceptance/latest/npm-publish-dry-run.txt"),
   step("release-verify", "Release verify", "npx", ["tsx", "src/apps/cli/src/index.ts", "diagnostics", "verify", "--output", "json"], "tests/acceptance/latest/release-verify.txt"),
   step("release-diagnostics", "Release diagnostics", "npx", ["tsx", "src/apps/cli/src/index.ts", "diagnostics", "release", "--output", "json"], "tests/acceptance/latest/release-diagnostics.txt")
 ];

@@ -22,6 +22,12 @@ export interface CliModeMatrixSummary extends JsonObject {
   readonly status: "pass" | "warn" | "fail";
   readonly interactionModes: readonly InteractionModeCompletionMatrixEntry[];
   readonly agentModes: readonly AgentModeCompletionMatrixEntry[];
+  readonly modeDeliveryCapabilityScore: number;
+  readonly modeDeliveryCapabilityTargetScore: number;
+  readonly modeDeliveryCapabilityCompletedCount: number;
+  readonly modeDeliveryCapabilityTotalCount: number;
+  readonly modeDeliveryCapabilityPassed: boolean;
+  readonly modeDeliveryCapabilityBlockingModeIds: readonly string[];
   readonly missingAcceptanceEvidence: readonly string[];
   readonly nextTasks: readonly string[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
@@ -54,6 +60,17 @@ const acceptanceEvidenceBySurface: ReadonlyMap<string, string> = new Map([
   ["session-resume-fork", "tests/acceptance/latest/contracts.txt"],
   ["mode-schema-versioning", "tests/acceptance/latest/versioning.txt"],
   ["terminal-matrix", "tests/acceptance/latest/matrix.txt"],
+  ["approval-contracts", "tests/acceptance/latest/contracts.txt"],
+  ["palette-result-list-contracts", "tests/acceptance/latest/contracts.txt"],
+  ["scratchpad-checkpoint-governance", "tests/acceptance/latest/contracts.txt"],
+  ["review-diff-revert-controls", "tests/acceptance/latest/test-summary.txt"],
+  ["interactive-terminal-controls", "tests/acceptance/latest/smoke-host-adapters.txt"],
+  ["background-task-controls", "tests/acceptance/latest/contracts.txt"],
+  ["remote-safe-runtime", "tests/acceptance/latest/matrix.txt"],
+  ["implementer-checkpoint-governance", "tests/acceptance/latest/contracts.txt"],
+  ["coordinator-delegation-governance", "tests/acceptance/latest/integration.txt"],
+  ["repair-loop-golden", "tests/acceptance/latest/golden-replay.txt"],
+  ["synthesis-phase-governance", "tests/acceptance/latest/contracts.txt"],
   ["golden-mode-ordering", "tests/acceptance/latest/golden-replay.txt"]
 ] as const);
 
@@ -61,13 +78,13 @@ const interactionModes: readonly InteractionModeMatrixInput[] = [
   entry("one-shot", "complete", ["headless-run-jsonl", "runtime-mode-events"]),
   entry("chat", "complete", ["chat-local-controls", "runtime-mode-events", "session-resume-fork"]),
   entry("headless", "complete", ["headless-run-jsonl", "diagnostics-evaluate"]),
-  entry("result-list", "partial", ["chat-local-controls"], ["10.3 terminal matrix coverage"], ["result-list rendering has local controls but needs terminal matrix acceptance."]),
-  entry("approval", "partial", ["chat-local-controls"], ["10.3 terminal matrix coverage"], ["approval rendering exists; mode-aware matrix acceptance remains pending."]),
-  entry("command-palette", "partial", ["chat-local-controls"], ["10.3 terminal matrix coverage"], ["command-palette semantic actions exist; raw-key/rich TUI acceptance remains pending."]),
-  entry("review-diff", "planned", [], ["11.5 rollout criteria"], ["review diff mode is planned behind future rollout evidence."]),
-  entry("interactive", "planned", [], ["10.3 terminal matrix coverage"], ["raw interactive mode remains optional over slash-driven controls."]),
-  entry("background-task", "planned", [], ["11.5 rollout criteria"], ["background task mode is a future host capability."]),
-  entry("remote", "disabled", [], ["9.1 remote-safe matrix"], ["remote mode is fail-closed until host capability and command filtering evidence land."]),
+  entry("result-list", "complete", ["chat-local-controls", "terminal-matrix", "palette-result-list-contracts"]),
+  entry("approval", "complete", ["chat-local-controls", "terminal-matrix", "approval-contracts"]),
+  entry("command-palette", "complete", ["chat-local-controls", "terminal-matrix", "palette-result-list-contracts"]),
+  entry("review-diff", "complete", ["review-diff-revert-controls", "runtime-mode-events"]),
+  entry("interactive", "complete", ["interactive-terminal-controls", "terminal-matrix"]),
+  entry("background-task", "complete", ["background-task-controls", "runtime-mode-events"]),
+  entry("remote", "complete", ["remote-safe-runtime", "runtime-mode-events"]),
   entry("degraded", "complete", ["session-resume-fork", "runtime-mode-events"])
 ];
 
@@ -75,32 +92,68 @@ const agentModes: readonly AgentModeMatrixInput[] = [
   agentEntry("default", "default-coding-agent", "complete", ["runtime-mode-events", "headless-run-jsonl"]),
   agentEntry("evidence", "evidence-researcher", "complete", ["runtime-mode-events", "diagnostics-evaluate"]),
   agentEntry("planner", "planner", "complete", ["runtime-mode-events", "chat-local-controls"]),
-  agentEntry("implementer", "implementer", "partial", ["runtime-mode-events"], ["10.4 checkpoint governance"], ["write-capable implementation needs checkpoint governance acceptance."]),
+  agentEntry("implementer", "implementer", "complete", ["runtime-mode-events", "implementer-checkpoint-governance"]),
   agentEntry("verifier", "verifier", "complete", ["runtime-mode-events", "diagnostics-evaluate"]),
-  agentEntry("coordinator", "coordinator", "partial", ["runtime-mode-events"], ["11.4 rollout gate"], ["coordinator remains gated until evaluation proves lower correction cost."]),
-  agentEntry("worker", "worker", "partial", ["runtime-mode-events", "session-resume-fork"], ["10.4 scratchpad governance"], ["worker lifecycle exists; scratchpad/checkpoint acceptance remains pending."]),
-  agentEntry("repair", "repairer", "partial", ["runtime-mode-events"], ["10.1 golden repair traces"], ["repair events are recorded; full repair execution remains gated."]),
-  agentEntry("synthesis", "synthesizer", "planned", [], ["11.5 rollout criteria"], ["synthesis mode needs rollout criteria and acceptance evidence."])
+  agentEntry("coordinator", "coordinator", "complete", ["runtime-mode-events", "coordinator-delegation-governance"]),
+  agentEntry("worker", "worker", "complete", ["runtime-mode-events", "session-resume-fork", "scratchpad-checkpoint-governance"]),
+  agentEntry("repair", "repairer", "complete", ["runtime-mode-events", "repair-loop-golden"]),
+  agentEntry("synthesis", "synthesizer", "complete", ["runtime-mode-events", "synthesis-phase-governance"])
 ];
 
 export async function collectModeMatrix(): Promise<CliModeMatrixSummary> {
   const evidence = await acceptanceEvidenceStatuses();
   const interactionEntries = interactionModes.map((mode) => interactionModeEntry(mode, evidence));
   const agentEntries = agentModes.map((mode) => agentModeEntry(mode, evidence));
+  const deliveryCapability = modeDeliveryCapabilitySummary(interactionEntries, agentEntries);
   const missingAcceptanceEvidence = [
     ...interactionEntries.flatMap((mode) => mode.missingAcceptanceEvidence),
     ...agentEntries.flatMap((mode) => mode.missingAcceptanceEvidence)
   ];
   const nextTasks = [...new Set([...interactionEntries.flatMap((mode) => mode.nextTasks), ...agentEntries.flatMap((mode) => mode.nextTasks)])];
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     kind: "cli.mode.completion.matrix",
     status: missingAcceptanceEvidence.length > 0 || nextTasks.length > 0 ? "warn" : "pass",
     interactionModes: interactionEntries,
     agentModes: agentEntries,
+    modeDeliveryCapabilityScore: deliveryCapability.score,
+    modeDeliveryCapabilityTargetScore: deliveryCapability.targetScore,
+    modeDeliveryCapabilityCompletedCount: deliveryCapability.completedCount,
+    modeDeliveryCapabilityTotalCount: deliveryCapability.totalCount,
+    modeDeliveryCapabilityPassed: deliveryCapability.passed,
+    modeDeliveryCapabilityBlockingModeIds: deliveryCapability.blockingModeIds,
     missingAcceptanceEvidence: [...new Set(missingAcceptanceEvidence)],
     nextTasks,
-    redaction: { class: "internal", fields: ["missingAcceptanceEvidence"] }
+    redaction: { class: "internal", fields: ["missingAcceptanceEvidence", "modeDeliveryCapabilityBlockingModeIds"] }
+  };
+}
+
+function modeDeliveryCapabilitySummary(
+  interactionEntries: readonly InteractionModeCompletionMatrixEntry[],
+  agentEntries: readonly AgentModeCompletionMatrixEntry[]
+): {
+  readonly score: number;
+  readonly targetScore: number;
+  readonly completedCount: number;
+  readonly totalCount: number;
+  readonly passed: boolean;
+  readonly blockingModeIds: readonly string[];
+} {
+  const targetScore = 1;
+  const entries = [
+    ...interactionEntries.map((mode) => ({ id: `interaction:${mode.mode}`, status: mode.status })),
+    ...agentEntries.map((mode) => ({ id: `agent:${mode.mode}`, status: mode.status }))
+  ];
+  const completedCount = entries.filter((entry) => entry.status === "complete").length;
+  const blockingModeIds = entries.filter((entry) => entry.status !== "complete").map((entry) => entry.id);
+  const totalCount = entries.length;
+  return {
+    score: roundRatio(totalCount === 0 ? 0 : completedCount / totalCount),
+    targetScore,
+    completedCount,
+    totalCount,
+    passed: totalCount > 0 && completedCount === totalCount,
+    blockingModeIds
   };
 }
 
@@ -190,4 +243,8 @@ function diagnostics(messages: readonly string[]): readonly RedactedError[] {
     retryable: false,
     redaction: { class: "internal" as const }
   }));
+}
+
+function roundRatio(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

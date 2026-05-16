@@ -1,11 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentLoopReferenceContext, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, PolicyDecision, PolicyEngine, PolicyRequest } from "@deepseek/platform-contracts";
 import { collectRuntimeEvents, createDefaultRuntimeKernel, createHeadlessRuntime, registerRuntimeCoreTools, runAgentLoop, runtimeEchoCapability } from "../src/index.js";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
-import { TOOL_RESULT_EVIDENCE_CACHE_NAMESPACE } from "@deepseek/memory-cache-management";
+import { DurablePermanentMemoryProvider, InMemoryPermanentMemoryStorageAdapter, InMemoryLosslessContextManager, PersistentJsonlLosslessContextManager, TOOL_RESULT_EVIDENCE_CACHE_NAMESPACE } from "@deepseek/memory-cache-management";
 import { InMemoryUsageBudgetManager } from "@deepseek/usage-budget-management";
+import { PersistentFilesystemSessionStore } from "@deepseek/session-store";
+import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { asId } from "@deepseek/platform-contracts";
 
 describe("headless runtime", () => {
@@ -102,6 +107,89 @@ describe("headless runtime", () => {
     ]);
     assert.equal(events.at(-1)?.data.status, "completed");
     await kernel.shutdown();
+  });
+
+  it("records lossless context nodes when a manager is configured", async () => {
+    const deps = { ...createDeterministicRuntimeDependencies(), losslessContext: new InMemoryLosslessContextManager() };
+    await registerRuntimeCoreTools(deps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const prompt = "critical approval rule: never delete mail without explicit confirmation";
+    const events = await collectRuntimeEvents(runAgentLoop(deps, kernel, {
+      prompt,
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    assert.equal(events.some((event) => event.kind === "context.lcm.node-recorded"), true);
+    assert.equal(events.some((event) => event.kind === "context.lcm.node-recorded" && event.data.sourceClass === "user-prompt"), true);
+    const recalled = await deps.losslessContext.grep({ query: "approval rule" });
+    assert.equal(recalled.matchCount >= 1, true);
+    const nodeId = recalled.matches.find((match) => match.role === "user")?.nodeId;
+    if (!nodeId) throw new Error("expected lossless context node id");
+    assert.equal(recalled.matches.find((match) => match.nodeId === nodeId)?.sourceClass, "user-prompt");
+    const expanded = await deps.losslessContext.expand({ nodeId });
+    assert.equal(expanded.expandedNodes[0]?.content, prompt);
+    await kernel.shutdown();
+  });
+
+  it("rebuilds resumed session history from lossless context and emits replay evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "deepseek-runtime-resume-"));
+    try {
+      const nodePlatform = new NodePlatformRuntime();
+      const sessionsDir = join(root, "sessions");
+      const losslessDir = join(root, "lossless");
+      const firstDeps = {
+        ...createDeterministicRuntimeDependencies(),
+        sessions: new PersistentFilesystemSessionStore(sessionsDir),
+        losslessContext: new PersistentJsonlLosslessContextManager(nodePlatform, losslessDir),
+        models: new CapturingModelGateway()
+      };
+      await registerRuntimeCoreTools(firstDeps, "/workspace");
+      const firstKernel = await createDefaultRuntimeKernel(firstDeps);
+      const firstEvents = await collectRuntimeEvents(runAgentLoop(firstDeps, firstKernel, {
+        prompt: "durable context fact: release gate requires real DeepSeek evidence",
+        caller: "runtime.test",
+        workspaceRoot: "/workspace",
+        outputMode: "jsonl",
+        profile: defaultDeepSeekProfile
+      }));
+      await firstKernel.shutdown();
+      const sessionId = firstEvents[0]?.sessionId;
+      if (!sessionId) throw new Error("expected session id");
+
+      const secondGateway = new CapturingModelGateway();
+      const secondDeps = {
+        ...createDeterministicRuntimeDependencies(),
+        sessions: new PersistentFilesystemSessionStore(sessionsDir),
+        losslessContext: new PersistentJsonlLosslessContextManager(nodePlatform, losslessDir),
+        models: secondGateway
+      };
+      await registerRuntimeCoreTools(secondDeps, "/workspace");
+      const secondKernel = await createDefaultRuntimeKernel(secondDeps);
+      const secondEvents = await collectRuntimeEvents(runAgentLoop(secondDeps, secondKernel, {
+        sessionId,
+        prompt: "Use the prior durable context fact.",
+        caller: "runtime.test",
+        workspaceRoot: "/workspace",
+        outputMode: "jsonl",
+        profile: defaultDeepSeekProfile
+      }));
+
+      const restoredRequest = secondGateway.requests[0];
+      assert.equal(restoredRequest?.messages?.some((message) => message.role === "user" && message.content.includes("release gate requires real DeepSeek evidence")), true);
+      const modelRequested = secondEvents.find((event) => event.kind === "model.requested");
+      const replay = modelRequested?.data.providerRequestReplay as { status?: string; restoredMessageCount?: number; sessionEventCount?: number; losslessSourceClasses?: readonly string[] } | undefined;
+      assert.equal(replay?.status, "restored");
+      assert.equal((replay?.sessionEventCount ?? 0) > 0, true);
+      assert.equal((replay?.restoredMessageCount ?? 0) >= 2, true);
+      assert.equal(replay?.losslessSourceClasses?.includes("user-prompt"), true);
+      assert.equal(replay?.losslessSourceClasses?.includes("assistant-output"), true);
+      await secondKernel.shutdown();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("runs evidence discovery before fact-sensitive model dispatch and preserves prompt boundary", async () => {
@@ -524,6 +612,58 @@ describe("headless runtime", () => {
     assert.equal((memoryEvent?.data as { candidateCount?: number }).candidateCount, 1);
     assert.equal(events.find((event) => event.kind === "model.requested")?.data.contextProjection !== undefined, true);
     assert.equal(gateway.requests[0]?.messages?.some((message) => message.role === "system" && message.content.includes("Use token exchange for database auth.")), true);
+    await kernel.shutdown();
+  });
+
+  it("injects governed permanent memory with lower priority than current instructions", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new CapturingModelGateway();
+    const permanentMemory = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      requirePromotionApproval: false
+    });
+    await permanentMemory.putCandidate({
+      scope: "project",
+      content: "Decision: use adapter-backed permanent memory.",
+      promotionMode: "auto"
+    });
+    const loopDeps = { ...deps, models: gateway, memory: permanentMemory };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "continue implementation",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const memoryEvent = events.find((event) => event.kind === "context.memory.collected");
+    const permanent = memoryEvent?.data.permanentMemory as { promotedFreshCount?: number; configured?: boolean } | undefined;
+    assert.equal(permanent?.configured, true);
+    assert.equal(permanent?.promotedFreshCount, 1);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.content.includes("Permanent memory")), true);
+    assert.equal(gateway.requests[0]?.messages?.some((message) => message.content.includes("lower priority than current user instructions")), true);
+    await kernel.shutdown();
+  });
+
+  it("proposes permanent memory candidates from explicit remember requests", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const permanentMemory = new DurablePermanentMemoryProvider({ adapter: new InMemoryPermanentMemoryStorageAdapter() });
+    const loopDeps = { ...deps, models: new CapturingModelGateway(), memory: permanentMemory };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "remember that this project stores durable memory behind provider contracts",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile
+    }));
+
+    const proposed = events.find((event) => event.kind === "memory.permanent.candidate.proposed");
+    assert.equal(proposed?.data.status, "completed");
+    assert.equal((await permanentMemory.queryPermanent({ includeCandidates: true, query: "provider contracts" })).length, 1);
     await kernel.shutdown();
   });
 

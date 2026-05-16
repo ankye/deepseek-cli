@@ -17,9 +17,12 @@ import { analyzeResourceScope, createSandboxAuditEvidence, createSandboxRequirem
 
 const deterministicTime = "1970-01-01T00:00:00.000Z";
 const catalogVersion = "v1";
+const userAgent = "deepseek-cli-native-connector/0.1";
+type ConnectorCapabilityMode = "fake" | "native";
 
 export interface McpGatewayFamilyCapabilityOptions {
   readonly gateway?: McpGateway;
+  readonly mode?: ConnectorCapabilityMode;
 }
 
 interface FakePage {
@@ -47,59 +50,68 @@ interface DisconnectableMcpGateway extends McpGateway {
 
 export function createMcpGatewayFamilyCapabilities(options: McpGatewayFamilyCapabilityOptions = {}): readonly CapabilityExecutorBinding[] {
   const gateway = options.gateway;
+  const mode = options.mode ?? "fake";
   const pages = new Map<string, FakePage>();
-  const design = createDesignState();
+  const design = createDesignState(mode);
   return [
-    binding("mcp-gateway.browser-navigate", "browser.navigate", "Navigate browser page", "browser-automation", "external-connector", ["browser", "connector"], "read", (input) => browserNavigate(pages, input)),
-    binding("mcp-gateway.browser-interact", "browser.interact", "Interact with browser page", "browser-automation", "external-connector", ["browser", "connector", "write"], "write", (input) => browserInteract(pages, input)),
-    binding("mcp-gateway.browser-inspect", "browser.inspect", "Inspect browser page", "browser-automation", "external-connector", ["browser", "read"], "read", (input) => browserInspect(pages, input)),
-    binding("mcp-gateway.browser-screenshot", "browser.screenshot", "Capture browser screenshot", "browser-automation", "external-connector", ["browser", "artifact"], "read", (input) => browserScreenshot(pages, input)),
-    binding("mcp-gateway.mcp-server-lifecycle", "mcp.server-lifecycle", "Manage MCP server lifecycle", "mcp-connectors", "external-connector", ["connector", "read"], "read", (input) => mcpLifecycle(gateway, input)),
-    binding("mcp-gateway.mcp-tool-call", "mcp.tool-call", "Call MCP tool", "mcp-connectors", "external-connector", ["connector", "write"], "write", (input) => mcpToolCall(gateway, input)),
-    binding("mcp-gateway.mcp-resource-read", "mcp.resource-read", "Read MCP resource", "mcp-connectors", "external-connector", ["connector", "read"], "read", (input) => mcpResourceRead(gateway, input)),
-    binding("mcp-gateway.mcp-prompt", "mcp.prompt", "List or render MCP prompt", "mcp-connectors", "external-connector", ["connector", "read"], "read", (input) => mcpPrompt(gateway, input)),
-    binding("mcp-gateway.design-document-state", "design.document-state", "Read design document state", "design-canvas", "design", ["design", "read"], "read", () => designDocumentState(design)),
-    binding("mcp-gateway.design-node-query", "design.node-query", "Query design nodes", "design-canvas", "design", ["design", "read"], "read", (input) => designNodeQuery(design, input)),
-    binding("mcp-gateway.design-batch-edit", "design.batch-edit", "Apply design batch edit", "design-canvas", "design", ["design", "write"], "write", (input) => designBatchEdit(design, input)),
-    binding("mcp-gateway.design-export-snapshot", "design.export-snapshot", "Export design snapshot", "design-canvas", "design", ["design", "artifact"], "read", (input) => designExportSnapshot(design, input))
+    binding("mcp-gateway.browser-navigate", "browser.navigate", "Navigate browser page", "browser-automation", "external-connector", ["browser", "connector"], "read", mode, (input) => browserNavigate(pages, input, mode)),
+    binding("mcp-gateway.browser-interact", "browser.interact", "Interact with browser page", "browser-automation", "external-connector", ["browser", "connector", "write"], "write", mode, (input) => browserInteract(pages, input, mode)),
+    binding("mcp-gateway.browser-inspect", "browser.inspect", "Inspect browser page", "browser-automation", "external-connector", ["browser", "read"], "read", mode, (input) => browserInspect(pages, input, mode)),
+    binding("mcp-gateway.browser-screenshot", "browser.screenshot", "Capture browser screenshot", "browser-automation", "external-connector", ["browser", "artifact"], "read", mode, (input) => browserScreenshot(pages, input, mode)),
+    binding("mcp-gateway.mcp-server-lifecycle", "mcp.server-lifecycle", "Manage MCP server lifecycle", "mcp-connectors", "external-connector", ["connector", "read"], "read", mode, (input) => mcpLifecycle(gateway, input, mode)),
+    binding("mcp-gateway.mcp-tool-call", "mcp.tool-call", "Call MCP tool", "mcp-connectors", "external-connector", ["connector", "write"], "write", mode, (input) => mcpToolCall(gateway, input, mode)),
+    binding("mcp-gateway.mcp-resource-read", "mcp.resource-read", "Read MCP resource", "mcp-connectors", "external-connector", ["connector", "read"], "read", mode, (input) => mcpResourceRead(gateway, input, mode)),
+    binding("mcp-gateway.mcp-prompt", "mcp.prompt", "List or render MCP prompt", "mcp-connectors", "external-connector", ["connector", "read"], "read", mode, (input) => mcpPrompt(gateway, input, mode)),
+    binding("mcp-gateway.design-document-state", "design.document-state", "Read design document state", "design-canvas", "design", ["design", "read"], "read", mode, () => designDocumentState(design, mode)),
+    binding("mcp-gateway.design-node-query", "design.node-query", "Query design nodes", "design-canvas", "design", ["design", "read"], "read", mode, (input) => designNodeQuery(design, input, mode)),
+    binding("mcp-gateway.design-batch-edit", "design.batch-edit", "Apply design batch edit", "design-canvas", "design", ["design", "write"], "write", mode, (input) => designBatchEdit(design, input, mode)),
+    binding("mcp-gateway.design-export-snapshot", "design.export-snapshot", "Export design snapshot", "design-canvas", "design", ["design", "artifact"], "read", mode, (input) => designExportSnapshot(design, input, mode))
   ];
 }
 
-function browserNavigate(pages: Map<string, FakePage>, input: JsonObject) {
+async function browserNavigate(pages: Map<string, FakePage>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const url = stringValue(input.url) ?? "about:blank";
   const pageId = stringValue(input.pageId) ?? `page:${stableHash(url)}`;
+  const fetched = mode === "native" && url !== "about:blank" ? await fetchPage(url) : undefined;
+  if (fetched?.ok === false) return fetched.result;
+  const html = fetched?.html ?? `<main><h1>${titleForUrl(url)}</h1><input id="q" value=""><button id="go">Go</button></main>`;
   const page: FakePage = {
     pageId,
-    url,
-    title: titleForUrl(url),
-    dom: `<main><h1>${titleForUrl(url)}</h1><input id="q" value=""><button id="go">Go</button></main>`,
+    url: fetched?.finalUrl ?? url,
+    title: extractTitle(html) || titleForUrl(url),
+    dom: html,
     fields: new Map(),
     clicks: [],
     console: [],
-    network: [`GET ${url}`]
+    network: [`GET ${url}${fetched ? ` ${fetched.status}` : ""}`]
   };
   pages.set(pageId, page);
-  return ok({ familyId: "browser.navigate", pageId, url, title: page.title, evidence: evidence("browser.navigate", "mcp-gateway.browser-navigate") });
+  return ok({ familyId: "browser.navigate", pageId, url: page.url, title: page.title, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("browser.navigate", "mcp-gateway.browser-navigate", mode) });
 }
 
-function browserInteract(pages: Map<string, FakePage>, input: JsonObject) {
+function browserInteract(pages: Map<string, FakePage>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const page = pages.get(stringValue(input.pageId) ?? "") ?? ensurePage(pages);
   const operation = stringValue(input.operation) ?? "click";
   const selector = stringValue(input.selector) ?? "body";
   if (operation === "type" || operation === "select") page.fields.set(selector, redactSecretText(stringValue(input.value) ?? ""));
-  if (operation === "click") page.clicks.push(selector);
-  page.console.push(`fake:${operation}:${selector}`);
+  if (operation === "click") {
+    page.clicks.push(selector);
+    const href = firstHref(page.dom);
+    if (mode === "native" && href) page.network.push(`CLICK ${selector} -> ${href}`);
+  }
+  page.console.push(`${mode}:${operation}:${selector}`);
   return ok({
     familyId: "browser.interact",
     pageId: page.pageId,
     operation,
     selector,
     state: pageState(page),
-    evidence: evidence("browser.interact", "mcp-gateway.browser-interact")
+    providerNativeSupport: providerNativeSupport(mode),
+    evidence: evidence("browser.interact", "mcp-gateway.browser-interact", mode)
   });
 }
 
-function browserInspect(pages: Map<string, FakePage>, input: JsonObject) {
+function browserInspect(pages: Map<string, FakePage>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const page = pages.get(stringValue(input.pageId) ?? "") ?? ensurePage(pages);
   return ok({
     familyId: "browser.inspect",
@@ -109,35 +121,39 @@ function browserInspect(pages: Map<string, FakePage>, input: JsonObject) {
     dom: page.dom.slice(0, 1_000),
     console: page.console.slice(-20),
     network: page.network.slice(-20),
+    links: extractLinks(page.dom).slice(0, 20),
     state: pageState(page),
     truncated: page.dom.length > 1_000,
-    evidence: evidence("browser.inspect", "mcp-gateway.browser-inspect")
+    providerNativeSupport: providerNativeSupport(mode),
+    evidence: evidence("browser.inspect", "mcp-gateway.browser-inspect", mode)
   });
 }
 
-function browserScreenshot(pages: Map<string, FakePage>, input: JsonObject) {
+function browserScreenshot(pages: Map<string, FakePage>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const page = pages.get(stringValue(input.pageId) ?? "") ?? ensurePage(pages);
-  const shot = artifact("browser.screenshot", "screenshot", stableHash(`${page.pageId}:${page.url}`), "image/png", `fake screenshot ${page.title}`);
-  return ok({ familyId: "browser.screenshot", pageId: page.pageId, artifact: shot, artifacts: [shot], evidence: evidence("browser.screenshot", "mcp-gateway.browser-screenshot") });
+  const shot = mode === "native"
+    ? svgArtifact("browser.screenshot", "screenshot", stableHash(`${page.pageId}:${page.url}`), page.title, page.dom)
+    : artifact("browser.screenshot", "screenshot", stableHash(`${page.pageId}:${page.url}`), "image/png", `fake screenshot ${page.title}`, mode);
+  return ok({ familyId: "browser.screenshot", pageId: page.pageId, artifact: shot, artifacts: [shot], providerNativeSupport: providerNativeSupport(mode), evidence: evidence("browser.screenshot", "mcp-gateway.browser-screenshot", mode) });
 }
 
-async function mcpLifecycle(gateway: McpGateway | undefined, input: JsonObject) {
+async function mcpLifecycle(gateway: McpGateway | undefined, input: JsonObject, mode: ConnectorCapabilityMode) {
   if (!gateway) return fail("MCP_GATEWAY_UNAVAILABLE", "MCP gateway is not configured.");
   const action = stringValue(input.action) ?? "list";
   if (action === "connect") {
     const manifest = isJsonObject(input.manifest) ? input.manifest as unknown as McpServerManifest : defaultMcpManifest();
-    const summary = await gateway.connectServer(manifest, defaultMcpAdapter());
-    return ok({ familyId: "mcp.server-lifecycle", action, summary, evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle") });
+    const summary = mode === "native" ? await gateway.connectServer(manifest) : await gateway.connectServer(manifest, defaultMcpAdapter());
+    return ok({ familyId: "mcp.server-lifecycle", action, summary, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle", mode) });
   }
   if (action === "disconnect") {
     const disconnected = await (gateway as DisconnectableMcpGateway).disconnectServer?.(asId<"mcpServer">(stringValue(input.serverId) ?? "mcp-family-fake"));
-    return ok({ familyId: "mcp.server-lifecycle", action, disconnected: disconnected ? toJson(disconnected) : null, evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle") });
+    return ok({ familyId: "mcp.server-lifecycle", action, disconnected: disconnected ? toJson(disconnected) : null, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle", mode) });
   }
   const servers = await gateway.listServers({ schemaVersion: MCP_SCHEMA_VERSION, includeInert: input.includeInert === true });
-  return ok({ familyId: "mcp.server-lifecycle", action: "list", servers, count: servers.length, evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle") });
+  return ok({ familyId: "mcp.server-lifecycle", action: "list", servers, count: servers.length, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("mcp.server-lifecycle", "mcp-gateway.mcp-server-lifecycle", mode) });
 }
 
-async function mcpToolCall(gateway: McpGateway | undefined, input: JsonObject) {
+async function mcpToolCall(gateway: McpGateway | undefined, input: JsonObject, mode: ConnectorCapabilityMode) {
   if (!gateway) return fail("MCP_GATEWAY_UNAVAILABLE", "MCP gateway is not configured.");
   const result = await gateway.callTool({
     schemaVersion: MCP_SCHEMA_VERSION,
@@ -146,10 +162,10 @@ async function mcpToolCall(gateway: McpGateway | undefined, input: JsonObject) {
     caller: "runtime",
     input: isJsonObject(input.input) ? input.input : {}
   });
-  return ok({ familyId: "mcp.tool-call", result, authEvidence: result.auth ?? null, evidence: evidence("mcp.tool-call", "mcp-gateway.mcp-tool-call") });
+  return ok({ familyId: "mcp.tool-call", result, authEvidence: result.auth ?? null, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("mcp.tool-call", "mcp-gateway.mcp-tool-call", mode) });
 }
 
-async function mcpResourceRead(gateway: McpGateway | undefined, input: JsonObject) {
+async function mcpResourceRead(gateway: McpGateway | undefined, input: JsonObject, mode: ConnectorCapabilityMode) {
   if (!gateway) return fail("MCP_GATEWAY_UNAVAILABLE", "MCP gateway is not configured.");
   const result = await gateway.readResource({
     schemaVersion: MCP_SCHEMA_VERSION,
@@ -157,10 +173,10 @@ async function mcpResourceRead(gateway: McpGateway | undefined, input: JsonObjec
     uri: stringValue(input.uri) ?? "mcp://family/readme",
     caller: "runtime"
   });
-  return ok({ familyId: "mcp.resource-read", result, cachePolicy: result.cachePolicy, evidence: evidence("mcp.resource-read", "mcp-gateway.mcp-resource-read") });
+  return ok({ familyId: "mcp.resource-read", result, cachePolicy: result.cachePolicy, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("mcp.resource-read", "mcp-gateway.mcp-resource-read", mode) });
 }
 
-async function mcpPrompt(gateway: McpGateway | undefined, input: JsonObject) {
+async function mcpPrompt(gateway: McpGateway | undefined, input: JsonObject, mode: ConnectorCapabilityMode) {
   if (!gateway) return fail("MCP_GATEWAY_UNAVAILABLE", "MCP gateway is not configured.");
   const prompts = await gateway.listPrompts({ schemaVersion: MCP_SCHEMA_VERSION, includeInert: false });
   const name = stringValue(input.name);
@@ -169,42 +185,46 @@ async function mcpPrompt(gateway: McpGateway | undefined, input: JsonObject) {
     familyId: "mcp.prompt",
     prompts,
     rendered: selected ? `Prompt ${selected.qualifiedName}: ${JSON.stringify(redactValue(input.arguments ?? {})).slice(0, 500)}` : "",
-    evidence: evidence("mcp.prompt", "mcp-gateway.mcp-prompt")
+    providerNativeSupport: providerNativeSupport(mode),
+    evidence: evidence("mcp.prompt", "mcp-gateway.mcp-prompt", mode)
   });
 }
 
-function designDocumentState(design: Map<string, FakeDesignNode>) {
-  return ok({ familyId: "design.document-state", documentId: "design:fake", nodeCount: design.size, rootNodeId: "root", nodes: [...design.values()].map(publicDesignNode), evidence: evidence("design.document-state", "mcp-gateway.design-document-state") });
+function designDocumentState(design: Map<string, FakeDesignNode>, mode: ConnectorCapabilityMode) {
+  return ok({ familyId: "design.document-state", documentId: `design:${mode}`, nodeCount: design.size, rootNodeId: "root", nodes: [...design.values()].map(publicDesignNode), providerNativeSupport: providerNativeSupport(mode), evidence: evidence("design.document-state", "mcp-gateway.design-document-state", mode) });
 }
 
-function designNodeQuery(design: Map<string, FakeDesignNode>, input: JsonObject) {
+function designNodeQuery(design: Map<string, FakeDesignNode>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const query = stringValue(input.query)?.toLowerCase();
   const nodeId = stringValue(input.nodeId);
   const nodes = [...design.values()]
     .filter((node) => nodeId ? node.id === nodeId : query ? node.name.toLowerCase().includes(query) || node.type.toLowerCase().includes(query) : true)
     .slice(0, 25)
     .map(publicDesignNode);
-  return ok({ familyId: "design.node-query", nodes, count: nodes.length, truncated: design.size > nodes.length, evidence: evidence("design.node-query", "mcp-gateway.design-node-query") });
+  return ok({ familyId: "design.node-query", nodes, count: nodes.length, truncated: design.size > nodes.length, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("design.node-query", "mcp-gateway.design-node-query", mode) });
 }
 
-function designBatchEdit(design: Map<string, FakeDesignNode>, input: JsonObject) {
+function designBatchEdit(design: Map<string, FakeDesignNode>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const operations = Array.isArray(input.operations) ? input.operations.filter(isJsonObject).slice(0, 20) : [];
   const snapshot = new Map([...design].map(([key, value]) => [key, { ...value, children: [...value.children] }]));
   try {
     for (const operation of operations) applyDesignOperation(design, operation);
-    return ok({ familyId: "design.batch-edit", status: "completed", operationCount: operations.length, rollbackAvailable: true, evidence: evidence("design.batch-edit", "mcp-gateway.design-batch-edit") });
+    return ok({ familyId: "design.batch-edit", status: "completed", operationCount: operations.length, rollbackAvailable: true, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("design.batch-edit", "mcp-gateway.design-batch-edit", mode) });
   } catch (error) {
     design.clear();
     for (const [key, value] of snapshot) design.set(key, value);
-    return ok({ familyId: "design.batch-edit", status: "rolled-back", operationCount: operations.length, diagnostic: error instanceof Error ? error.message : "DESIGN_EDIT_FAILED", rollbackAvailable: true, evidence: evidence("design.batch-edit", "mcp-gateway.design-batch-edit") });
+    return ok({ familyId: "design.batch-edit", status: "rolled-back", operationCount: operations.length, diagnostic: error instanceof Error ? error.message : "DESIGN_EDIT_FAILED", rollbackAvailable: true, providerNativeSupport: providerNativeSupport(mode), evidence: evidence("design.batch-edit", "mcp-gateway.design-batch-edit", mode) });
   }
 }
 
-function designExportSnapshot(_design: Map<string, FakeDesignNode>, input: JsonObject) {
+function designExportSnapshot(design: Map<string, FakeDesignNode>, input: JsonObject, mode: ConnectorCapabilityMode) {
   const nodeId = stringValue(input.nodeId) ?? "root";
   const format = stringValue(input.format) ?? "png";
-  const snapshot = artifact("design.export-snapshot", "design-export", stableHash(`${nodeId}:${format}`), format === "pdf" ? "application/pdf" : "image/png", `fake design export ${nodeId}.${format}`);
-  return ok({ familyId: "design.export-snapshot", nodeId, format, artifact: snapshot, artifacts: [snapshot], evidence: evidence("design.export-snapshot", "mcp-gateway.design-export-snapshot") });
+  const node = design.get(nodeId);
+  const snapshot = mode === "native"
+    ? svgArtifact("design.export-snapshot", "design-export", stableHash(`${nodeId}:${format}`), node?.name ?? nodeId, JSON.stringify([...design.values()].map(publicDesignNode)))
+    : artifact("design.export-snapshot", "design-export", stableHash(`${nodeId}:${format}`), format === "pdf" ? "application/pdf" : "image/png", `fake design export ${nodeId}.${format}`, mode);
+  return ok({ familyId: "design.export-snapshot", nodeId, format, artifact: snapshot, artifacts: [snapshot], providerNativeSupport: providerNativeSupport(mode), evidence: evidence("design.export-snapshot", "mcp-gateway.design-export-snapshot", mode) });
 }
 
 function binding(
@@ -215,25 +235,27 @@ function binding(
   riskClass: ToolFamilyRiskClass,
   operationProfiles: readonly ToolFamilyOperationProfile[],
   sideEffect: CapabilityManifest["sideEffect"],
+  mode: ConnectorCapabilityMode,
   execute: (input: JsonObject) => JsonObject | Promise<JsonObject>
 ): CapabilityExecutorBinding {
   const resourceScope = analyzeResourceScope({}, sideEffect);
-  const sandboxRequirements = createSandboxRequirement({ sideEffect, resourceScope, timeoutMs: 1_000, permissions: [`${domainId}:fake`, "connector:read"] });
+  const native = mode === "native";
+  const sandboxRequirements = createSandboxRequirement({ sideEffect, resourceScope, timeoutMs: 10_000, permissions: [`${domainId}:${mode}`, "connector:read"] });
   return {
     manifest: {
       id: asId<"capability">(id),
       name,
-      description: `${familyId} fake-first connector capability`,
+      description: `${familyId} ${native ? "native" : "fake-first"} connector capability`,
       source: "@deepseek/mcp-gateway",
       version: "0.1.0",
       trust: "trusted",
       sideEffect,
-      permissions: [`${domainId}:fake`, "connector:read"],
+      permissions: [`${domainId}:${mode}`, "connector:read"],
       inputSchema: { type: "object", additionalProperties: true },
       outputSchema: { type: "object", additionalProperties: true },
       enabled: true,
-      timeoutMs: 1_000,
-      projection: { modelVisible: true, outputBounded: true, connectorTrust: "fake", providerSupport: "fake", policyTags: ["fake-first", domainId], agentScopeIds: ["default"] },
+      timeoutMs: 10_000,
+      projection: { modelVisible: true, outputBounded: true, connectorTrust: native ? "trusted" : "fake", providerSupport: native ? "native" : "fake", policyTags: [native ? "native-connector" : "fake-first", domainId], agentScopeIds: ["default"] },
       toolFamily: {
         schemaVersion: TOOL_FAMILY_CATALOG_SCHEMA_VERSION,
         catalogVersion,
@@ -244,8 +266,8 @@ function binding(
         maturity: "baseline",
         riskClass,
         operationProfiles,
-        hostRequirements: ["fake-connector"],
-        connectorProfile: domainId === "mcp-connectors" ? "mcp" : "provider",
+        hostRequirements: [native ? "native-connector" : "fake-connector"],
+        connectorProfile: domainId === "mcp-connectors" || domainId === "browser-automation" || domainId === "design-canvas" ? "mcp" : "provider",
         scorecardRubricId: `rubric.${familyId}.baseline`,
         redaction: { class: "public" }
       },
@@ -254,12 +276,12 @@ function binding(
       ["sandboxRequirements"]: sandboxRequirements,
       audit: createSandboxAuditEvidence({
         decision: "manifest",
-        reasonCode: "manifest.fake-connector",
+        reasonCode: native ? "manifest.native-connector" : "manifest.fake-connector",
         subject: "@deepseek/mcp-gateway",
         resource: id,
         ["sandboxProfile"]: sandboxRequirements.profile
       }),
-      security: { modelVisible: true, outputRedaction: "internal", preflight: "fake-connector" }
+      security: { modelVisible: true, outputRedaction: "internal", preflight: native ? "native-connector" : "fake-connector" }
     },
     execute: async (input) => ({ ok: true, value: await execute(input) })
   };
@@ -294,9 +316,9 @@ function defaultMcpAdapter(): McpServerAdapter {
   };
 }
 
-function createDesignState(): Map<string, FakeDesignNode> {
+function createDesignState(mode: ConnectorCapabilityMode): Map<string, FakeDesignNode> {
   return new Map([
-    ["root", { id: "root", name: "Document", type: "frame", children: ["title"] }],
+    ["root", { id: "root", name: mode === "native" ? "Native Document" : "Document", type: "frame", children: ["title"] }],
     ["title", { id: "title", name: "Title", type: "text", text: "DeepSeek", children: [] }]
   ]);
 }
@@ -329,7 +351,18 @@ function applyDesignOperation(design: Map<string, FakeDesignNode>, operation: Js
 }
 
 function ensurePage(pages: Map<string, FakePage>): FakePage {
-  if (pages.size === 0) browserNavigate(pages, { url: "about:blank" });
+  if (pages.size === 0) {
+    pages.set("page:blank", {
+      pageId: "page:blank",
+      url: "about:blank",
+      title: "Blank",
+      dom: "<main><h1>Blank</h1></main>",
+      fields: new Map(),
+      clicks: [],
+      console: [],
+      network: []
+    });
+  }
   return [...pages.values()][0] as FakePage;
 }
 
@@ -348,12 +381,12 @@ function titleForUrl(url: string): string {
   return url === "about:blank" ? "Blank" : `Fake page ${new URL(url, "https://example.test").hostname}`;
 }
 
-function artifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, mimeType: string, preview: string): JsonObject {
+function artifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, mimeType: string, preview: string, mode: ConnectorCapabilityMode): JsonObject {
   return {
     artifactId: `artifact:${familyId}:${key}`,
     familyId,
     kind,
-    uri: `artifact://fake/${familyId}/${key}`,
+    uri: `artifact://${mode}/${familyId}/${key}`,
     mimeType,
     byteLength: 1024,
     sha256: stableHash(`${familyId}:${key}:${preview}`),
@@ -364,8 +397,71 @@ function artifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: str
   };
 }
 
-function evidence(familyId: ToolFamilyId, capabilityId: string): JsonObject {
-  return { mode: "fake", providerNativeSupport: "unsupported", capabilityId, familyId, replayRef: `replay:${capabilityId}`, createdAt: deterministicTime, redaction: { class: "public" } };
+function evidence(familyId: ToolFamilyId, capabilityId: string, mode: ConnectorCapabilityMode): JsonObject {
+  return { mode, providerNativeSupport: providerNativeSupport(mode), capabilityId, familyId, replayRef: mode === "native" ? "" : `replay:${capabilityId}`, createdAt: deterministicTime, redaction: { class: "public" } };
+}
+
+function providerNativeSupport(mode: ConnectorCapabilityMode): "native" | "unsupported" {
+  return mode === "native" ? "native" : "unsupported";
+}
+
+async function fetchPage(url: string): Promise<{ readonly ok: true; readonly html: string; readonly finalUrl: string; readonly status: number } | { readonly ok: false; readonly result: JsonObject }> {
+  if (!/^https?:\/\//i.test(url)) return { ok: false, result: fail("BROWSER_URL_REJECTED", "Browser navigate requires an http(s) URL.") };
+  try {
+    const response = await fetch(url, { headers: { "user-agent": userAgent } });
+    return { ok: true, html: await response.text(), finalUrl: response.url, status: response.status };
+  } catch (error) {
+    return { ok: false, result: fail("BROWSER_NATIVE_FETCH_FAILED", error instanceof Error ? error.message : "Native browser fetch failed.") };
+  }
+}
+
+function extractTitle(html: string): string {
+  return redactSecretText(stripTags(firstMatch(html, /<title[^>]*>([\s\S]*?)<\/title>/i) ?? "")).trim();
+}
+
+function firstHref(html: string): string | undefined {
+  return firstMatch(html, /<a\b[^>]*href\s*=\s*["']([^"']+)["']/i);
+}
+
+function extractLinks(html: string): readonly JsonObject[] {
+  const links: JsonObject[] = [];
+  const pattern = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) !== null) {
+    links.push({ href: redactSecretText(match[1] ?? ""), text: redactSecretText(stripTags(match[2] ?? "")).slice(0, 160) });
+  }
+  return links;
+}
+
+function firstMatch(value: string, pattern: RegExp): string | undefined {
+  return pattern.exec(value)?.[1];
+}
+
+function stripTags(value: string): string {
+  return value.replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
+}
+
+function svgArtifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, title: string, body: string): JsonObject {
+  const safeTitle = redactSecretText(title).slice(0, 80);
+  const safeBody = redactSecretText(stripTags(body).replace(/\s+/g, " ").trim()).slice(0, 160);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#f8fafc"/><rect x="24" y="24" width="592" height="312" rx="12" fill="#ffffff" stroke="#334155"/><text x="48" y="84" font-family="Arial" font-size="28" fill="#0f172a">${escapeXml(safeTitle)}</text><text x="48" y="136" font-family="Arial" font-size="16" fill="#334155">${escapeXml(safeBody)}</text></svg>`;
+  return {
+    artifactId: `artifact:${familyId}:${key}`,
+    familyId,
+    kind,
+    uri: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+    mimeType: "image/svg+xml",
+    byteLength: Buffer.byteLength(svg, "utf8"),
+    sha256: stableHash(svg),
+    preview: safeTitle,
+    truncated: body.length > safeBody.length,
+    createdAt: deterministicTime,
+    redaction: { class: "internal", fields: ["uri"] }
+  };
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function ok(value: JsonObject): JsonObject {

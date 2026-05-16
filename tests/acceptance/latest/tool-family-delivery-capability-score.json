@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "tool-family.delivery-capability-score.evidence",
+  "scope": "tool-family-only",
+  "overallDeliveryCapabilityEvidencePath": "tests/acceptance/latest/overall-delivery-capability-score.json",
+  "generatedAt": "2026-05-16T20:09:33.580Z",
+  "sourceCommand": "npx tsx scripts/run-live-tool-coverage.ts",
+  "totalFamilyCount": 64,
+  "liveCoveredFamilyCount": 64,
+  "taskCoveredFamilyCount": 64,
+  "safetyCoveredFamilyCount": 64,
+  "providerNativeSupportedFamilyCount": 19,
+  "passedFamilyCount": 64,
+  "deliveryCapabilityScore": 1,
+  "deliveryCapabilityTargetScore": 0.9,
+  "deliveryCapabilityPassedFamilyCount": 64,
+  "deliveryCapabilityTargetFamilyCount": 58,
+  "deliveryCapabilityPassed": true,
+  "blockingFamilyIds": [],
+  "fakeCoveredFamilyCount": 0,
+  "replayedCoveredFamilyCount": 0,
+  "redaction": {
+    "class": "internal",
+    "fields": [
+      "sourceCommand",
+      "blockingFamilyIds"
+    ]
+  }
+}

@@ -116,6 +116,9 @@ export function estimateTokens(text: string): number {
 
 function recallLabelFor(source: string, provenance: JsonObject): string | undefined {
   if (source === "memory") {
+    if (provenance.permanentMemory === true || provenance.memoryRole === "permanent-memory") {
+      return "Evidence type: governed permanent memory; lower priority than current user instructions, repository guidance, and host policy";
+    }
     const pageIndex = provenance.pageId || provenance.memoryId || provenance.scope;
     return pageIndex ? `Evidence type: exact historical recall (${String(pageIndex)})` : "Evidence type: exact historical recall";
   }

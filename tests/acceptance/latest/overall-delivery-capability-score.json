@@ -1,0 +1,283 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "cli.overall-delivery-capability-score.evidence",
+  "generatedAt": "2026-05-16T20:21:39.485Z",
+  "command": "npx tsx src/apps/cli/src/index.ts diagnostics evaluate --full --execute-task all --live --output text",
+  "status": "pass",
+  "scoringMethod": "unfinished-penalty",
+  "score": 1,
+  "targetScore": 0.9,
+  "unfinishedPenaltyPerItem": 0.1,
+  "unfinishedTargetCount": 0,
+  "unfinishedTargetIds": [],
+  "passedTargetCount": 153,
+  "totalTargetCount": 153,
+  "dimensions": [
+    {
+      "dimensionId": "tool-family",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 64,
+      "totalCount": 64,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "mode",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 20,
+      "totalCount": 20,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "package",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 29,
+      "totalCount": 29,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "evaluation-task",
+      "score": 1,
+      "targetScore": 1,
+      "passedCount": 9,
+      "totalCount": 9,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "deepseek-api",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 11,
+      "totalCount": 11,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "memory",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 16,
+      "totalCount": 16,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    },
+    {
+      "dimensionId": "cache-observability",
+      "score": 1,
+      "targetScore": 0.9,
+      "passedCount": 4,
+      "totalCount": 4,
+      "status": "pass",
+      "blockingIds": [],
+      "redaction": {
+        "class": "internal",
+        "fields": [
+          "blockingIds"
+        ]
+      }
+    }
+  ],
+  "toolFamily": {
+    "score": 1,
+    "passedFamilyCount": 64,
+    "totalFamilyCount": 64,
+    "gate": "pass",
+    "fakeCoveredFamilyCount": 0,
+    "replayedCoveredFamilyCount": 0,
+    "liveCoveredFamilyCount": 64,
+    "taskCoveredFamilyCount": 64,
+    "safetyCoveredFamilyCount": 64,
+    "providerNativeSupportedFamilyCount": 19,
+    "sourceEvidencePath": "tests/acceptance/latest/live-tool-coverage.json"
+  },
+  "modeMatrix": {
+    "score": 1,
+    "completedModeCount": 20,
+    "totalModeCount": 20,
+    "gate": "pass",
+    "blockingModeIds": []
+  },
+  "packageScorecards": {
+    "score": 1,
+    "passedPackageCount": 29,
+    "totalPackageCount": 29,
+    "gate": "pass",
+    "blockingPackageIds": []
+  },
+  "evaluationTasks": {
+    "score": 1,
+    "solvedTaskCount": 9,
+    "totalTaskCount": 9,
+    "gate": "pass",
+    "blockingTaskIds": [],
+    "taskRuns": [
+      {
+        "taskId": "eval.bugfix.failing-test",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 2,
+        "repairSuccessCount": 0
+      },
+      {
+        "taskId": "eval.refactor.multifile",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 1,
+        "repairSuccessCount": 1
+      },
+      {
+        "taskId": "eval.docs.spec-update",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 1,
+        "repairSuccessCount": 1
+      },
+      {
+        "taskId": "eval.context.recall",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 0,
+        "repairSuccessCount": 0
+      },
+      {
+        "taskId": "eval.revert.recovery",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 0,
+        "repairSuccessCount": 0
+      },
+      {
+        "taskId": "eval.release.evidence",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 0,
+        "repairSuccessCount": 0
+      },
+      {
+        "taskId": "eval.webpage.generation",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "unsupportedClaimCount": 0,
+        "hallucinatedCommandCount": 0,
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 2,
+        "repairSuccessCount": 0
+      },
+      {
+        "taskId": "eval.webpage.failing-first-repair",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "unsupportedClaimCount": 0,
+        "hallucinatedCommandCount": 0,
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 1,
+        "repairSuccessCount": 1
+      },
+      {
+        "taskId": "eval.coding.failing-first-typecheck",
+        "outcome": "solved",
+        "checkPassRate": 1,
+        "retryCount": 0,
+        "evidenceManifestStatus": "passed",
+        "repairMetricsAvailability": "available",
+        "repairActivationCount": 2,
+        "repairSuccessCount": 0
+      }
+    ]
+  },
+  "deepSeekApi": {
+    "score": 1,
+    "passedCount": 11,
+    "totalCount": 11,
+    "gate": "pass"
+  },
+  "memory": {
+    "score": 1,
+    "passedCount": 16,
+    "totalCount": 16,
+    "gate": "pass"
+  },
+  "cacheObservability": {
+    "score": 1,
+    "passedCount": 4,
+    "totalCount": 4,
+    "gate": "pass"
+  },
+  "blockingCapabilityIds": [],
+  "calculation": "max(0, 1 - 0 unfinished targets * 0.1)",
+  "redaction": {
+    "class": "internal",
+    "fields": [
+      "modeMatrix.blockingModeIds",
+      "packageScorecards.blockingPackageIds",
+      "evaluationTasks.blockingTaskIds",
+      "dimensions.blockingIds",
+      "blockingCapabilityIds",
+      "unfinishedTargetIds"
+    ]
+  }
+}

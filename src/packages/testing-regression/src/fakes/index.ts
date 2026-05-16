@@ -22,7 +22,7 @@ import {
 } from "@deepseek/platform-abstraction";
 import { InMemoryHookSystem } from "@deepseek/hook-system";
 import { FakeMcpGateway } from "@deepseek/mcp-gateway";
-import { InMemoryCacheManager, InMemoryMemoryManager } from "@deepseek/memory-cache-management";
+import { InMemoryCacheManager, InMemoryMemoryManager, PersistentJsonlLosslessContextManager } from "@deepseek/memory-cache-management";
 import { DeterministicMockModelGateway } from "@deepseek/model-gateway";
 import { DeterministicToolIntentPreflight } from "@deepseek/tool-intent-preflight";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
@@ -178,6 +178,7 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
     timeoutMs: options.timeoutMs ?? 90_000
   };
   const sessionsDir = options.sessionsDirectory ?? userSessionsDirectory();
+  const losslessContextDir = platform.resolvePath(platform.userConfigPath("deepseek"), "..", "lossless-context");
   const sessions = (() => {
     try {
       return new PersistentFilesystemSessionStore(sessionsDir);
@@ -191,6 +192,7 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
     platform,
     workspaceState: new InMemoryWorkspaceStateManager(platform),
     codeIntelligence: new DeterministicCodeIntelligenceService(platform),
+    losslessContext: new PersistentJsonlLosslessContextManager(platform, losslessContextDir),
     models: new DeepSeekOpenAIProvider(modelOptions),
     policy: options.allowWorkspaceWrites ? new WorkspaceWritePolicyEngine() : base.policy,
     sessions,

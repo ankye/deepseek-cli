@@ -96,7 +96,7 @@ export function mapReasoningEffort(input: {
   readonly provider: string;
   readonly model: string;
 }): AgentReasoningEffortMapping {
-  const providerEffort = input.providerEffort ?? providerEffortFor(input.requested);
+  const providerEffort = input.providerEffort ?? providerEffortFor(input.requested, input.provider, input.model);
   return {
     schemaVersion: AGENT_MODE_SCHEMA_VERSION,
     ...(input.requested ? { requestedEffort: input.requested } : {}),
@@ -132,7 +132,19 @@ export function summarizeModePlan(input: {
   };
 }
 
-function providerEffortFor(effort: ModelReasoningEffort | undefined): ModelReasoningProviderEffort | undefined {
+function providerEffortFor(effort: ModelReasoningEffort | undefined, provider: string, model: string): ModelReasoningProviderEffort | undefined {
+  if (isDeepSeek(provider, model)) {
+    switch (effort) {
+      case "low":
+      case "medium":
+      case "high":
+        return "high";
+      case "xhigh":
+        return "max";
+      case undefined:
+        return undefined;
+    }
+  }
   switch (effort) {
     case "low":
       return "low";
@@ -145,6 +157,10 @@ function providerEffortFor(effort: ModelReasoningEffort | undefined): ModelReaso
     case undefined:
       return undefined;
   }
+}
+
+function isDeepSeek(provider: string, model: string): boolean {
+  return provider.toLowerCase().includes("deepseek") || model.toLowerCase().startsWith("deepseek-");
 }
 
 function productRoleFor(mode: AgentModeName): AgentModeBinding["productRole"] {

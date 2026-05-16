@@ -160,3 +160,54 @@ capability registry 必须把已启用 core coding tools 投影为 model-visible
 - **WHEN** CLI, VSCode, or model adapter lists core tools
 - **THEN** returned projections cannot call tool executors directly
 - **中文** 当 CLI、VSCode 或 model adapter 列出核心工具时，返回的 projections 不得直接调用 tool executors。
+
+### Requirement: Capability Family Metadata / Capability 家族元数据
+The capability registry SHALL require every model-visible capability projection to include tool domain id, tool family id, risk class, maturity state, operation profiles, host requirements, and scorecard rubric id.
+
+capability registry 必须要求每个 model-visible capability projection 包含 tool domain id、tool family id、risk class、maturity state、operation profiles、host requirements 与 scorecard rubric id。
+
+#### Scenario: Missing family metadata blocks projection / 缺少 Family 元数据阻止投影
+- **WHEN** an executable capability lacks a valid catalog family id
+- **THEN** the registry rejects model-visible projection with a typed validation diagnostic
+- **中文** 当 executable capability 缺少有效 catalog family id 时，registry 必须以 typed validation diagnostic 拒绝 model-visible projection。
+
+### Requirement: Family-Aware Projection Filtering / 感知 Family 的投影过滤
+The registry SHALL support filtering model-visible capabilities by family, domain, risk class, connector trust, host requirements, policy, and agent scope.
+
+registry 必须支持按 family、domain、risk class、connector trust、host requirements、policy 与 agent scope 过滤 model-visible capabilities。
+
+#### Scenario: Agent scope denies family / Agent Scope 拒绝 Family
+- **WHEN** an active agent scope denies the `browser.*` domain
+- **THEN** registry projection excludes all browser family capabilities even if individual capability ids are enabled
+- **中文** 当 active agent scope 拒绝 `browser.*` domain 时，即使单个 capability id 已启用，registry projection 也必须排除所有 browser family capabilities。
+
+### Requirement: Capability Id Does Not Imply Family / Capability ID 不隐式等于 Family
+The registry SHALL NOT infer tool family solely from capability id prefixes; explicit catalog metadata is required.
+
+registry 不得仅从 capability id 前缀推断 tool family；必须要求显式 catalog metadata。
+
+#### Scenario: External capability declares family / 外部 Capability 声明 Family
+- **WHEN** an MCP or plugin tool exposes an id such as `plugin.foo.run`
+- **THEN** it must declare its catalog family before it can become model-visible
+- **中文** 当 MCP 或 plugin tool 暴露类似 `plugin.foo.run` 的 id 时，它必须先声明 catalog family，之后才能成为 model-visible。
+
+### Requirement: Family-Aware Projection Filtering Is Enforced / 强制 Family-Aware 投影过滤
+The registry SHALL filter model-visible capabilities by family id, domain id, risk class, host requirements, connector trust, provider support, policy, and agent scope.
+
+registry 必须按 family id、domain id、risk class、host requirements、connector trust、provider support、policy 与 agent scope 过滤 model-visible capabilities。
+
+#### Scenario: Denied family is excluded / 被拒绝 Family 被排除
+- **WHEN** an agent scope denies `image.*`
+- **THEN** `image.generate`, `image.edit`, `image.search-stock`, and `image.inspect` capabilities are excluded from model-visible projection
+- **中文** 当 agent scope 拒绝 `image.*` 时，`image.generate`、`image.edit`、`image.search-stock` 与 `image.inspect` capabilities 必须从 model-visible projection 中排除。
+
+### Requirement: Concrete Tool Registration Must Be Complete / 真实工具注册必须完整
+The registry SHALL reject model-visible executable capability registration when the manifest lacks valid family metadata, output bounds, timeout, risk metadata, or required security fields.
+
+当 manifest 缺少有效 family metadata、output bounds、timeout、risk metadata 或必要 security fields 时，registry 必须拒绝 model-visible executable capability registration。
+
+#### Scenario: Missing timeout blocks projection / 缺少 Timeout 阻止投影
+- **WHEN** an executable family tool registers without a timeout policy
+- **THEN** the registry returns a stable validation diagnostic and does not expose it to the model
+- **中文** 当 executable family tool 注册时没有 timeout policy，registry 必须返回稳定 validation diagnostic，并且不向模型暴露该工具。
+

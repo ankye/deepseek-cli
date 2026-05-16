@@ -11,6 +11,7 @@ import type { CommandSystem } from "./command.js";
 import type { ConcurrencyOrchestrator } from "./concurrency.js";
 import type { ConfigStore } from "./config.js";
 import type { ContextEngine } from "./context.js";
+import type { LosslessContextManager } from "./lossless-context.js";
 import type { CredentialManager } from "./credential.js";
 import type { DistributionUpdateManager } from "./distribution.js";
 import type { EvolutionEngine } from "./evolution.js";
@@ -109,6 +110,20 @@ export type RuntimeEventKind =
   | "context.projection.completed"
   | "context.memory.collected"
   | "context.compact.boundary"
+  | "context.lcm.node-recorded"
+  | "context.lcm.summary-recorded"
+  | "context.lcm.degraded"
+  | "memory.permanent.candidate.proposed"
+  | "memory.permanent.promoted"
+  | "memory.permanent.injected"
+  | "memory.permanent.stale"
+  | "memory.permanent.conflict"
+  | "memory.permanent.deleted"
+  | "memory.permanent.provider.switched"
+  | "memory.permanent.disabled"
+  | "memory.permanent.hook.started"
+  | "memory.permanent.hook.completed"
+  | "memory.permanent.hook.failed"
   | "workflow.step"
   | "bus.recorded"
   | "model.delta"
@@ -362,6 +377,7 @@ export interface RuntimeMemoryCollectionEvidence extends JsonObject {
   readonly scopeCounts: JsonObject;
   readonly candidateCount: number;
   readonly degradedScopes: readonly MemoryScope[];
+  readonly permanentMemory?: JsonObject;
   readonly diagnostics: readonly RedactedError[];
   readonly replayFingerprint: string;
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
@@ -437,6 +453,7 @@ export interface RuntimeDependencies {
   readonly plugins: PluginManager;
   readonly extensions: ExtensionManager;
   readonly context: ContextEngine;
+  readonly losslessContext?: LosslessContextManager;
   readonly memory: MemoryManager;
   readonly cache: CacheManager;
   readonly credentials: CredentialManager;

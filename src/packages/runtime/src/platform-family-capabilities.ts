@@ -41,6 +41,9 @@ const createdAt = new Date(0).toISOString();
 export const platformFamilyCapabilityIds = {
   memoryReadWrite: asId<"capability">("memory-cache-management.memory-read-write"),
   contextProjectIndex: asId<"capability">("context-engine.project-index"),
+  losslessContextGrep: asId<"capability">("memory-cache-management.lossless-context-grep"),
+  losslessContextDescribe: asId<"capability">("memory-cache-management.lossless-context-describe"),
+  losslessContextExpand: asId<"capability">("memory-cache-management.lossless-context-expand"),
   sessionResumeFork: asId<"capability">("session-store.resume-fork"),
   compactSummary: asId<"capability">("memory-cache-management.compact-summary"),
   remoteRuntime: asId<"capability">("platform-abstraction.remote-runtime"),
@@ -51,7 +54,7 @@ export const platformFamilyCapabilityIds = {
 
 export interface PlatformFamilyCapabilityDependencies extends Pick<
 RuntimeDependencies,
-"capabilities" | "memory" | "sessions" | "remote" | "concurrency" | "usage" | "observability"
+"capabilities" | "memory" | "losslessContext" | "sessions" | "remote" | "concurrency" | "usage" | "observability"
 > {}
 
 export async function registerPlatformFamilyCapabilities(
@@ -75,6 +78,7 @@ function createPlatformFamilyCapabilities(
 ): readonly CapabilityExecutorBinding[] {
   const projectIndex = new DeterministicProjectIndex();
   const worktrees = new InMemoryWorktreeEnvironment();
+  const hasLosslessContext = Boolean((deps as Partial<PlatformFamilyCapabilityDependencies> | undefined)?.losslessContext);
   return [
     definePlatformCapability({
       id: platformFamilyCapabilityIds.memoryReadWrite,
@@ -107,6 +111,7 @@ function createPlatformFamilyCapabilities(
       permissions: ["context:index", "context:query"],
       execute: (input, context) => executeProjectIndexFamily(projectIndex, input, context, workspaceRoot)
     }),
+    ...(hasLosslessContext ? losslessContextCapabilities(deps) : []),
     definePlatformCapability({
       id: platformFamilyCapabilityIds.sessionResumeFork,
       name: "Session resume and fork",
@@ -199,6 +204,56 @@ function createPlatformFamilyCapabilities(
       providerSupport: "not_applicable",
       permissions: ["observability:read", "usage:read"],
       execute: (input, context) => executeTraceBudgetFamily(deps, input, context)
+    })
+  ];
+}
+
+function losslessContextCapabilities(deps: PlatformFamilyCapabilityDependencies): readonly CapabilityExecutorBinding[] {
+  return [
+    definePlatformCapability({
+      id: platformFamilyCapabilityIds.losslessContextGrep,
+      name: "Lossless context grep",
+      description: "Search durable lossless context nodes before relying on compressed history.",
+      familyId: "context.project-index",
+      domainId: "memory-context-session",
+      riskClass: "memory",
+      sideEffect: "read",
+      operationProfiles: ["memory", "read"],
+      hostRequirements: ["lossless-context"],
+      connectorProfile: "built-in",
+      providerSupport: "not_applicable",
+      permissions: ["context:lcm:read"],
+      execute: (input, context) => executeLosslessContextFamily(deps, input, context, "grep")
+    }),
+    definePlatformCapability({
+      id: platformFamilyCapabilityIds.losslessContextDescribe,
+      name: "Lossless context describe",
+      description: "Describe a durable lossless context node and its DAG edges.",
+      familyId: "context.project-index",
+      domainId: "memory-context-session",
+      riskClass: "memory",
+      sideEffect: "read",
+      operationProfiles: ["memory", "read"],
+      hostRequirements: ["lossless-context"],
+      connectorProfile: "built-in",
+      providerSupport: "not_applicable",
+      permissions: ["context:lcm:read"],
+      execute: (input, context) => executeLosslessContextFamily(deps, input, context, "describe")
+    }),
+    definePlatformCapability({
+      id: platformFamilyCapabilityIds.losslessContextExpand,
+      name: "Lossless context expand",
+      description: "Expand a summary or query back to original durable context nodes.",
+      familyId: "context.project-index",
+      domainId: "memory-context-session",
+      riskClass: "memory",
+      sideEffect: "read",
+      operationProfiles: ["memory", "read"],
+      hostRequirements: ["lossless-context"],
+      connectorProfile: "built-in",
+      providerSupport: "not_applicable",
+      permissions: ["context:lcm:read"],
+      execute: (input, context) => executeLosslessContextFamily(deps, input, context, "expand")
     })
   ];
 }
@@ -343,6 +398,44 @@ function executeProjectIndexFamily(
     ...(indexId ? { indexId } : {}),
     ...(documentsFingerprint ? { documentsFingerprint } : {})
   })));
+}
+
+async function executeLosslessContextFamily(
+  deps: PlatformFamilyCapabilityDependencies,
+  input: JsonObject,
+  context: CapabilityExecutionContext,
+  defaultAction: "grep" | "describe" | "expand"
+): Promise<SerializableResult> {
+  if (!deps.losslessContext) return failure("LOSSLESS_CONTEXT_UNAVAILABLE", "Lossless context manager is not configured.");
+  const action = stringValue(input.action) === "describe" || stringValue(input.action) === "expand" || stringValue(input.action) === "grep"
+    ? stringValue(input.action) as "grep" | "describe" | "expand"
+    : defaultAction;
+  if (action === "describe") {
+    const nodeId = stringValue(input.nodeId);
+    if (!nodeId) return failure("LOSSLESS_CONTEXT_NODE_REQUIRED", "nodeId is required for lossless context describe.");
+    return success(await deps.losslessContext.describe({ nodeId }));
+  }
+  if (action === "expand") {
+    const nodeId = stringValue(input.nodeId);
+    const query = stringValue(input.query);
+    if (!nodeId && !query) return failure("LOSSLESS_CONTEXT_EXPAND_TARGET_REQUIRED", "nodeId or query is required for lossless context expand.");
+    const sessionId = optionalSessionId(input, context);
+    return success(await deps.losslessContext.expand({
+      ...(nodeId ? { nodeId } : {}),
+      ...(query ? { query } : {}),
+      ...(sessionId ? { sessionId } : {}),
+      limit: boundedNumber(input.limit, 20, 0, 100)
+    }));
+  }
+  const query = stringValue(input.query);
+  if (!query) return failure("LOSSLESS_CONTEXT_QUERY_REQUIRED", "query is required for lossless context grep.");
+  const sessionId = optionalSessionId(input, context);
+  return success(await deps.losslessContext.grep({
+    query,
+    regex: input.regex === true,
+    ...(sessionId ? { sessionId } : {}),
+    limit: boundedNumber(input.limit, 20, 0, 100)
+  }));
 }
 
 async function executeSessionFamily(

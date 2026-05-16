@@ -10,11 +10,15 @@ import type {
   ToolFamilyRiskClass
 } from "@deepseek/platform-contracts";
 import { TOOL_FAMILY_CATALOG_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { deflateSync } from "node:zlib";
 
 const deterministicTime = "1970-01-01T00:00:00.000Z";
 const catalogVersion = "v1";
 const maxPreviewChars = 1_000;
 const maxImageBytes = 2_000_000;
+const userAgent = "deepseek-cli-native-tool-provider/0.1";
+
+type ProviderCapabilityMode = "fake" | "native";
 
 interface BytesDecodeResult {
   readonly ok: boolean;
@@ -25,22 +29,28 @@ interface BytesDecodeResult {
 export interface ModelGatewayFamilyCapabilityOptions {
   readonly data?: Readonly<Record<string, JsonObject>>;
   readonly maxItems?: number;
+  readonly mode?: ProviderCapabilityMode;
 }
 
 export function createModelGatewayFamilyCapabilities(options: ModelGatewayFamilyCapabilityOptions = {}): readonly CapabilityExecutorBinding[] {
   const maxItems = clampLimit(options.maxItems ?? 10, 1, 25);
+  const mode = options.mode ?? "fake";
   return [
-    binding("model-gateway.web-extract", "web.extract", "Extract web page content", "web-public-data", "network", ["network", "read"], "network", (input) => webExtract(input, maxItems)),
-    binding("model-gateway.web-data-lookup", "web.data-lookup", "Lookup structured public data", "web-public-data", "network", ["network", "read"], "network", (input) => dataLookup(input, options.data ?? defaultData, maxItems)),
-    binding("model-gateway.image-generate", "image.generate", "Generate image artifact", "media-images", "media", ["media", "artifact"], "read", (input) => imageGenerate(input)),
-    binding("model-gateway.image-edit", "image.edit", "Edit image artifact", "media-images", "media", ["media", "artifact"], "read", (input) => imageEdit(input)),
-    binding("model-gateway.image-search-stock", "image.search-stock", "Search stock images", "media-images", "media", ["media", "read"], "read", (input) => stockSearch(input, maxItems)),
-    binding("model-gateway.image-inspect", "image.inspect", "Inspect image metadata", "media-images", "media", ["media", "read"], "read", (input) => imageInspect(input))
+    binding("model-gateway.web-extract", "web.extract", "Extract web page content", "web-public-data", "network", ["network", "read"], "network", mode, (input) => webExtract(input, maxItems, mode)),
+    binding("model-gateway.web-data-lookup", "web.data-lookup", "Lookup structured public data", "web-public-data", "network", ["network", "read"], "network", mode, (input) => dataLookup(input, options.data ?? defaultData, maxItems, mode)),
+    binding("model-gateway.image-generate", "image.generate", "Generate image artifact", "media-images", "media", ["media", "artifact"], "read", mode, (input) => imageGenerate(input, mode)),
+    binding("model-gateway.image-edit", "image.edit", "Edit image artifact", "media-images", "media", ["media", "artifact"], "read", mode, (input) => imageEdit(input, mode)),
+    binding("model-gateway.image-search-stock", "image.search-stock", "Search stock images", "media-images", "media", ["media", "read"], "read", mode, (input) => stockSearch(input, maxItems, mode)),
+    binding("model-gateway.image-inspect", "image.inspect", "Inspect image metadata", "media-images", "media", ["media", "read"], "read", mode, (input) => imageInspect(input, mode))
   ];
 }
 
-function webExtract(input: JsonObject, maxItems: number): SerializableResult {
-  const html = stringValue(input.html) ?? "";
+async function webExtract(input: JsonObject, maxItems: number, mode: ProviderCapabilityMode): Promise<SerializableResult> {
+  const fetched = mode === "native" && !stringValue(input.html)
+    ? await nativeFetchText(stringValue(input.url) ?? "https://example.com")
+    : undefined;
+  if (fetched?.ok === false) return fetched.result;
+  const html = stringValue(input.html) ?? fetched?.html ?? "";
   const textLimit = clampLimit(numberValue(input.maxTextChars) ?? maxPreviewChars, 1, maxPreviewChars);
   const links = extractLinks(html).slice(0, maxItems);
   const title = redactSecretText(stripTags(firstMatch(html, /<title[^>]*>([\s\S]*?)<\/title>/i) ?? ""));
@@ -53,11 +63,14 @@ function webExtract(input: JsonObject, maxItems: number): SerializableResult {
     links,
     truncated: stripTags(html).length > text.length || extractLinks(html).length > links.length,
     outputBounds: { maxTextChars: textLimit, maxLinks: maxItems },
-    evidence: evidence("web.extract", "model-gateway.web-extract")
+    providerNativeSupport: mode === "native" ? "native" : "unsupported",
+    provider: fetched?.provider ?? mode,
+    evidence: evidence("web.extract", "model-gateway.web-extract", mode)
   });
 }
 
-function dataLookup(input: JsonObject, data: Readonly<Record<string, JsonObject>>, maxItems: number): SerializableResult {
+async function dataLookup(input: JsonObject, data: Readonly<Record<string, JsonObject>>, maxItems: number, mode: ProviderCapabilityMode): Promise<SerializableResult> {
+  if (mode === "native") return nativeDataLookup(input, maxItems);
   const provider = (stringValue(input.provider) ?? "fake").toLowerCase();
   const query = (stringValue(input.query) ?? stringValue(input.key) ?? "").toLowerCase();
   const namespace = (stringValue(input.namespace) ?? "general").toLowerCase();
@@ -75,47 +88,53 @@ function dataLookup(input: JsonObject, data: Readonly<Record<string, JsonObject>
     count: rows.length,
     truncated: Object.keys(data).filter((key) => key.includes(query)).length > rows.length,
     noNetwork: true,
-    evidence: evidence("web.data-lookup", "model-gateway.web-data-lookup")
+    providerNativeSupport: "unsupported",
+    evidence: evidence("web.data-lookup", "model-gateway.web-data-lookup", mode)
   });
 }
 
-function imageGenerate(input: JsonObject): SerializableResult {
+function imageGenerate(input: JsonObject, mode: ProviderCapabilityMode): SerializableResult {
   const prompt = redactSecretText((stringValue(input.prompt) ?? "image").slice(0, 400));
   const width = clampLimit(numberValue(input.width) ?? 512, 1, 4096);
   const height = clampLimit(numberValue(input.height) ?? 512, 1, 4096);
-  const generatedArtifact = makeArtifact("image.generate", "image", stableHash(`${prompt}:${width}:${height}`), {
+  const generatedArtifact = mode === "native"
+    ? makeNativePngArtifact("image.generate", "image", stableHash(`${prompt}:${width}:${height}`), prompt, width, height)
+    : makeArtifact("image.generate", "image", stableHash(`${prompt}:${width}:${height}`), {
     mimeType: "image/png",
     byteLength: Math.min(width * height * 4, maxImageBytes),
     preview: `fake image ${width}x${height}: ${prompt}`.slice(0, 160)
-  });
+  }, mode);
   return ok({
     familyId: "image.generate",
     artifact: generatedArtifact,
     artifacts: [generatedArtifact],
-    providerNativeSupport: "unsupported",
-    evidence: evidence("image.generate", "model-gateway.image-generate")
+    providerNativeSupport: mode === "native" ? "native" : "unsupported",
+    evidence: evidence("image.generate", "model-gateway.image-generate", mode)
   });
 }
 
-function imageEdit(input: JsonObject): SerializableResult {
+function imageEdit(input: JsonObject, mode: ProviderCapabilityMode): SerializableResult {
   const inputArtifactId = stringValue(input.inputArtifactId) ?? "artifact:input-image";
   const instruction = redactSecretText((stringValue(input.instruction) ?? "edit").slice(0, 400));
-  const editedArtifact = makeArtifact("image.edit", "image", stableHash(`${inputArtifactId}:${instruction}`), {
+  const editedArtifact = mode === "native"
+    ? makeNativePngArtifact("image.edit", "image", stableHash(`${inputArtifactId}:${instruction}`), `edited ${instruction}`, 96, 96)
+    : makeArtifact("image.edit", "image", stableHash(`${inputArtifactId}:${instruction}`), {
     mimeType: "image/png",
     byteLength: 2048,
     preview: `fake edit ${inputArtifactId}: ${instruction}`.slice(0, 160)
-  });
+  }, mode);
   return ok({
     familyId: "image.edit",
     inputArtifactId,
     artifact: editedArtifact,
     artifacts: [editedArtifact],
-    providerNativeSupport: "unsupported",
-    evidence: evidence("image.edit", "model-gateway.image-edit")
+    providerNativeSupport: mode === "native" ? "native" : "unsupported",
+    evidence: evidence("image.edit", "model-gateway.image-edit", mode)
   });
 }
 
-function stockSearch(input: JsonObject, maxItems: number): SerializableResult {
+async function stockSearch(input: JsonObject, maxItems: number, mode: ProviderCapabilityMode): Promise<SerializableResult> {
+  if (mode === "native") return nativeStockSearch(input, maxItems);
   const query = redactSecretText((stringValue(input.query) ?? "workspace").slice(0, 120));
   const limit = clampLimit(numberValue(input.limit) ?? 3, 1, maxItems);
   const results = Array.from({ length: limit }, (_, index) => {
@@ -128,7 +147,7 @@ function stockSearch(input: JsonObject, maxItems: number): SerializableResult {
         mimeType: "image/jpeg",
         byteLength: 4096 + index,
         preview: `fake stock result ${index + 1} for ${query}`
-      })
+      }, mode)
     };
   });
   return ok({
@@ -138,11 +157,11 @@ function stockSearch(input: JsonObject, maxItems: number): SerializableResult {
     count: results.length,
     truncated: false,
     providerNativeSupport: "unsupported",
-    evidence: evidence("image.search-stock", "model-gateway.image-search-stock")
+    evidence: evidence("image.search-stock", "model-gateway.image-search-stock", mode)
   });
 }
 
-function imageInspect(input: JsonObject): SerializableResult {
+function imageInspect(input: JsonObject, mode: ProviderCapabilityMode): SerializableResult {
   const bytes = decodeBase64Image(stringValue(input.bytesBase64) ?? stringValue(input.dataUri) ?? "");
   if (!bytes.ok) return { ok: false, error: bytes.error ?? { code: "IMAGE_INPUT_INVALID", message: "Image bytes must be base64 encoded.", retryable: false, redaction: { class: "public" } } };
   const value = bytes.value ?? new Uint8Array();
@@ -156,7 +175,8 @@ function imageInspect(input: JsonObject): SerializableResult {
     metadata,
     truncated: false,
     outputBounds: { maxImageBytes },
-    evidence: evidence("image.inspect", "model-gateway.image-inspect")
+    providerNativeSupport: mode === "native" ? "native" : "unsupported",
+    evidence: evidence("image.inspect", "model-gateway.image-inspect", mode)
   });
 }
 
@@ -168,13 +188,15 @@ function binding(
   riskClass: ToolFamilyRiskClass,
   operationProfiles: readonly ToolFamilyOperationProfile[],
   sideEffect: CapabilityManifest["sideEffect"],
+  mode: ProviderCapabilityMode,
   execute: (input: JsonObject) => SerializableResult | Promise<SerializableResult>
 ): CapabilityExecutorBinding {
+  const native = mode === "native";
   return {
     manifest: {
       id: asId<"capability">(id),
       name,
-      description: `${familyId} fake-first provider capability`,
+      description: `${familyId} ${native ? "native" : "fake-first"} provider capability`,
       source: "@deepseek/model-gateway",
       version: "0.1.0",
       trust: "trusted",
@@ -187,9 +209,9 @@ function binding(
       projection: {
         modelVisible: true,
         outputBounded: true,
-        connectorTrust: "fake",
-        providerSupport: "fake",
-        policyTags: ["fake-first", domainId],
+        connectorTrust: native ? "trusted" : "fake",
+        providerSupport: native ? "native" : "fake",
+        policyTags: [native ? "native-provider" : "fake-first", domainId],
         agentScopeIds: ["default"]
       },
       toolFamily: {
@@ -202,7 +224,7 @@ function binding(
         maturity: "baseline",
         riskClass,
         operationProfiles,
-        hostRequirements: ["fake-provider"],
+        hostRequirements: [native ? "native-provider" : "fake-provider"],
         connectorProfile: "provider",
         scorecardRubricId: `rubric.${familyId}.baseline`,
         redaction: { class: "public" }
@@ -210,8 +232,8 @@ function binding(
       secretExposure: noSecretExposure(),
       resourceScope: resourceScope(domainId === "web-public-data" ? "network" : "native"),
       sandboxRequirements: sandbox(domainId, domainId === "web-public-data" ? ["network-access"] : ["native-access"]),
-      audit: audit(id, domainId),
-      security: { modelVisible: true, outputRedaction: "internal", preflight: "fake-provider" }
+      audit: audit(id, domainId, mode),
+      security: { modelVisible: true, outputRedaction: "internal", preflight: native ? "native-provider" : "fake-provider" }
     },
     execute: async (input) => execute(input)
   };
@@ -223,12 +245,12 @@ const defaultData: Readonly<Record<string, JsonObject>> = {
   "general:deepseek": { name: "DeepSeek", category: "ai", observedAt: deterministicTime }
 };
 
-function makeArtifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, details: { readonly mimeType: string; readonly byteLength: number; readonly preview: string }): JsonObject {
+function makeArtifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, details: { readonly mimeType: string; readonly byteLength: number; readonly preview: string }, mode: ProviderCapabilityMode): JsonObject {
   return {
     artifactId: `artifact:${familyId}:${key}`,
     familyId,
     kind,
-    uri: `artifact://fake/${familyId}/${key}`,
+    uri: `artifact://${mode}/${familyId}/${key}`,
     mimeType: details.mimeType,
     byteLength: Math.min(details.byteLength, maxImageBytes),
     sha256: stableHash(`${familyId}:${key}:${details.preview}`),
@@ -239,16 +261,168 @@ function makeArtifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key:
   };
 }
 
-function evidence(familyId: ToolFamilyId, capabilityId: string): JsonObject {
+function evidence(familyId: ToolFamilyId, capabilityId: string, mode: ProviderCapabilityMode): JsonObject {
   return {
-    mode: "fake",
-    providerNativeSupport: "unsupported",
+    mode,
+    providerNativeSupport: mode === "native" ? "native" : "unsupported",
     capabilityId,
     familyId,
-    replayRef: `replay:${capabilityId}`,
+    replayRef: mode === "native" ? "" : `replay:${capabilityId}`,
     createdAt: deterministicTime,
     redaction: { class: "public" }
   };
+}
+
+async function nativeFetchText(url: string): Promise<{ readonly ok: true; readonly html: string; readonly provider: string } | { readonly ok: false; readonly result: SerializableResult }> {
+  if (!/^https?:\/\//i.test(url)) return { ok: false, result: fail("WEB_EXTRACT_URL_REJECTED", "URL must start with http(s)://") };
+  try {
+    const response = await fetch(url, { headers: { "user-agent": userAgent } });
+    const html = await response.text();
+    return { ok: true, html, provider: "native-fetch" };
+  } catch (error) {
+    return { ok: false, result: fail("WEB_EXTRACT_NATIVE_FETCH_FAILED", error instanceof Error ? error.message : "Native web fetch failed.") };
+  }
+}
+
+async function nativeDataLookup(input: JsonObject, maxItems: number): Promise<SerializableResult> {
+  const query = encodeURIComponent((stringValue(input.query) ?? stringValue(input.key) ?? "deepseek").slice(0, 80));
+  const limit = clampLimit(numberValue(input.limit) ?? 3, 1, maxItems);
+  const url = `https://api.github.com/search/repositories?q=${query}&per_page=${limit}`;
+  try {
+    const response = await fetch(url, { headers: { "user-agent": userAgent, accept: "application/vnd.github+json" } });
+    if (!response.ok) return fail("WEB_DATA_LOOKUP_NATIVE_HTTP_FAILED", `GitHub lookup returned HTTP ${response.status}.`);
+    const json = await response.json() as JsonObject;
+    const items = Array.isArray(json.items) ? json.items.filter(isJsonObject).slice(0, limit) : [];
+    const rows = items.map((item) => ({
+      key: String(item.full_name ?? item.name ?? item.id ?? ""),
+      value: redactValue({
+        name: item.full_name ?? item.name ?? "",
+        description: item.description ?? "",
+        url: item.html_url ?? "",
+        stars: item.stargazers_count ?? 0
+      }) as JsonObject
+    }));
+    return ok({
+      familyId: "web.data-lookup",
+      provider: "github-search-api",
+      namespace: "github.repositories",
+      query: decodeURIComponent(query),
+      rows,
+      count: rows.length,
+      truncated: typeof json.total_count === "number" ? json.total_count > rows.length : false,
+      noNetwork: false,
+      providerNativeSupport: "native",
+      evidence: evidence("web.data-lookup", "model-gateway.web-data-lookup", "native")
+    });
+  } catch (error) {
+    return fail("WEB_DATA_LOOKUP_NATIVE_FAILED", error instanceof Error ? error.message : "Native data lookup failed.");
+  }
+}
+
+async function nativeStockSearch(input: JsonObject, maxItems: number): Promise<SerializableResult> {
+  const query = redactSecretText((stringValue(input.query) ?? "workspace").slice(0, 80));
+  const limit = clampLimit(numberValue(input.limit) ?? 3, 1, maxItems);
+  const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(query)}&gsrlimit=${limit}&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Csha1`;
+  try {
+    const response = await fetch(url, { headers: { "user-agent": userAgent } });
+    if (!response.ok) return fail("IMAGE_STOCK_NATIVE_HTTP_FAILED", `Wikimedia lookup returned HTTP ${response.status}.`);
+    const json = await response.json() as JsonObject;
+    const queryObject = isJsonObject(json.query) ? json.query : {};
+    const pagesObject = isJsonObject(queryObject.pages) ? queryObject.pages : {};
+    const pages = Object.values(pagesObject).filter(isJsonObject).slice(0, limit);
+    const results = pages.map((page, index) => {
+      const imageInfo = Array.isArray(page.imageinfo) && isJsonObject(page.imageinfo[0]) ? page.imageinfo[0] : {};
+      const imageUrl = stringValue(imageInfo.url) ?? "";
+      const mimeType = stringValue(imageInfo.mime) ?? "image/jpeg";
+      const key = stableHash(`${query}:${imageUrl || index}`);
+      return {
+        title: String(page.title ?? `${query} stock ${index + 1}`),
+        source: "wikimedia-commons",
+        license: "see-source",
+        url: imageUrl,
+        artifact: makeArtifact("image.search-stock", "image", key, {
+          mimeType,
+          byteLength: numberValue(imageInfo.size) ?? 0,
+          preview: imageUrl || `Wikimedia result ${index + 1} for ${query}`
+        }, "native")
+      };
+    });
+    return ok({
+      familyId: "image.search-stock",
+      query,
+      results,
+      count: results.length,
+      truncated: false,
+      providerNativeSupport: "native",
+      evidence: evidence("image.search-stock", "model-gateway.image-search-stock", "native")
+    });
+  } catch (error) {
+    return fail("IMAGE_STOCK_NATIVE_FAILED", error instanceof Error ? error.message : "Native stock search failed.");
+  }
+}
+
+function makeNativePngArtifact(familyId: ToolFamilyId, kind: ToolFamilyArtifactKind, key: string, label: string, width: number, height: number): JsonObject {
+  const boundedWidth = clampLimit(width, 16, 256);
+  const boundedHeight = clampLimit(height, 16, 256);
+  const bytes = makePngBytes(boundedWidth, boundedHeight, stableHash(label));
+  const dataUri = `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+  return {
+    artifactId: `artifact:${familyId}:${key}`,
+    familyId,
+    kind,
+    uri: dataUri,
+    mimeType: "image/png",
+    byteLength: bytes.byteLength,
+    sha256: stableHash(`${familyId}:${key}:${bytes.byteLength}:${label}`),
+    preview: redactSecretText(label).slice(0, 200),
+    truncated: label.length > 200,
+    createdAt: deterministicTime,
+    redaction: { class: "internal", fields: ["uri"] }
+  };
+}
+
+function makePngBytes(width: number, height: number, seedText: string): Uint8Array {
+  const seed = [...seedText].reduce((total, character) => (total + character.charCodeAt(0)) >>> 0, 0);
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 4 + 1);
+    raw[rowOffset] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = rowOffset + 1 + x * 4;
+      raw[offset] = (x * 7 + seed) % 256;
+      raw[offset + 1] = (y * 9 + seed * 3) % 256;
+      raw[offset + 2] = ((x + y) * 5 + seed * 11) % 256;
+      raw[offset + 3] = 255;
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", Buffer.concat([uint32(width), uint32(height), Buffer.from([8, 6, 0, 0, 0])])),
+    pngChunk("IDAT", deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  return Buffer.concat([uint32(data.byteLength), typeBytes, data, uint32(crc32(Buffer.concat([typeBytes, data])))]);
+}
+
+function uint32(value: number): Buffer {
+  const output = Buffer.alloc(4);
+  output.writeUInt32BE(value >>> 0, 0);
+  return output;
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function extractLinks(html: string): readonly JsonObject[] {
@@ -352,11 +526,11 @@ function sandbox(profile: string, capabilities: readonly ("network-access" | "na
   };
 }
 
-function audit(subject: string, resource: string) {
+function audit(subject: string, resource: string, mode: ProviderCapabilityMode) {
   return {
     schemaVersion: "1.0.0",
     decision: "allow",
-    reasonCode: "FAKE_FIRST_PROVIDER_CAPABILITY",
+    reasonCode: mode === "native" ? "NATIVE_PROVIDER_CAPABILITY" : "FAKE_FIRST_PROVIDER_CAPABILITY",
     subject,
     resource,
     redactedSubject: subject,
@@ -392,6 +566,10 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function clampLimit(value: number, min: number, max: number): number {

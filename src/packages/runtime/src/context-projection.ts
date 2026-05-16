@@ -4,8 +4,6 @@ import type {
   ContextGraphNode,
   ContextProjectionResult,
   JsonObject,
-  MemoryEntry,
-  MemoryScope,
   RedactedError,
   RuntimeCompactBoundaryEvidence,
   RuntimeMemoryCollectionEvidence,
@@ -17,9 +15,10 @@ import type {
 } from "@deepseek/platform-contracts";
 import { CONTEXT_PROJECTION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
-import { createCompactBoundaryEvidence, memoryCandidateFingerprint } from "@deepseek/memory-cache-management";
+import { createCompactBoundaryEvidence } from "@deepseek/memory-cache-management";
 import { kernelError } from "./errors.js";
 import { agentLoopEvent, recordRuntimeAdapterEvent } from "./events.js";
+import { memoryContextCandidates } from "./memory-context.js";
 import { countTokens, stableHash } from "./trace.js";
 
 export interface AgentLoopContextProjection extends JsonObject {
@@ -226,119 +225,6 @@ export async function* projectAgentLoopContext(
     memoryEvidence: memoryCandidates.evidence,
     ...(compactBoundary ? { compactBoundary } : {})
   };
-}
-
-export async function memoryContextCandidates(
-  deps: RuntimeDependencies,
-  request: AgentLoopRequest,
-  sessionId: SessionId,
-  turnId: import("@deepseek/platform-contracts").TurnId
-): Promise<{ readonly nodes: readonly ContextGraphNode[]; readonly evidence: RuntimeMemoryCollectionEvidence }> {
-  const scopes: readonly MemoryScope[] = ["working", "session", "project"];
-  const nodes: ContextGraphNode[] = [];
-  const degradedScopes: MemoryScope[] = [];
-  const diagnostics: RedactedError[] = [];
-  const scopeCounts: Record<string, number> = {};
-  for (const scope of scopes) {
-    let entries: readonly MemoryEntry[];
-    try {
-      entries = await deps.memory.query(scope, sessionId);
-    } catch (error) {
-      degradedScopes.push(scope);
-      diagnostics.push({
-        code: "MEMORY_QUERY_FAILED",
-        message: error instanceof Error ? error.message : "Memory query failed",
-        retryable: true,
-        redaction: { class: "internal" },
-        details: { scope }
-      });
-      continue;
-    }
-    scopeCounts[scope] = entries.length;
-    entries.forEach((entry, index) => {
-      nodes.push(memoryEntryNode(entry, request, sessionId, turnId, index));
-    });
-  }
-  const replayFingerprint = stableHash(JSON.stringify({
-    scopes,
-    scopeCounts,
-    degradedScopes,
-    fingerprints: nodes.flatMap((node) => node.dependencyFingerprints)
-  }));
-  return {
-    nodes,
-    evidence: {
-      schemaVersion: "1.0.0",
-      status: degradedScopes.length > 0 ? "degraded" : "completed",
-      scopes,
-      scopeCounts,
-      candidateCount: nodes.length,
-      degradedScopes,
-      diagnostics,
-      replayFingerprint,
-      redaction: { class: "internal", fields: ["diagnostics.details"] }
-    }
-  };
-}
-
-function memoryEntryNode(
-  entry: MemoryEntry,
-  request: AgentLoopRequest,
-  sessionId: SessionId,
-  turnId: import("@deepseek/platform-contracts").TurnId,
-  index: number
-): ContextGraphNode {
-  const fingerprint = memoryCandidateFingerprint({ entry, sessionId });
-  return {
-    schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
-    id: asId<"contextNode">(`context-memory-${sanitizeId(entry.scope)}-${sanitizeId(String(entry.id))}`),
-    kind: "memory-ref",
-    source: "memory",
-    lifecycle: memoryLifecycle(entry.scope),
-    scope: {
-      sessionId,
-      turnId,
-      ...(request.agentId ? { agentId: request.agentId } : {}),
-      workspaceRoot: request.workspaceRoot,
-      host: request.caller
-    },
-    priority: memoryPriority(entry.scope) - index,
-    content: formatMemoryContent(entry),
-    contentRef: `memory:${entry.scope}:${entry.id}`,
-    estimatedTokens: countTokens(entry.content),
-    redaction: entry.redaction,
-    provenance: {
-      ...entry.provenance,
-      source: "runtime.memory",
-      memoryId: entry.id,
-      scope: entry.scope,
-      confidence: entry.confidence ?? 1,
-      redaction: { class: "internal", fields: ["memoryId"] }
-    },
-    dependencyFingerprints: [fingerprint],
-    compatibility: { schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION },
-    createdAt: "1970-01-01T00:00:00.000Z"
-  };
-}
-
-function memoryLifecycle(scope: MemoryScope): ContextGraphNode["lifecycle"] {
-  if (scope === "working") return "turn";
-  if (scope === "session") return "session";
-  return "project";
-}
-
-function memoryPriority(scope: MemoryScope): number {
-  if (scope === "working") return 780;
-  if (scope === "session") return 720;
-  return 650;
-}
-
-function formatMemoryContent(entry: MemoryEntry): string {
-  return [
-    `Memory ${entry.id}`,
-    `Scope: ${entry.scope}`,
-    entry.content
-  ].join("\n");
 }
 
 async function codeReferenceContextCandidates(

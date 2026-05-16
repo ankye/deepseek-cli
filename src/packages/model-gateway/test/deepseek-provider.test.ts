@@ -8,7 +8,11 @@ import {
   FixtureModelProviderTransport,
   StaticCredentialProvider,
   defaultDeepSeekProfile,
-  normalizeDeepSeekChunk
+  normalizeDeepSeekChunk,
+  parseDeepSeekJsonOutputResponse,
+  validateDeepSeekAnthropicMessagesRequest,
+  validateDeepSeekJsonOutputRequest,
+  validateDeepSeekStrictToolSchema
 } from "../src/index.js";
 import { asId } from "@deepseek/platform-contracts";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
@@ -73,6 +77,164 @@ describe("DeepSeek OpenAI provider", () => {
     assert.equal(Array.isArray(request?.body.tools), true);
     assert.deepEqual(request?.body.thinking, { type: "enabled" });
     assert.equal(request?.body.reasoning_effort, "high");
+  });
+
+  it("normalizes DeepSeek thinking effort options to the provider-supported values", () => {
+    const provider = new DeepSeekOpenAIProvider({
+      transport: new FixtureModelProviderTransport([]),
+      credentials: new StaticCredentialProvider("sk-test")
+    });
+
+    const low = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "low",
+      reasoning: { enabled: true, effort: "low" }
+    }, "sk-test");
+    const medium = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "medium",
+      reasoning: { enabled: true, effort: "medium" }
+    }, "sk-test");
+    const xhigh = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "xhigh",
+      reasoning: { enabled: true, effort: "xhigh" }
+    }, "sk-test");
+    const mapped = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "mapped",
+      reasoning: { enabled: true, effort: "xhigh", providerEffort: "max" }
+    }, "sk-test");
+    const disabled = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "disabled",
+      reasoning: { enabled: false, effort: "xhigh", providerEffort: "max" }
+    }, "sk-test");
+
+    assert.equal(low.body.reasoning_effort, "high");
+    assert.equal(medium.body.reasoning_effort, "high");
+    assert.equal(xhigh.body.reasoning_effort, "max");
+    assert.equal(mapped.body.reasoning_effort, "max");
+    assert.deepEqual(disabled.body.thinking, { type: "disabled" });
+    assert.equal("reasoning_effort" in disabled.body, false);
+  });
+
+  it("adds DeepSeek JSON mode only when request guardrails are satisfied", () => {
+    const provider = new DeepSeekOpenAIProvider({
+      transport: new FixtureModelProviderTransport([]),
+      credentials: new StaticCredentialProvider("sk-test")
+    });
+    const ok = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "Return a JSON object with a single ok boolean.",
+      output: { format: "json_object", maxParseRetries: 1 }
+    }, "sk-test");
+    const blocked = provider.buildProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "Return a single ok boolean.",
+      output: { format: "json_object" }
+    }, "sk-test");
+
+    assert.deepEqual(validateDeepSeekJsonOutputRequest({ prompt: "Return JSON.", output: { format: "json_object" } }).diagnostics, []);
+    assert.equal(validateDeepSeekJsonOutputRequest({ prompt: "Return object.", output: { format: "json_object" } }).ok, false);
+    assert.deepEqual(ok.body.response_format, { type: "json_object" });
+    assert.equal("response_format" in blocked.body, false);
+  });
+
+  it("verifies DeepSeek JSON output parsing and retryable failure states", () => {
+    const parsed = parseDeepSeekJsonOutputResponse("{\"ok\":true}", "stop");
+    const invalid = parseDeepSeekJsonOutputResponse("not json", "stop");
+    const truncated = parseDeepSeekJsonOutputResponse("{\"ok\":true}", "length");
+
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.value, { ok: true });
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.retryable, true);
+    assert.equal(invalid.diagnostics[0]?.code, "DEEPSEEK_JSON_RESPONSE_PARSE_FAILED");
+    assert.equal(truncated.ok, false);
+    assert.equal(truncated.diagnostics[0]?.code, "DEEPSEEK_JSON_RESPONSE_TRUNCATED");
+  });
+
+  it("builds strict beta tool-schema requests only after schema validation", () => {
+    const provider = new DeepSeekOpenAIProvider({
+      transport: new FixtureModelProviderTransport([]),
+      credentials: new StaticCredentialProvider("sk-test")
+    });
+    const tools = [{
+      type: "function",
+      function: {
+        name: "search",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: { query: { type: "string" } },
+          required: ["query"]
+        }
+      }
+    }];
+    const strict = provider.buildStrictToolSchemaProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "search",
+      tools
+    }, "sk-test");
+    const invalid = validateDeepSeekStrictToolSchema([{
+      type: "function",
+      function: {
+        name: "bad",
+        parameters: { type: "object", oneOf: [{ required: ["a"] }, { required: ["b"] }] }
+      }
+    }]);
+
+    assert.equal(strict.validation.ok, true);
+    assert.equal(strict.request?.url, "https://api.deepseek.com/beta/chat/completions");
+    const requestTools = strict.request?.body.tools as readonly { readonly function?: { readonly strict?: boolean } }[] | undefined;
+    assert.equal(requestTools?.[0]?.function?.strict, true);
+    assert.equal(invalid.ok, false);
+    assert.deepEqual(invalid.unsupportedKeywordPaths, ["tools[0].function.parameters.oneOf"]);
+  });
+
+  it("builds DeepSeek beta prefix, FIM, and Anthropic-compatible request lanes", () => {
+    const provider = new DeepSeekOpenAIProvider({
+      transport: new FixtureModelProviderTransport([]),
+      credentials: new StaticCredentialProvider("sk-test")
+    });
+
+    const prefix = provider.buildChatPrefixCompletionProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "Write a JSON answer.",
+      prefix: "{\"answer\":",
+      reasoning: { enabled: true, providerEffort: "max" }
+    }, "sk-test");
+    const fim = provider.buildFimCompletionProviderRequest({
+      profile: defaultDeepSeekProfile,
+      prompt: "function add(a, b) {",
+      suffix: "}",
+      maxTokens: 64
+    }, "sk-test");
+    const anthropic = provider.buildAnthropicMessagesProviderRequest({
+      profile: defaultDeepSeekProfile,
+      maxTokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      reasoning: { enabled: true, effort: "xhigh" }
+    }, "sk-test");
+
+    assert.equal(prefix.url, "https://api.deepseek.com/beta/chat/completions");
+    const prefixMessages = prefix.body.messages as readonly { readonly prefix?: boolean; readonly content?: string }[];
+    assert.equal(prefixMessages.at(-1)?.prefix, true);
+    assert.equal(prefixMessages.at(-1)?.content, "{\"answer\":");
+    assert.equal(prefix.body.reasoning_effort, "max");
+    assert.equal(fim.url, "https://api.deepseek.com/beta/completions");
+    assert.equal(fim.body.suffix, "}");
+    assert.equal(fim.body.max_tokens, 64);
+    assert.equal(anthropic.validation.ok, true);
+    assert.equal(anthropic.request?.url, "https://api.deepseek.com/anthropic/messages");
+    assert.equal(anthropic.request?.headers["anthropic-version"], "2023-06-01");
+    assert.deepEqual(anthropic.request?.body.output_config, { effort: "max" });
+    assert.equal(validateDeepSeekAnthropicMessagesRequest({
+      profile: defaultDeepSeekProfile,
+      maxTokens: 0,
+      messages: [{ role: "tool", content: "unsupported" }]
+    }).ok, false);
   });
 
   it("preserves provider tool names and downgrades unpaired internal tool feedback", async () => {

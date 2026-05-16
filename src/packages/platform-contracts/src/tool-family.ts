@@ -416,6 +416,12 @@ export interface ToolFamilyParityMatrix extends JsonObject {
   readonly notApplicableFamilyCount: number;
   readonly passedFamilyCount: number;
   readonly objectiveScore: number;
+  readonly deliveryCapabilityScore: number;
+  readonly deliveryCapabilityTargetScore: number;
+  readonly deliveryCapabilityTargetFamilyCount: number;
+  readonly deliveryCapabilityPassedFamilyCount: number;
+  readonly deliveryCapabilityPassed: boolean;
+  readonly deliveryCapabilityBlockingFamilyIds: readonly ToolFamilyId[];
   readonly scorecards: readonly ToolFamilyScorecard[];
   readonly redaction: RedactionMetadata;
 }

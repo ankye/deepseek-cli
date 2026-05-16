@@ -131,6 +131,46 @@ describe("local readiness contracts", () => {
     });
   });
 
+  it("blocks release readiness when live CLI evidence comes from the mock gateway", async () => {
+    await withTempRepo(async () => {
+      await writeFile("src/apps/cli/dist/index.js", "#!/usr/bin/env node\n", "utf8");
+      await writeFile("tests/acceptance/latest/live-cli-run-smoke.txt", [
+        JSON.stringify({ kind: "agent.loop.completed", data: { modelProvider: "provider-deepseek", assistantText: "DeepSeek mock response: smoke" } }),
+        ""
+      ].join("\n"), "utf8");
+
+      const release = await collectReleaseReadinessEvidence();
+      const summary = releaseVerificationSummary(release);
+
+      assert.equal(release.status, "fail");
+      assert.equal(release.verification.liveEvidence?.status, "fail");
+      assert.equal(release.verification.liveEvidence?.invalidEvidencePaths.includes("tests/acceptance/latest/live-cli-run-smoke.txt"), true);
+      assert.equal(release.checks.find((check) => check.id === "release.live-evidence")?.status, "fail");
+      assert.equal(summary.publishDryRunReady, false);
+    });
+  });
+
+  it("blocks release readiness when npm dry-run evidence shows a published version collision", async () => {
+    await withTempRepo(async () => {
+      await writeFile("src/apps/cli/dist/index.js", "#!/usr/bin/env node\n", "utf8");
+      await writeFile("tests/acceptance/latest/npm-publish-dry-run.txt", [
+        "npm notice package: deepseek-agent-cli@0.1.3",
+        "npm error You cannot publish over the previously published versions: 0.1.3.",
+        ""
+      ].join("\n"), "utf8");
+
+      const release = await collectReleaseReadinessEvidence();
+      const summary = releaseVerificationSummary(release);
+
+      assert.equal(release.status, "fail");
+      assert.equal(release.verification.publishDryRunEvidence?.collisionDetected, true);
+      assert.equal(release.checks.find((check) => check.id === "release.publish-dry-run")?.status, "fail");
+      assert.equal(summary.status, "blocked");
+      assert.equal(summary.publishDryRunReady, false);
+      assert.equal(summary.blockingChecks.some((check) => check.id === "release.publish-dry-run"), true);
+    });
+  });
+
   it("surfaces index provider diagnostics in doctor without raw provider material", async () => {
     const result = await runLocalReadinessCommand("doctor", { live: false }, fakeEnv());
 
@@ -243,13 +283,67 @@ async function withTempRepo(run: () => Promise<void>): Promise<void> {
       "build-cli.txt",
       "release-verify.txt",
       "smoke-headless.txt",
-      "reference-hygiene.txt"
+      "reference-hygiene.txt",
+      "npm-publish-dry-run.txt",
+      "live-provider-smoke.txt",
+      "live-agent-loop-smoke.txt",
+      "live-agent-tool-smoke.txt",
+      "live-cli-run-smoke.txt",
+      "live-doctor-smoke.txt",
+      "live-tool-coverage.json",
+      "tool-family-delivery-capability-score.json",
+      "deepseek-provider-response-cache.json",
+      "overall-delivery-capability-score.json"
     ]) {
-      await writeFile(join("tests/acceptance/latest", file), "ok\n", "utf8");
+      await writeFile(join("tests/acceptance/latest", file), acceptanceEvidenceContentForTest(file), "utf8");
     }
     await run();
   } finally {
     process.chdir(previousCwd);
     await rm(cwd, { recursive: true, force: true });
   }
+}
+
+function acceptanceEvidenceContentForTest(file: string): string {
+  if (file === "npm-publish-dry-run.txt") return "npm notice package: deepseek-agent-cli@0.1.3\nnpm notice Tarball Details\n";
+  if (file.startsWith("live-") && file.endsWith("-smoke.txt") && file !== "live-cli-run-smoke.txt" && file !== "live-doctor-smoke.txt") return "# pass 1\n# skipped 0\n";
+  if (file === "live-cli-run-smoke.txt") return liveCliRunSmokeEvidenceForTest();
+  if (file === "live-doctor-smoke.txt") return liveDoctorSmokeEvidenceForTest();
+  if (file === "live-tool-coverage.json") return JSON.stringify({ kind: "deepseek.live-tool-coverage", executionMode: "live", replayOnly: false, summary: { passedToolCount: 64, providerRequestMode: "live" } });
+  if (file === "tool-family-delivery-capability-score.json") return JSON.stringify({ kind: "tool-family.delivery-capability-score.evidence", deliveryCapabilityPassed: true, fakeCoveredFamilyCount: 0, replayedCoveredFamilyCount: 0, liveCoveredFamilyCount: 64 });
+  if (file === "deepseek-provider-response-cache.json") return JSON.stringify({
+    schemaVersion: "1.0.0",
+    kind: "deepseek.provider-response-cache",
+    replayOnly: true,
+    provider: "deepseek",
+    sourceEvidencePath: "tests/acceptance/latest/live-tool-coverage.json",
+    entryCount: 1,
+    entries: [{ executionMode: "live" }]
+  });
+  if (file === "overall-delivery-capability-score.json") return JSON.stringify({ kind: "cli.overall-delivery-capability-score.evidence", status: "pass", score: 1, dimensions: [{ dimensionId: "deepseek-api" }, { dimensionId: "memory" }, { dimensionId: "cache-observability" }] });
+  return "ok\n";
+}
+
+function liveCliRunSmokeEvidenceForTest(): string {
+  return [
+    JSON.stringify({ kind: "model.finished", data: { provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-cli-test" } } }),
+    JSON.stringify({ kind: "usage.updated", data: { metadata: { provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-cli-test" }, cache: { hitTokens: 0, missTokens: 12 } } } }),
+    JSON.stringify({ kind: "agent.loop.completed", data: { modelProvider: "provider-deepseek", status: "completed" } }),
+    ""
+  ].join("\n");
+}
+
+function liveDoctorSmokeEvidenceForTest(): string {
+  return `${JSON.stringify({
+    command: "doctor",
+    metadata: { liveRequested: true },
+    checks: [{ id: "doctor.live", status: "pass" }],
+    live: {
+      reachable: true,
+      usage: {
+        provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-doctor-test" },
+        cache: { hitTokens: 0, missTokens: 8 }
+      }
+    }
+  })}\n`;
 }

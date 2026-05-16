@@ -1,4 +1,4 @@
-import type { AgentLoopOutputMode, CliKeymapProfileName, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
+import type { AgentLoopOutputMode, CliKeymapProfileName, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, ModelReasoningEffort, ModelReasoningOptions, ModelReasoningProviderEffort, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import type { CliOptions, CliTerminalFlags } from "../types.js";
 import { defaultTerminalFlags } from "../host/terminal.js";
@@ -12,12 +12,13 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
   const timeoutMs = parsePositiveNumberFlag(args, "--timeout-ms");
   const live = args.includes("--live");
   const toolProjection = parseToolProjection(args);
+  const reasoning = parseReasoningOptions(args);
   const first = args[0];
   if (!first || first === "help" || first === "--help" || first === "-h") {
     return { command: "help", prompt: "", output, live };
   }
   if (first === "run") {
-    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}), ...(toolProjection ? { toolProjection } : {}) };
+    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}), ...(toolProjection ? { toolProjection } : {}), ...(reasoning ? { reasoning } : {}) };
   }
   if (first === "chat") {
     const sessionId = readFlagValue(args, "--session");
@@ -27,6 +28,7 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       output,
       live,
       ...(timeoutMs ? { timeoutMs } : {}),
+      ...(reasoning ? { reasoning } : {}),
       ...(sessionId ? { sessionId: asId<"session">(sessionId) } : {})
     };
   }
@@ -84,6 +86,16 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       live,
       modeAction: action,
       ...(args[2] && !args[2].startsWith("-") ? { modeRequestedTransition: args[2] } : {})
+    };
+  }
+  if (first === "memory") {
+    return {
+      command: "memory",
+      prompt: "",
+      output,
+      live,
+      memoryAction: parseMemoryAction(args[1]),
+      memoryInput: parseMemoryInput(args)
     };
   }
   if (first === "diagnostics") {
@@ -144,14 +156,15 @@ export function cliUsageLines(): readonly string[] {
   return [
     "DeepSeek CLI",
     "Usage:",
-    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--tool-projection read-only|read-write|all] [--timeout-ms <ms>]",
-    "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--timeout-ms <ms>]",
+    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection read-only|read-write|all] [--timeout-ms <ms>]",
+    "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
     "  deepseek mcp test <manifest.json> [--enable-real-mcp] [--call <tool> --input <json>] [--output text|json]",
     "  deepseek index-provider status [--output text|json|jsonl]",
     "  deepseek index-provider set <pageindex|zvec|code-index> <enabled|deferred|disabled> [--user] [--output text|json|jsonl]",
     "  deepseek mode [status|agent|workers|verify|plan] [--output text|json|jsonl]",
+    "  deepseek memory status|list|candidates|remember|approve|reject|edit|delete|enable|disable|export|explain [args] [--output text|json]",
     "  deepseek extension list [--output text|json|jsonl]",
     "  deepseek extension plugin install|verify|snapshot|apply-lockfile <file.json> [--output text|json|jsonl]",
     "  deepseek extension skill list|activate [name] [--output text|json|jsonl]",
@@ -174,6 +187,47 @@ export function cliUsageLines(): readonly string[] {
 function parseModeAction(value: string | undefined): NonNullable<CliOptions["modeAction"]> {
   if (value === "agent" || value === "workers" || value === "verify" || value === "plan") return value;
   return "status";
+}
+
+function parseMemoryAction(value: string | undefined): NonNullable<CliOptions["memoryAction"]> {
+  if (value === "list" || value === "candidates" || value === "remember" || value === "approve" || value === "reject" || value === "edit" || value === "delete" || value === "enable" || value === "disable" || value === "export" || value === "explain") return value;
+  return "status";
+}
+
+function parseMemoryInput(args: readonly string[]): JsonObject {
+  const action = parseMemoryAction(args[1]);
+  const input: Record<string, unknown> = { action };
+  const id = args[2] && !args[2].startsWith("-") && action !== "remember" ? args[2] : readFlagValue(args, "--id");
+  const content = readFlagValue(args, "--content") ?? (action === "remember" ? memoryFreeText(args) : undefined);
+  const scope = readFlagValue(args, "--scope");
+  const query = readFlagValue(args, "--query");
+  const tags = readFlagValue(args, "--tags");
+  const reason = readFlagValue(args, "--reason");
+  if (id) input.id = id;
+  if (content) input.content = content;
+  if (scope) input.scope = scope;
+  if (query) input.query = query;
+  if (tags) input.tags = tags.split(",").map((value) => value.trim()).filter(Boolean);
+  if (reason) input.reason = reason;
+  if (args.includes("--include-dismissed")) input.includeDismissed = true;
+  if (args.includes("--include-candidates")) input.includeCandidates = true;
+  return input as JsonObject;
+}
+
+function memoryFreeText(args: readonly string[]): string | undefined {
+  const values: string[] = [];
+  const valueFlags = new Set(["--id", "--content", "--scope", "--query", "--tags", "--reason", "--output"]);
+  for (let index = 2; index < args.length; index += 1) {
+    const value = args[index];
+    if (!value) continue;
+    if (valueFlags.has(value)) {
+      index += 1;
+      continue;
+    }
+    if (value.startsWith("--")) continue;
+    values.push(value);
+  }
+  return values.join(" ").trim() || undefined;
 }
 
 function parseRevertTarget(args: readonly string[]): WorkspaceRevertRequestTarget {
@@ -349,6 +403,27 @@ function parseToolProjection(args: readonly string[]): CliOptions["toolProjectio
   return undefined;
 }
 
+function parseReasoningOptions(args: readonly string[]): ModelReasoningOptions | undefined {
+  const value = readFlagValue(args, "--thinking") ?? readFlagValue(args, "--reasoning-effort");
+  if (!value) return undefined;
+  if (value === "off" || value === "disabled" || value === "none" || value === "false") return { enabled: false };
+  if (value === "on" || value === "enabled" || value === "true") return { enabled: true };
+  const providerEffort = parseProviderEffort(value);
+  if (providerEffort) return { enabled: true, providerEffort };
+  const effort = parseReasoningEffort(value);
+  return effort ? { enabled: true, effort } : undefined;
+}
+
+function parseReasoningEffort(value: string): ModelReasoningEffort | undefined {
+  if (value === "low" || value === "medium" || value === "high" || value === "xhigh") return value;
+  return undefined;
+}
+
+function parseProviderEffort(value: string): ModelReasoningProviderEffort | undefined {
+  if (value === "max") return "max";
+  return undefined;
+}
+
 function parsePositiveNumberFlag(args: readonly string[], name: string): number | undefined {
   const index = args.indexOf(name);
   if (index < 0) return undefined;
@@ -378,7 +453,7 @@ function promptFromArgs(args: readonly string[]): string {
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (!value) continue;
-    if (value === "--output" || value === "--timeout-ms" || value === "--tool-projection") {
+    if (value === "--output" || value === "--timeout-ms" || value === "--tool-projection" || value === "--thinking" || value === "--reasoning-effort") {
       index += 1;
       continue;
     }

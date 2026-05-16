@@ -111,6 +111,7 @@ export async function runChatCommand(
       state.turns += 1;
       state.activeController = new AbortController();
       const referenceContext = agentLoopReferenceContextFromPaletteState(state.palette);
+      const reasoning = options.reasoning ?? (options.live ? { enabled: false } : undefined);
       const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
         prompt,
         ...(state.sessionId ? { sessionId: state.sessionId } : {}),
@@ -119,6 +120,7 @@ export async function runChatCommand(
         caller: "cli.chat",
         profile: defaultDeepSeekProfile,
         live: options.live,
+        ...(reasoning ? { reasoning } : {}),
         ...(referenceContext ? { referenceContext } : {}),
         ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {})
       }, write, writeInline, bufferedInline, state.activeController.signal, terminalProfile);

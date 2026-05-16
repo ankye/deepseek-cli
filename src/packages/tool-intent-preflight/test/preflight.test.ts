@@ -126,6 +126,26 @@ describe("tool intent preflight", () => {
     assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized"), true);
   });
 
+  it("normalizes provider-safe names against model-visible capability ids", async () => {
+    const preflight = new DeterministicToolIntentPreflight();
+    const result = await preflight.check({
+      providerId: deepseek,
+      intent: {
+        name: "runtime_pipeline_sequence",
+        source: "model",
+        input: { steps: [] }
+      },
+      workspaceRoot: "/repo",
+      platform: "linux",
+      modelVisibleCapabilities: [asId<"capability">("runtime.pipeline.sequence")]
+    });
+
+    assert.equal(result.status, "repaired");
+    assert.equal(result.capabilityId, "runtime.pipeline.sequence");
+    assert.equal(result.repaired?.name, "runtime.pipeline.sequence");
+    assert.equal(result.repairs.some((repair) => repair.kind === "provider-tool-alias-normalized" && repair.before === "runtime_pipeline_sequence"), true);
+  });
+
   it("normalizes DeepSeek aliases for every core tool family", () => {
     const aliases = [
       ["core_shell_run", "core.shell.run"],

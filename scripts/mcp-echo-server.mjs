@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Minimal MCP stdio echo server used as a test fixture.
 // Speaks JSON-RPC 2.0 over stdin/stdout with newline framing.
-// Supports: initialize, tools/list, tools/call (echo), resources/list, shutdown.
+// Supports: initialize, tools/list, tools/call (echo), resources/list/read,
+// prompts/list/get, shutdown.
 import { createInterface } from "node:readline";
 
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -32,6 +33,25 @@ const tools = [
   }
 ];
 
+const resources = [
+  {
+    uri: "mcp://family/readme",
+    name: "readme",
+    mimeType: "text/plain",
+    description: "Native MCP coverage resource."
+  }
+];
+
+const prompts = [
+  {
+    name: "summarize",
+    description: "Summarize a topic.",
+    arguments: [
+      { name: "topic", description: "Topic to summarize", required: true }
+    ]
+  }
+];
+
 rl.on("line", (raw) => {
   const line = raw.trim();
   if (!line) return;
@@ -42,7 +62,7 @@ rl.on("line", (raw) => {
     return;
   }
   if (msg.method === "initialize") {
-    ok(msg.id, { protocolVersion: "2024-11-05", serverInfo: { name: "echo", version: "0.0.1" }, capabilities: { tools: {}, resources: {} } });
+    ok(msg.id, { protocolVersion: "2024-11-05", serverInfo: { name: "echo", version: "0.0.1" }, capabilities: { tools: {}, resources: {}, prompts: {} } });
     return;
   }
   if (msg.method === "tools/list") {
@@ -60,11 +80,29 @@ rl.on("line", (raw) => {
     return;
   }
   if (msg.method === "resources/list") {
-    ok(msg.id, { resources: [] });
+    ok(msg.id, { resources });
     return;
   }
   if (msg.method === "resources/read") {
-    fail(msg.id, -32601, "echo server exposes no resources");
+    const uri = msg.params?.uri;
+    if (uri === "mcp://family/readme") {
+      ok(msg.id, { contents: [{ uri, mimeType: "text/plain", text: "native MCP resource for live tool coverage" }] });
+      return;
+    }
+    fail(msg.id, -32602, `Unknown resource: ${uri}`);
+    return;
+  }
+  if (msg.method === "prompts/list") {
+    ok(msg.id, { prompts });
+    return;
+  }
+  if (msg.method === "prompts/get") {
+    const name = msg.params?.name;
+    if (name === "summarize") {
+      ok(msg.id, { description: "Summarize a topic.", messages: [{ role: "user", content: { type: "text", text: `Summarize ${msg.params?.arguments?.topic ?? "coverage"}` } }] });
+      return;
+    }
+    fail(msg.id, -32602, `Unknown prompt: ${name}`);
     return;
   }
   if (msg.method === "shutdown") {

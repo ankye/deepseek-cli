@@ -20,7 +20,7 @@ import {
   SKILL_SCHEMA_VERSION,
   asId
 } from "@deepseek/platform-contracts";
-import { createDeepSeekCredentialAuthServiceFromEnv } from "@deepseek/credential-auth-management";
+import { createDeepSeekCredentialAuthServiceFromEnv, deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
 import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
 import { InMemoryPluginManager, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
@@ -303,7 +303,8 @@ function skillManifest(id: string, name: string, activation: readonly string[], 
 }
 
 async function credentialScopeDiagnostics(manifest: JsonObject | undefined): Promise<readonly ExtensionCredentialScopeDiagnostic[]> {
-  const service = await createDeepSeekCredentialAuthServiceFromEnv();
+  const platform = new NodePlatformRuntime();
+  const service = await createDeepSeekCredentialAuthServiceFromEnv(await deepSeekLiveCredentialProcessEnv(platform));
   const records = await service.listDeepSeekCredentials();
   const status = await service.status();
   const diagnostics = records.length > 0

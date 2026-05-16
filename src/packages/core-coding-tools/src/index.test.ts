@@ -131,6 +131,10 @@ describe("core coding tool executors", () => {
     assert.equal(matrix.taskCoveredFamilyCount, 0);
     assert.equal(matrix.passedFamilyCount, 0);
     assert.equal(matrix.objectiveScore, 0);
+    assert.equal(matrix.deliveryCapabilityScore, 0);
+    assert.equal(matrix.deliveryCapabilityTargetScore, 0.9);
+    assert.equal(matrix.deliveryCapabilityTargetFamilyCount, 58);
+    assert.equal(matrix.deliveryCapabilityPassed, false);
 
     const patch = matrix.scorecards.find((scorecard) => scorecard.familyId === "patch.apply");
     assert.equal(patch?.implementationState, "implemented");
@@ -144,7 +148,46 @@ describe("core coding tool executors", () => {
     });
     assert.equal(withEvidence.passedFamilyCount, 1);
     assert.equal(withEvidence.objectiveScore, 0.016);
+    assert.equal(withEvidence.deliveryCapabilityPassedFamilyCount, 1);
+    assert.equal(withEvidence.deliveryCapabilityScore, 0.016);
     assert.equal(withEvidence.scorecards.find((scorecard) => scorecard.familyId === "file.read")?.objectiveScore, 1);
+
+    const fakeEvidence = buildToolFamilyParityMatrix({
+      fakeCoveredFamilyIds: ["file.read"],
+      taskCoveredFamilyIds: ["file.read"],
+      safetyCoveredFamilyIds: ["file.read"]
+    });
+    assert.equal(fakeEvidence.passedFamilyCount, 1);
+    assert.equal(fakeEvidence.objectiveScore, 0.016);
+    assert.equal(fakeEvidence.deliveryCapabilityPassedFamilyCount, 0);
+    assert.equal(fakeEvidence.deliveryCapabilityScore, 0);
+    assert.equal(fakeEvidence.deliveryCapabilityBlockingFamilyIds.includes("file.read"), true);
+
+    const replayEvidence = buildToolFamilyParityMatrix({
+      replayedCoveredFamilyIds: ["file.read"],
+      taskCoveredFamilyIds: ["file.read"],
+      safetyCoveredFamilyIds: ["file.read"]
+    });
+    assert.equal(replayEvidence.passedFamilyCount, 1);
+    assert.equal(replayEvidence.deliveryCapabilityPassedFamilyCount, 0);
+    assert.equal(replayEvidence.deliveryCapabilityScore, 0);
+
+    const providerBlocked = buildToolFamilyParityMatrix({
+      liveCoveredFamilyIds: ["web.search"],
+      taskCoveredFamilyIds: ["web.search"],
+      safetyCoveredFamilyIds: ["web.search"]
+    });
+    assert.equal(providerBlocked.passedFamilyCount, 0);
+    assert.equal(providerBlocked.deliveryCapabilityScore, 0);
+
+    const providerNative = buildToolFamilyParityMatrix({
+      liveCoveredFamilyIds: ["web.search"],
+      taskCoveredFamilyIds: ["web.search"],
+      safetyCoveredFamilyIds: ["web.search"],
+      providerNativeSupportedFamilyIds: ["web.search"]
+    });
+    assert.equal(providerNative.passedFamilyCount, 1);
+    assert.equal(providerNative.deliveryCapabilityPassedFamilyCount, 1);
   });
 
   it("reads, lists, searches, and bounds file evidence", async () => {

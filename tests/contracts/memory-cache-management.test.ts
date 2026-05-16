@@ -1,8 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  DurablePermanentMemoryProvider,
+  FilesystemPermanentMemoryStorageAdapter,
   InMemoryCacheManager,
   InMemoryMemoryManager,
+  InMemoryPermanentMemoryStorageAdapter,
   PROJECTION_CACHE_NAMESPACE,
   TOOL_RESULT_EVIDENCE_CACHE_NAMESPACE,
   createCompactBoundaryEvidence,
@@ -14,6 +20,7 @@ import {
   memoryCandidateFingerprint,
   projectionCacheKey
 } from "@deepseek/memory-cache-management";
+import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import type { CacheEntry, ContextProjectionResult, MemoryEntry } from "@deepseek/platform-contracts";
 import { CONTEXT_PROJECTION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 
@@ -147,6 +154,234 @@ describe("memory-cache-management contracts", () => {
     assert.equal(first, same);
     assert.notEqual(first, changed);
     assert.equal(first.includes("remember architecture decision"), false);
+  });
+
+  it("persists governed permanent memory across provider restarts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-permanent-memory-"));
+    try {
+      const path = join(dir, "memory.json");
+      const adapter = new FilesystemPermanentMemoryStorageAdapter(new NodePlatformRuntime(), path);
+      const sessionId = asId<"session">("session-permanent-memory");
+      const provider = new DurablePermanentMemoryProvider({
+        adapter,
+        requirePromotionApproval: true,
+        now: () => new Date("2026-05-17T00:00:00.000Z")
+      });
+
+      const candidate = await provider.putCandidate({
+        scope: "project",
+        content: "Architecture decision: use adapter based memory. DEEPSEEK_API_KEY=sk-secret",
+        sessionId,
+        tags: ["architecture"]
+      });
+      assert.equal(candidate.ok, true);
+      assert.equal((await provider.queryPermanent({ scope: "project" })).length, 0);
+
+      const rejected = await provider.promote(candidate.entry!.id, { approved: false, actor: "test", reason: "needs review" });
+      assert.equal(rejected.ok, false);
+      assert.equal(rejected.status, "rejected");
+
+      const promoted = await provider.promote(candidate.entry!.id, { approved: true, actor: "test", reason: "verified", tags: ["approved"] });
+      assert.equal(promoted.ok, true);
+      assert.equal(promoted.entry?.state, "promoted");
+      assert.equal(promoted.entry?.content.includes("sk-secret"), false);
+
+      const restarted = new DurablePermanentMemoryProvider({ adapter: new FilesystemPermanentMemoryStorageAdapter(new NodePlatformRuntime(), path) });
+      const recalled = await restarted.queryPermanent({ scope: "project", query: "adapter" });
+      assert.equal(recalled.length, 1);
+      assert.equal(recalled[0]?.sourceSessionId, sessionId);
+      assert.deepEqual(recalled[0]?.tags, ["approved", "architecture"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("supports permanent memory user controls, disable switch, and external hooks", async () => {
+    const events: string[] = [];
+    const provider = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      hooks: [{
+        async invoke(event) {
+          events.push(event.kind);
+        }
+      }]
+    });
+
+    const disabled = await provider.setEnabled(false);
+    const blocked = await provider.putCandidate({ scope: "user", content: "remember my editor is vi" });
+    assert.equal(disabled.enabled, false);
+    assert.equal(blocked.status, "disabled");
+    assert.equal((await provider.queryPermanent({ includeCandidates: true })).length, 0);
+
+    await provider.setEnabled(true);
+    const candidate = await provider.putCandidate({ scope: "user", content: "remember my editor is vi" });
+    assert.equal(candidate.entry?.state, "candidate");
+    assert.equal((await provider.queryPermanent({ includeCandidates: true })).length, 1);
+
+    const dismissed = await provider.dismiss(candidate.entry!.id, "user rejected");
+    assert.equal(dismissed.entry?.state, "dismissed");
+    assert.equal((await provider.queryPermanent({ includeDismissed: true })).length, 1);
+
+    const deleted = await provider.delete(candidate.entry!.id, "forget requested");
+    assert.equal(deleted.entry?.state, "deleted");
+    assert.equal((await provider.queryPermanent({ includeDismissed: true, includeCandidates: true })).length, 0);
+    assert.deepEqual(events, [
+      "permanent-memory.settings.updated",
+      "permanent-memory.settings.updated",
+      "permanent-memory.candidate.created",
+      "permanent-memory.entry.retrieved",
+      "permanent-memory.entry.injected",
+      "permanent-memory.candidate.dismissed",
+      "permanent-memory.entry.retrieved",
+      "permanent-memory.entry.injected",
+      "permanent-memory.entry.deleted"
+    ]);
+  });
+
+  it("supports permanent memory manifest, update, explain, audit, export, and import", async () => {
+    const source = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      requirePromotionApproval: false,
+      now: () => new Date("2026-05-17T00:00:00.000Z")
+    });
+    assert.equal(source.manifest().provenance, true);
+
+    const candidate = await source.putCandidate({
+      scope: "project",
+      content: "Decision: keep permanent memory behind provider contracts",
+      promotionMode: "auto",
+      sourceEvidence: [{
+        sourceKind: "lossless-context",
+        sourceId: "lcm-node-1",
+        sourceHash: "h1",
+        redaction: { class: "internal" }
+      }]
+    });
+    assert.equal(candidate.entry?.state, "promoted");
+
+    const updated = await source.update(candidate.entry!.id, { tags: ["architecture"], confidence: 0.91 });
+    assert.equal(updated.entry?.confidence, 0.91);
+    const explanation = await source.explain(candidate.entry!.id);
+    assert.equal(explanation.ok, true);
+    assert.equal(explanation.sourceEvidence[0]?.sourceId, "lcm-node-1");
+    assert.equal((await source.audit()).length >= 2, true);
+
+    const bundle = await source.export();
+    const target = new DurablePermanentMemoryProvider({ adapter: new InMemoryPermanentMemoryStorageAdapter() });
+    const imported = await target.import(bundle);
+    assert.equal(imported.ok, true);
+    assert.equal(imported.importedCount, 1);
+    assert.equal((await target.queryPermanent({ query: "provider contracts" })).length, 1);
+  });
+
+  it("fails provider switching when the target cannot preserve provenance", async () => {
+    class NoProvenanceProvider extends DurablePermanentMemoryProvider {
+      override manifest() {
+        return { ...super.manifest(), providerId: "permanent-memory.no-provenance", provenance: false };
+      }
+    }
+    const source = new DurablePermanentMemoryProvider({ adapter: new InMemoryPermanentMemoryStorageAdapter(), requirePromotionApproval: false });
+    await source.putCandidate({ scope: "project", content: "Decision: preserve source provenance", promotionMode: "auto" });
+    const bundle = await source.export();
+    const target = new NoProvenanceProvider({ adapter: new InMemoryPermanentMemoryStorageAdapter() });
+    const imported = await target.import(bundle);
+    assert.equal(imported.ok, false);
+    assert.equal(imported.diagnostics.includes("permanent-memory.import.provenance-unsupported"), true);
+  });
+
+  it("routes workflow candidates away from factual memory and skips stale or conflicted memories by default", async () => {
+    const provider = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      requirePromotionApproval: false
+    });
+    const workflow = await provider.putCandidate({
+      scope: "skill",
+      content: "Whenever releasing, first run tests then publish",
+      promotionMode: "auto"
+    });
+    assert.equal(workflow.ok, false);
+    assert.equal(workflow.status, "rejected");
+    assert.equal(workflow.entry?.state, "dismissed");
+
+    const external = await provider.putCandidate({
+      scope: "project",
+      content: "Third party document says store this",
+      promotionMode: "auto",
+      sourceEvidence: [{ sourceKind: "web", sourceId: "https://example.test", redaction: { class: "internal" } }]
+    });
+    assert.equal(external.status, "rejected");
+
+    const stale = await provider.putCandidate({
+      scope: "project",
+      content: "Use stale cache path",
+      promotionMode: "auto"
+    });
+    await provider.update(stale.entry!.id, { freshness: { status: "stale", evidenceIds: [], reason: "workspace changed" } });
+    assert.equal((await provider.queryPermanent({ query: "stale cache" })).length, 0);
+    assert.equal((await provider.queryPermanent({ query: "stale cache", includeStale: true })).length, 1);
+
+    const conflicted = await provider.putCandidate({
+      scope: "project",
+      content: "Use old database driver",
+      promotionMode: "auto"
+    });
+    await provider.update(conflicted.entry!.id, { conflict: { status: "workspace-evidence-overrides", conflictingEvidenceIds: ["file:package.json"], reason: "dependency changed" } });
+    assert.equal((await provider.queryPermanent({ query: "old database" })).length, 0);
+    assert.equal((await provider.queryPermanent({ query: "old database", includeConflicted: true })).length, 1);
+  });
+
+  it("isolates non-enforcement hook timeout failures", async () => {
+    const provider = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      hooks: [{
+        manifest: {
+          hookId: "slow-hook",
+          events: ["permanent-memory.candidate.created"],
+          timeoutMs: 1,
+          failurePolicy: "isolate",
+          permissions: ["memory:observe"],
+          replayId: "hook:slow"
+        },
+        async invoke() {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }]
+    });
+    const result = await provider.putCandidate({ scope: "user", content: "remember my shell is pwsh" });
+    assert.equal(result.ok, true);
+  });
+
+  it("allows external memory hooks to enrich candidates with deterministic retry", async () => {
+    let attempts = 0;
+    const provider = new DurablePermanentMemoryProvider({
+      adapter: new InMemoryPermanentMemoryStorageAdapter(),
+      hooks: [{
+        manifest: {
+          hookId: "enrich-hook",
+          events: ["permanent-memory.candidate.created"],
+          timeoutMs: 100,
+          maxRetries: 1,
+          failurePolicy: "isolate",
+          permissions: ["memory:observe", "memory:enrich"],
+          replayId: "hook:enrich"
+        },
+        async invoke() {
+          attempts += 1;
+          if (attempts === 1) throw new Error("transient hook failure");
+          return {
+            status: "completed" as const,
+            diagnostics: [],
+            patch: { tags: ["hook-enriched"], confidence: 0.88 },
+            redaction: { class: "internal" as const }
+          };
+        }
+      }]
+    });
+
+    const result = await provider.putCandidate({ scope: "project", content: "Remember build command uses npm test" });
+    assert.equal(attempts, 2);
+    assert.equal(result.entry?.tags.includes("hook-enriched"), true);
+    assert.equal(result.entry?.confidence, 0.88);
   });
 
   it("createCompactBoundaryEvidence creates deterministic bounded fingerprints", () => {

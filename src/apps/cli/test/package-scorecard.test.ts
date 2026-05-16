@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import type { PackageScorecardCriterionResult } from "@deepseek/platform-contracts";
 import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
 import { aggregatePackageScorecards, collectPackageScorecards, packageScorecardCatalog, summarizeCriterionResults } from "../src/diagnostics/package-scorecard.js";
-import { coreToolExecutionCriterionId, liveToolCoverageTargets } from "../src/diagnostics/tool-live-coverage.js";
+import { coreToolExecutionCriterionId, liveFamilyCoverageTargets, liveToolCoverageTargets } from "../src/diagnostics/tool-live-coverage.js";
 import { runCli } from "../src/index.js";
 
 describe("package scorecard diagnostics", () => {
-  it("scores objective package readiness without partial or missing credit", () => {
+  it("scores package delivery capability without partial or missing credit", () => {
     const summary = summarizeCriterionResults({
       packageId: "example",
       packageName: "@deepseek/example",
@@ -26,6 +26,9 @@ describe("package scorecard diagnostics", () => {
 
     assert.equal(summary.weightedScore, 0.333);
     assert.equal(summary.objectiveScore, 0.266);
+    assert.equal(summary.deliveryCapabilityScore, 0.266);
+    assert.equal(summary.deliveryCapabilityTargetScore, 0.9);
+    assert.equal(summary.deliveryCapabilityPassed, false);
     assert.equal(summary.passRate, 0.25);
     assert.equal(summary.assessmentCoverage, 0.75);
     assert.equal(summary.rubricCoverage, 0.8);
@@ -52,6 +55,8 @@ describe("package scorecard diagnostics", () => {
 
     assert.equal(summary.weightedScore, 0.909);
     assert.equal(summary.objectiveScore, 0);
+    assert.equal(summary.deliveryCapabilityScore, 0);
+    assert.equal(summary.deliveryCapabilityPassed, false);
     assert.equal(summary.hardGateStatus, "fail");
     assert.equal(summary.readiness, "fail");
     assert.equal(summary.hardGates[0]?.gateId, "criterion.hard-gate");
@@ -64,13 +69,22 @@ describe("package scorecard diagnostics", () => {
     assert.equal(result.catalogVersion, packageScorecardCatalog.catalogVersion);
     assert.equal(result.scorecards.length >= 29, true);
     assert.equal(result.aggregate.totalPackageCount, result.scorecards.length);
-    assert.ok((result.aggregate.averageObjectiveScore ?? 1) < (result.aggregate.averageWeightedScore ?? 0));
-    assert.ok(result.aggregate.averageRubricCoverage < 1);
+    assert.equal(result.scorecards.every((scorecard) => typeof scorecard.deliveryCapabilityScore === "number"), true);
+    assert.equal(result.aggregate.deliveryCapabilityTotalPackageCount, result.scorecards.length);
+    assert.equal(result.aggregate.deliveryCapabilityPassedPackageCount, result.aggregate.deliveryCapabilityTotalPackageCount);
+    assert.equal(result.aggregate.deliveryCapabilityPassed, true);
+    assert.equal(result.aggregate.averageDeliveryCapabilityScore, 1);
+    assert.equal(result.aggregate.averageObjectiveScore, 1);
+    assert.equal(result.aggregate.averageWeightedScore, 1);
+    assert.equal(result.aggregate.averageRubricCoverage, 1);
     assert.equal(runtime?.rubricIds.includes("rubric.package.runtime.v1"), true);
     assert.equal(runtime?.criteria.some((criterionResult) => criterionResult.criterionId === "runtime.tool-feedback-tests" && criterionResult.status === "pass"), true);
   });
 
   it("requires live model tool coverage before core tools can score above 90 percent", () => {
+    assert.equal(liveToolCoverageTargets.length, 20);
+    assert.equal(liveFamilyCoverageTargets.length, 64);
+
     const shared = sharedPassCriteria();
     const missingLive = summarizeCriterionResults({
       packageId: "core-coding-tools",
@@ -81,6 +95,7 @@ describe("package scorecard diagnostics", () => {
       evidencePaths: [],
       criteria: [
         ...shared,
+        criterion("package.delivery.core-coding-tools.acceptance-evidence", "pass", 3),
         ...liveToolCoverageTargets.map((target) => criterion(coreToolExecutionCriterionId(target.toolId), "not_assessed", 2))
       ]
     });
@@ -93,14 +108,19 @@ describe("package scorecard diagnostics", () => {
       evidencePaths: [],
       criteria: [
         ...shared,
+        criterion("package.delivery.core-coding-tools.acceptance-evidence", "pass", 3),
         ...liveToolCoverageTargets.map((target, index) => criterion(coreToolExecutionCriterionId(target.toolId), index < 18 ? "pass" : "fail", 2))
       ]
     });
 
-    assert.equal(missingLive.objectiveScore, 0.259);
+    assert.equal(missingLive.objectiveScore, 0.298);
+    assert.equal(missingLive.deliveryCapabilityScore, 0.298);
+    assert.equal(missingLive.deliveryCapabilityPassed, false);
     assert.equal(missingLive.notAssessedCriterionCount, 20);
     assert.equal((eighteenOfTwenty.objectiveScore ?? 0) >= 0.9, true);
-    assert.equal(eighteenOfTwenty.objectiveScore, 0.926);
+    assert.equal(eighteenOfTwenty.objectiveScore, 0.93);
+    assert.equal(eighteenOfTwenty.deliveryCapabilityScore, 0.93);
+    assert.equal(eighteenOfTwenty.deliveryCapabilityPassed, true);
   });
 
   it("includes package scorecards in diagnostics evaluate JSON and JSONL output", async () => {
@@ -110,14 +130,83 @@ describe("package scorecard diagnostics", () => {
     });
     const records = lines.map((line) => JSON.parse(line) as {
       kind?: string;
-      aggregate?: { totalPackageCount?: number; averageObjectiveScore?: number };
-      scorecard?: { packageId?: string; readiness?: string };
-      matrix?: { totalFamilyCount?: number; implementedFamilyCount?: number; objectiveScore?: number };
+      aggregate?: {
+        totalPackageCount?: number;
+        averageObjectiveScore?: number;
+        averageDeliveryCapabilityScore?: number;
+        deliveryCapabilityTargetScore?: number;
+        deliveryCapabilityPassedPackageCount?: number;
+        deliveryCapabilityTotalPackageCount?: number;
+        deliveryCapabilityPassed?: boolean;
+      };
+      scorecard?: { packageId?: string; readiness?: string; deliveryCapabilityScore?: number; deliveryCapabilityPassed?: boolean };
+      matrix?: {
+        totalFamilyCount?: number;
+        implementedFamilyCount?: number;
+        objectiveScore?: number;
+        deliveryCapabilityScore?: number;
+        deliveryCapabilityPassed?: boolean;
+        modeDeliveryCapabilityScore?: number;
+        modeDeliveryCapabilityCompletedCount?: number;
+        modeDeliveryCapabilityTotalCount?: number;
+      };
+      deliveryCapability?: {
+        score?: number;
+        targetScore?: number;
+        scoringMethod?: string;
+        unfinishedPenaltyPerItem?: number;
+        unfinishedTargetCount?: number;
+        passedTargetCount?: number;
+        totalTargetCount?: number;
+        toolFamilyScore?: number;
+        modeScore?: number;
+        packageScore?: number;
+        evaluationTaskScore?: number;
+        evaluationTaskSolvedCount?: number;
+        evaluationTaskTotalCount?: number;
+        deepSeekApiScore?: number;
+        deepSeekApiPassedCount?: number;
+        deepSeekApiTotalCount?: number;
+        memoryScore?: number;
+        memoryPassedCount?: number;
+        memoryTotalCount?: number;
+        cacheObservabilityScore?: number;
+        cacheObservabilityPassedCount?: number;
+        cacheObservabilityTotalCount?: number;
+        blockingCapabilityIds?: readonly string[];
+        packagePassedCount?: number;
+        packageTotalCount?: number;
+        status?: string;
+      };
     });
 
-    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.package-scorecard-aggregate" && (record.aggregate?.totalPackageCount ?? 0) >= 29 && (record.aggregate?.averageObjectiveScore ?? 1) < 1), true);
-    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.package-scorecard" && record.scorecard?.packageId === "runtime" && record.scorecard.readiness), true);
-    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.tool-family-parity" && record.matrix?.totalFamilyCount === 64 && record.matrix.implementedFamilyCount === 64 && record.matrix.objectiveScore === 0), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.package-scorecard-aggregate" && (record.aggregate?.totalPackageCount ?? 0) >= 29 && record.aggregate?.averageDeliveryCapabilityScore === 1 && record.aggregate?.deliveryCapabilityTargetScore === 0.9 && record.aggregate?.deliveryCapabilityPassed === true), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.package-scorecard" && record.scorecard?.packageId === "runtime" && typeof record.scorecard.deliveryCapabilityScore === "number"), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.evaluate.tool-family-parity" && record.matrix?.totalFamilyCount === 64 && record.matrix.implementedFamilyCount === 64 && record.matrix.objectiveScore === 1 && record.matrix.deliveryCapabilityScore === 1 && record.matrix.deliveryCapabilityPassed === true), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.mode-matrix.summary" && record.matrix?.modeDeliveryCapabilityScore === 1 && record.matrix.modeDeliveryCapabilityCompletedCount === 20 && record.matrix.modeDeliveryCapabilityTotalCount === 20), true);
+    assert.equal(records.some((record) => record.kind === "diagnostics.delivery-capability.summary"
+      && record.deliveryCapability?.score === 0.1
+      && record.deliveryCapability.targetScore === 0.9
+      && record.deliveryCapability.scoringMethod === "unfinished-penalty"
+      && record.deliveryCapability.unfinishedPenaltyPerItem === 0.1
+      && record.deliveryCapability.unfinishedTargetCount === 9
+      && record.deliveryCapability.toolFamilyScore === 1
+      && record.deliveryCapability.modeScore === 1
+      && record.deliveryCapability.packageScore === 1
+      && record.deliveryCapability.evaluationTaskScore === 0
+      && record.deliveryCapability.evaluationTaskSolvedCount === 0
+      && record.deliveryCapability.evaluationTaskTotalCount === 9
+      && record.deliveryCapability.deepSeekApiScore === 1
+      && record.deliveryCapability.deepSeekApiPassedCount === 11
+      && record.deliveryCapability.deepSeekApiTotalCount === 11
+      && record.deliveryCapability.memoryScore === 1
+      && record.deliveryCapability.memoryPassedCount === 16
+      && record.deliveryCapability.memoryTotalCount === 16
+      && record.deliveryCapability.cacheObservabilityScore === 1
+      && record.deliveryCapability.cacheObservabilityPassedCount === 4
+      && record.deliveryCapability.cacheObservabilityTotalCount === 4
+      && record.deliveryCapability.blockingCapabilityIds?.length === 0
+      && record.deliveryCapability.status === "blocked"), true);
   });
 
   it("includes package scorecard aggregates in direct evaluation summaries", async () => {
@@ -135,9 +224,15 @@ describe("package scorecard diagnostics", () => {
     assert.equal(summary.packageScorecardCatalogVersion, packageScorecardCatalog.catalogVersion);
     assert.equal((summary.packageScorecards?.length ?? 0) >= 29, true);
     assert.equal(summary.packageScorecardAggregate?.totalPackageCount, summary.packageScorecards?.length);
+    assert.equal(summary.packageScorecardAggregate?.deliveryCapabilityTotalPackageCount, summary.packageScorecards?.length);
+    assert.equal(summary.packageScorecardAggregate?.deliveryCapabilityPassed, true);
+    assert.equal(summary.packageScorecardAggregate?.averageDeliveryCapabilityScore, 1);
     assert.equal(summary.toolFamilyParityMatrix?.totalFamilyCount, 64);
     assert.equal(summary.toolFamilyParityMatrix?.implementedFamilyCount, 64);
-    assert.equal(summary.toolFamilyParityMatrix?.objectiveScore, 0);
+    assert.equal(summary.toolFamilyParityMatrix?.objectiveScore, 1);
+    assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityScore, 1);
+    assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityTargetFamilyCount, 58);
+    assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityPassed, true);
   });
 
   it("keeps package scorecard release evidence advisory", async () => {
@@ -151,7 +246,7 @@ describe("package scorecard diagnostics", () => {
         status?: string;
         packageScorecardAdvisory?: {
           advisoryOnly?: boolean;
-          aggregate?: { totalPackageCount?: number; averageObjectiveScore?: number };
+          aggregate?: { totalPackageCount?: number; averageObjectiveScore?: number; averageDeliveryCapabilityScore?: number };
         };
       };
     };
@@ -159,7 +254,7 @@ describe("package scorecard diagnostics", () => {
     assert.equal(parsed.status, parsed.release?.status);
     assert.equal(parsed.release?.packageScorecardAdvisory?.advisoryOnly, true);
     assert.equal((parsed.release?.packageScorecardAdvisory?.aggregate?.totalPackageCount ?? 0) >= 29, true);
-    assert.ok((parsed.release?.packageScorecardAdvisory?.aggregate?.averageObjectiveScore ?? 1) < 1);
+    assert.equal(parsed.release?.packageScorecardAdvisory?.aggregate?.averageDeliveryCapabilityScore, 1);
   });
 
   it("derives platform aggregate counts from package readiness", () => {
@@ -188,6 +283,11 @@ describe("package scorecard diagnostics", () => {
     assert.equal(aggregate.failPackageCount, 1);
     assert.equal(aggregate.hardGateFailureCount, 1);
     assert.equal(aggregate.averageObjectiveScore, 0.5);
+    assert.equal(aggregate.averageDeliveryCapabilityScore, 0.5);
+    assert.equal(aggregate.deliveryCapabilityPassedPackageCount, 1);
+    assert.equal(aggregate.deliveryCapabilityTotalPackageCount, 2);
+    assert.deepEqual(aggregate.deliveryCapabilityBlockingPackageIds, ["fail"]);
+    assert.equal(aggregate.deliveryCapabilityPassed, false);
   });
 });
 

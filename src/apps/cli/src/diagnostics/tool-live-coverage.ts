@@ -1,23 +1,31 @@
 import { join } from "node:path";
-import type { JsonObject, PackageScorecardCriterionDefinition, PlatformRuntime } from "@deepseek/platform-contracts";
+import type { JsonObject, PackageScorecardCriterionDefinition, PlatformRuntime, ToolFamilyId } from "@deepseek/platform-contracts";
+import { coreCapabilityFamilyMappings } from "@deepseek/core-coding-tools";
 
 export const liveToolCoverageEvidencePath = "tests/acceptance/latest/live-tool-coverage.json";
-export const liveToolCoverageSchemaVersion = "1.0.0";
+export const liveToolCoverageSchemaVersion = "1.1.0";
+const readableLiveToolCoverageSchemaVersions = new Set(["1.0.0", liveToolCoverageSchemaVersion]);
 export const liveToolCoverageKind = "deepseek.live-tool-coverage";
 
 export interface LiveToolCoverageTarget {
   readonly toolId: string;
+  readonly familyId?: ToolFamilyId;
   readonly safeName: string;
 }
 
 export interface LiveToolCoverageRecord extends JsonObject {
   readonly toolId: string;
+  readonly familyId?: ToolFamilyId;
   readonly safeName: string;
   readonly status: "pass" | "fail";
   readonly model: JsonObject;
   readonly preflight: JsonObject;
+  readonly policy?: JsonObject;
   readonly execution: JsonObject;
   readonly continuation: JsonObject;
+  readonly taskOutcome?: JsonObject;
+  readonly safetyOutcome?: JsonObject;
+  readonly providerNative?: JsonObject;
   readonly diagnostics: readonly string[];
 }
 
@@ -30,6 +38,11 @@ export interface LiveToolCoverageEvidence extends JsonObject {
   readonly summary: JsonObject;
   readonly records: readonly LiveToolCoverageRecord[];
 }
+
+const familyByCapabilityId = new Map(
+  coreCapabilityFamilyMappings()
+    .map((mapping) => [String(mapping.capabilityId), String(mapping.familyId) as ToolFamilyId])
+);
 
 export const liveToolCoverageTargets: readonly LiveToolCoverageTarget[] = [
   target("core.file.read"),
@@ -54,6 +67,8 @@ export const liveToolCoverageTargets: readonly LiveToolCoverageTarget[] = [
   target("core.skill.activate")
 ];
 
+export const liveFamilyCoverageTargets: readonly LiveToolCoverageTarget[] = familyTargets();
+
 export function coreToolExecutionCriterionId(toolId: string): string {
   return `core-coding-tools.live-execution.${safeToolName(toolId)}`;
 }
@@ -65,18 +80,18 @@ export function toolIntentPreflightCriterionId(toolId: string): string {
 export function coreToolLiveExecutionCriterionDefinitions(): readonly PackageScorecardCriterionDefinition[] {
   return liveToolCoverageTargets.map((item) => criterion(
     coreToolExecutionCriterionId(item.toolId),
-    `Live model executes ${item.toolId}`,
+    `Live model covers ${item.toolId} delivery family`,
     ["core-coding-tools"],
-    `DeepSeek live tool coverage record for ${item.toolId}`
+    `DeepSeek live tool-family coverage record for ${item.toolId}`
   ));
 }
 
 export function toolIntentLivePreflightCriterionDefinitions(): readonly PackageScorecardCriterionDefinition[] {
   return liveToolCoverageTargets.map((item) => criterion(
     toolIntentPreflightCriterionId(item.toolId),
-    `Live model preflights ${item.toolId}`,
+    `Live model preflights ${item.toolId} delivery family`,
     ["tool-intent-preflight"],
-    `DeepSeek live preflight coverage record for ${item.toolId}`
+    `DeepSeek live tool-family preflight coverage record for ${item.toolId}`
   ));
 }
 
@@ -84,20 +99,34 @@ export async function readLiveToolCoverageEvidence(platform: PlatformRuntime, wo
   const raw = await platform.readFile(join(workspaceRoot, liveToolCoverageEvidencePath)).catch(() => undefined);
   if (!raw) return undefined;
   const parsed = JSON.parse(raw) as JsonObject;
-  if (parsed.schemaVersion !== liveToolCoverageSchemaVersion || parsed.kind !== liveToolCoverageKind || !Array.isArray(parsed.records)) return undefined;
+  if (!readableLiveToolCoverageSchemaVersions.has(String(parsed.schemaVersion)) || parsed.kind !== liveToolCoverageKind || !Array.isArray(parsed.records)) return undefined;
   return parsed as unknown as LiveToolCoverageEvidence;
 }
 
 export function liveToolCoverageRecordFor(evidence: LiveToolCoverageEvidence | undefined, toolId: string): LiveToolCoverageRecord | undefined {
-  return evidence?.records.find((record) => record.toolId === toolId);
+  const exactRecord = evidence?.records.find((record) => record.toolId === toolId);
+  if (exactRecord) return exactRecord;
+  const familyId = familyByCapabilityId.get(toolId);
+  if (!familyId) return undefined;
+  return evidence?.records.find((record) => record.familyId === familyId);
 }
 
 export function safeToolName(toolId: string): string {
   return /^[a-zA-Z0-9_-]+$/.test(toolId) ? toolId : toolId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function target(toolId: string): LiveToolCoverageTarget {
-  return { toolId, safeName: safeToolName(toolId) };
+function target(toolId: string, familyId = familyByCapabilityId.get(toolId)): LiveToolCoverageTarget {
+  return { toolId, ...(familyId ? { familyId } : {}), safeName: safeToolName(toolId) };
+}
+
+function familyTargets(): readonly LiveToolCoverageTarget[] {
+  const targetsByFamily = new Map<ToolFamilyId, LiveToolCoverageTarget>();
+  for (const mapping of coreCapabilityFamilyMappings()) {
+    const familyId = String(mapping.familyId) as ToolFamilyId;
+    const capabilityId = String(mapping.capabilityId);
+    if (!targetsByFamily.has(familyId)) targetsByFamily.set(familyId, target(capabilityId, familyId));
+  }
+  return [...targetsByFamily.values()];
 }
 
 function criterion(

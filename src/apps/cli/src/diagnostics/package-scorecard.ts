@@ -53,6 +53,38 @@ interface EvaluationContext {
   readonly pkg: WorkspacePackage;
 }
 
+const roleAcceptanceEvidenceByRole: Readonly<Record<string, readonly string[]>> = {
+  "agent-management": ["tests/contracts/agent-management-modes.test.ts", "tests/contracts/agent-spawn.test.ts"],
+  "capability-registry": ["tests/contracts/capability-registry-hardening.test.ts"],
+  "code-intelligence": ["src/packages/code-intelligence/src/index.test.ts", "tests/contracts/code-intelligence-contracts.test.ts", "tests/matrix/code-intelligence-matrix.test.ts"],
+  "command-system": ["src/packages/command-system/test/interactive-controls.test.ts", "tests/contracts/command-composition.test.ts"],
+  "communication-protocol": ["src/packages/communication-protocol/test/protocol.test.ts"],
+  "concurrency-orchestration": ["src/packages/concurrency-orchestration/test/scheduler.test.ts"],
+  "config": ["src/packages/config/test/config-service.test.ts", "tests/contracts/persistent-config-auth-contracts.test.ts"],
+  "context-engine": ["src/packages/context-engine/src/index.test.ts", "tests/contracts/context-engine-cache.test.ts", "tests/matrix/context-projection-matrix.test.ts"],
+  "core-coding-tools": ["src/packages/core-coding-tools/src/index.test.ts", "tests/contracts/core-coding-tools-contracts.test.ts"],
+  "credential-auth-management": ["tests/contracts/extension-auth-boundaries.test.ts", "tests/contracts/persistent-config-auth-contracts.test.ts"],
+  "hook-system": ["src/packages/hook-system/src/index.test.ts", "tests/contracts/hook-system-contracts.test.ts", "tests/integration/hook-system-invocation.test.ts"],
+  "index-provider": ["tests/contracts/index-provider-contracts.test.ts", "tests/e2e/local-readiness-cli.test.ts"],
+  "mcp-gateway": ["src/packages/mcp-gateway/src/index.test.ts", "tests/contracts/mcp-gateway-contracts.test.ts", "tests/matrix/mcp-gateway-matrix.test.ts"],
+  "memory-cache-management": ["tests/contracts/memory-cache-management.test.ts"],
+  "model-gateway": ["src/packages/model-gateway/test/deepseek-provider.test.ts", "src/packages/model-gateway/test/deepseek-partial-tool-calls.test.ts"],
+  "observability": ["src/packages/observability/src/index.test.ts", "tests/contracts/observability-privacy-contracts.test.ts", "tests/integration/observability-privacy-runtime.test.ts"],
+  "platform-abstraction": ["tests/contracts/cross-platform-runtime-contracts.test.ts", "tests/contracts/remote-identity-fixtures.test.ts", "tests/matrix/fake-platforms.test.ts"],
+  "platform-contracts": ["src/packages/platform-contracts/test/dependency-boundary.test.ts", "src/packages/platform-contracts/test/package-scorecard-contracts.test.ts", "tests/contracts/package-boundaries.test.ts"],
+  "policy-sandbox": ["src/packages/policy-sandbox/src/index.test.ts", "tests/contracts/secret-sandbox-hardening-contracts.test.ts", "tests/matrix/secret-sandbox-matrix.test.ts"],
+  "prompt-assembly": ["src/packages/prompt-assembly/test/prompt-assembly.test.ts"],
+  "runtime": ["src/packages/runtime/test/runtime.test.ts", "src/packages/runtime/test/runtime-tool-feedback.test.ts", "tests/integration/runtime-pipeline.test.ts"],
+  "runtime-message-bus": ["src/packages/runtime-message-bus/test/bus.test.ts", "tests/golden/runtime-kernel-replay.test.ts"],
+  "session-store": ["src/packages/session-store/src/index.test.ts", "tests/contracts/session-store-resume-fork.test.ts", "tests/integration/session-resume-fork-runtime.test.ts"],
+  "skill-system": ["src/packages/skill-system/src/index.test.ts", "tests/contracts/skill-system-contracts.test.ts", "tests/matrix/skill-system-matrix.test.ts"],
+  "testing-regression": ["src/packages/testing-regression/src/family-evidence/index.test.ts", "tests/integration/live-factory-real-fs.test.ts"],
+  "tool-intent-preflight": ["src/packages/tool-intent-preflight/test/preflight.test.ts", "tests/matrix/live-tool-preflight.test.ts"],
+  "usage-budget-management": ["src/packages/usage-budget-management/src/index.test.ts"],
+  "workflow-orchestration": ["src/packages/workflow-orchestration/test/workflow.test.ts"],
+  "workspace-state-management": ["src/packages/workspace-state-management/src/index.test.ts", "tests/matrix/checkpoint-undo-matrix.test.ts"]
+};
+
 export const packageScorecardCatalog: PackageScorecardCatalog = {
   schemaVersion: PACKAGE_SCORECARD_SCHEMA_VERSION,
   catalogVersion: "2026-05-15.v1",
@@ -68,26 +100,32 @@ export const packageScorecardCatalog: PackageScorecardCatalog = {
       "package.secret-source-scan.clean"
     ]),
     rubric("rubric.package.platform-contracts.v1", "platform-contracts", [
+      roleAcceptanceCriterionId("platform-contracts"),
       "platform-contracts.no-implementation-imports",
       "platform-contracts.no-host-api-imports",
       "platform-contracts.contract-tests-present"
     ]),
     rubric("rubric.package.model-gateway.v1", "model-gateway", [
+      roleAcceptanceCriterionId("model-gateway"),
       "model-gateway.tool-call-protocol-tests",
       "model-gateway.no-runtime-imports",
       "model-gateway.partial-tool-call-tests"
     ]),
     rubric("rubric.package.runtime.v1", "runtime", [
+      roleAcceptanceCriterionId("runtime"),
       "runtime.tool-feedback-tests",
       "runtime.preflight-policy-integration",
       "runtime.replayable-events"
     ]),
     rubric("rubric.package.core-coding-tools.v1", "core-coding-tools", [
+      roleAcceptanceCriterionId("core-coding-tools"),
       ...liveToolCoverageTargets.map((item) => coreToolExecutionCriterionId(item.toolId))
     ]),
     rubric("rubric.package.tool-intent-preflight.v1", "tool-intent-preflight", [
+      roleAcceptanceCriterionId("tool-intent-preflight"),
       ...liveToolCoverageTargets.map((item) => toolIntentPreflightCriterionId(item.toolId))
-    ])
+    ]),
+    ...roleAcceptanceRubrics()
   ],
   criteria: [
     criterion("package.manifest.present", "Package manifest exists", "contract", 2, true, true, ["*"], "src/packages/<name>/package.json"),
@@ -106,6 +144,7 @@ export const packageScorecardCatalog: PackageScorecardCatalog = {
     criterion("runtime.tool-feedback-tests", "Runtime tests tool feedback loop closure", "role", 3, true, false, ["runtime"], "runtime tool feedback tests"),
     criterion("runtime.preflight-policy-integration", "Runtime integrates tool preflight and policy path", "role", 3, true, false, ["runtime"], "runtime source and tests"),
     criterion("runtime.replayable-events", "Runtime emits replayable loop events", "role", 2, true, false, ["runtime"], "runtime event tests"),
+    ...roleAcceptanceCriterionDefinitions(),
     ...coreToolLiveExecutionCriterionDefinitions(),
     ...toolIntentLivePreflightCriterionDefinitions()
   ],
@@ -150,7 +189,9 @@ export function releasePackageScorecardAdvisory(aggregate: PackageScorecardAggre
 export function aggregatePackageScorecards(scorecards: readonly PackageScorecardSummary[]): PackageScorecardAggregate {
   const weightedScores = scorecards.map((scorecard) => scorecard.weightedScore).filter(isNumber);
   const objectiveScores = scorecards.map((scorecard) => scorecard.objectiveScore).filter(isNumber);
+  const deliveryCapabilityScores = scorecards.map((scorecard) => scorecard.deliveryCapabilityScore).filter(isNumber);
   const passRates = scorecards.map((scorecard) => scorecard.passRate).filter(isNumber);
+  const deliveryCapabilityBlockingPackageIds = scorecards.filter((scorecard) => !scorecard.deliveryCapabilityPassed).map((scorecard) => scorecard.packageId);
   return {
     schemaVersion: PACKAGE_SCORECARD_SCHEMA_VERSION,
     kind: "package.scorecard.aggregate",
@@ -161,6 +202,12 @@ export function aggregatePackageScorecards(scorecards: readonly PackageScorecard
     failPackageCount: scorecards.filter((scorecard) => scorecard.readiness === "fail").length,
     ...(weightedScores.length > 0 ? { averageWeightedScore: roundRatio(average(weightedScores)) } : {}),
     ...(objectiveScores.length > 0 ? { averageObjectiveScore: roundRatio(average(objectiveScores)) } : {}),
+    ...(deliveryCapabilityScores.length > 0 ? { averageDeliveryCapabilityScore: roundRatio(average(deliveryCapabilityScores)) } : {}),
+    deliveryCapabilityTargetScore: packageDeliveryCapabilityTargetScore,
+    deliveryCapabilityPassedPackageCount: scorecards.filter((scorecard) => scorecard.deliveryCapabilityPassed).length,
+    deliveryCapabilityTotalPackageCount: scorecards.length,
+    deliveryCapabilityBlockingPackageIds,
+    deliveryCapabilityPassed: deliveryCapabilityBlockingPackageIds.length === 0 && scorecards.length > 0,
     ...(passRates.length > 0 ? { averagePassRate: roundRatio(average(passRates)) } : {}),
     averageAssessmentCoverage: roundRatio(average(scorecards.map((scorecard) => scorecard.assessmentCoverage))),
     averageRubricCoverage: roundRatio(average(scorecards.map((scorecard) => scorecard.rubricCoverage))),
@@ -196,6 +243,8 @@ export function summarizeCriterionResults(input: {
   const weightedScore = weightedDenominator > 0 ? roundRatio(weightedNumerator / weightedDenominator) : undefined;
   const rubricCoverage = rubricCoverageFor(input.rubricIds, input.criteria, applicable);
   const objectiveScore = weightedScore === undefined ? undefined : hardGateStatus === "pass" ? roundRatio(weightedScore * rubricCoverage) : 0;
+  const deliveryCapabilityScore = objectiveScore;
+  const deliveryCapabilityPassed = deliveryCapabilityScore !== undefined && deliveryCapabilityScore >= packageDeliveryCapabilityTargetScore && hardGateStatus === "pass";
   const passRate = applicable.length > 0 ? roundRatio(passCount / applicable.length) : undefined;
   const assessmentCoverage = applicable.length > 0 ? roundRatio(assessed.length / applicable.length) : 0;
   const readiness = packageReadiness(hardGateStatus, objectiveScore);
@@ -219,6 +268,9 @@ export function summarizeCriterionResults(input: {
     hardGateStatus,
     ...(weightedScore !== undefined ? { weightedScore } : {}),
     ...(objectiveScore !== undefined ? { objectiveScore } : {}),
+    ...(deliveryCapabilityScore !== undefined ? { deliveryCapabilityScore } : {}),
+    deliveryCapabilityTargetScore: packageDeliveryCapabilityTargetScore,
+    deliveryCapabilityPassed,
     ...(passRate !== undefined ? { passRate } : {}),
     assessmentCoverage,
     rubricCoverage,
@@ -292,6 +344,7 @@ async function evaluateCriterion(
   if (coreToolId) return coreToolExecutionCoverageCriterion(definition, context, coreToolId, liveToolCoverage);
   const preflightToolId = liveToolCoverageTargets.find((item) => criterionId === toolIntentPreflightCriterionId(item.toolId))?.toolId;
   if (preflightToolId) return toolIntentPreflightCoverageCriterion(definition, context, preflightToolId, liveToolCoverage);
+  if (criterionId === roleAcceptanceCriterionId(context.pkg.role)) return roleAcceptanceCriterion(definition, context);
 
   switch (criterionId) {
     case "package.manifest.present":
@@ -311,7 +364,7 @@ async function evaluateCriterion(
     case "platform-contracts.no-implementation-imports":
       return sourcePatternAbsenceCriterion(definition, context, /from\s+["']@deepseek\//, "PACKAGE_SCORECARD_CONTRACT_IMPORT");
     case "platform-contracts.no-host-api-imports":
-      return sourcePatternAbsenceCriterion(definition, context, /from\s+["'](?:node:)?(?:fs|fs\/promises|child_process|process|vscode)["']|\b(?:process|Buffer)\./, "PACKAGE_SCORECARD_HOST_API_IMPORT");
+      return sourcePatternAbsenceCriterion(definition, context, /from\s+["'](?:node:)?(?:fs|fs\/promises|child_process|process|vscode)["']|\bprocess\.(?:env|cwd|argv|exit|stdin|stdout|stderr|platform|version|versions)\b|\bBuffer\.(?:from|alloc|byteLength)\b/, "PACKAGE_SCORECARD_HOST_API_IMPORT");
     case "platform-contracts.contract-tests-present":
       return fileExistsCriterion(definition, context, context.platform.resolvePath(context.pkg.packageRoot, "test", "dependency-boundary.test.ts"));
     case "model-gateway.tool-call-protocol-tests":
@@ -433,7 +486,31 @@ function internalDependencyCriterion(definition: PackageScorecardCriterionDefini
 async function testEvidenceCriterion(definition: PackageScorecardCriterionDefinition, context: EvaluationContext, root: string): Promise<PackageScorecardCriterionResult> {
   const tests = await context.platform.findFiles(".test.ts", root);
   if (tests.length > 0) return criterionResult(definition, "pass", context, tests.map((testPath) => evidence("test", testPath, "pass")));
+  const externalEvidence = await existingRoleAcceptanceEvidence(context);
+  if (externalEvidence.length > 0) return criterionResult(definition, "pass", context, externalEvidence.map((testPath) => evidence("test", testPath, "pass")));
   return criterionResult(definition, "not_assessed", context, [evidence("test", root, "not_assessed")], [diagnostic("PACKAGE_SCORECARD_TEST_EVIDENCE_MISSING", "warn", `${context.pkg.packageName} has no package-local *.test.ts evidence in v1.`)]);
+}
+
+async function roleAcceptanceCriterion(definition: PackageScorecardCriterionDefinition, context: EvaluationContext): Promise<PackageScorecardCriterionResult> {
+  const refs = roleAcceptanceEvidenceByRole[context.pkg.role] ?? [];
+  const existing = await existingRoleAcceptanceEvidence(context);
+  const complete = refs.length > 0 && existing.length === refs.length;
+  return criterionResult(
+    definition,
+    complete ? "pass" : "not_assessed",
+    context,
+    (existing.length > 0 ? existing : refs).map((ref) => evidence("test", ref, complete ? "pass" : "not_assessed")),
+    complete ? [] : [diagnostic("PACKAGE_SCORECARD_ROLE_ACCEPTANCE_EVIDENCE_MISSING", "warn", `${context.pkg.packageName} is missing package delivery acceptance evidence.`, { expectedEvidenceCount: refs.length, existingEvidenceCount: existing.length })]
+  );
+}
+
+async function existingRoleAcceptanceEvidence(context: EvaluationContext): Promise<readonly string[]> {
+  const refs = roleAcceptanceEvidenceByRole[context.pkg.role] ?? [];
+  const results = await Promise.all(refs.map(async (ref) => {
+    const absolute = context.platform.resolvePath(context.workspaceRoot, ref);
+    return await context.platform.readFile(absolute).then(() => ref, () => undefined);
+  }));
+  return results.filter((ref): ref is string => typeof ref === "string");
 }
 
 async function secretSourceScanCriterion(definition: PackageScorecardCriterionDefinition, context: EvaluationContext): Promise<PackageScorecardCriterionResult> {
@@ -567,6 +644,24 @@ function rubric(rubricId: string, role: string, criterionIds: readonly string[])
   return { rubricId, role, criterionIds, redaction: { class: "internal" } };
 }
 
+function roleAcceptanceRubrics(): readonly PackageScorecardRubric[] {
+  const existingRoleRubricRoles = new Set(["platform-contracts", "model-gateway", "runtime", "core-coding-tools", "tool-intent-preflight"]);
+  return Object.keys(roleAcceptanceEvidenceByRole)
+    .filter((role) => !existingRoleRubricRoles.has(role))
+    .sort()
+    .map((role) => rubric(`rubric.package.${role}.v1`, role, [roleAcceptanceCriterionId(role)]));
+}
+
+function roleAcceptanceCriterionDefinitions(): readonly PackageScorecardCriterionDefinition[] {
+  return Object.keys(roleAcceptanceEvidenceByRole)
+    .sort()
+    .map((role) => criterion(roleAcceptanceCriterionId(role), `${role} package delivery acceptance evidence`, "role", 3, true, false, [role], roleAcceptanceEvidenceByRole[role]?.join(", ") ?? ""));
+}
+
+function roleAcceptanceCriterionId(role: string): string {
+  return `package.delivery.${role}.acceptance-evidence`;
+}
+
 function criterion(
   criterionId: string,
   title: string,
@@ -681,3 +776,5 @@ function isNumber(value: unknown): value is number {
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+const packageDeliveryCapabilityTargetScore = 0.9;

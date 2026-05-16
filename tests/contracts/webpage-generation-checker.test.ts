@@ -111,6 +111,21 @@ describe("webpage generation checker", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("accepts visible commands backed by repository evidence", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deepseek-webpage-backed-command-"));
+    try {
+      await writeValidWebpage(dir, "npm run typecheck", "npm run typecheck");
+      const result = await new NodePlatformRuntime().runProcess("node", ["scripts/check-webpage-generation.mjs", dir], { cwd: process.cwd() });
+      const parsed = JSON.parse(result.stdout) as { ok?: boolean; diagnostics?: readonly string[] };
+
+      assert.equal(result.exitCode, 0);
+      assert.equal(parsed.ok, true);
+      assert.deepEqual(parsed.diagnostics, []);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 async function writeValidWebpage(dir: string, pageCommand: string, evidenceCommand = pageCommand): Promise<void> {

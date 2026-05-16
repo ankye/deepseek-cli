@@ -14,6 +14,7 @@ export async function runOneShotCommand(
 ): Promise<void> {
   const workspaceRoot = process.cwd();
   const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot, ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}) }, runOptions);
+  const reasoning = options.reasoning ?? (options.live ? { enabled: false } : undefined);
   try {
     const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
       prompt: options.prompt,
@@ -22,7 +23,7 @@ export async function runOneShotCommand(
       caller: "cli.run",
       profile: defaultDeepSeekProfile,
       live: options.live,
-      ...(options.live ? { reasoning: { enabled: false } } : {}),
+      ...(reasoning ? { reasoning } : {}),
       selfRepair: {
         enabled: true,
         maxAttempts: 1,
@@ -31,7 +32,7 @@ export async function runOneShotCommand(
       },
       ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
-      ...(isGeneratedWebpageTask(options.prompt) ? {
+      ...(usesExpandedTaskBudget(options.prompt) ? {
         limits: {
           maxModelIterations: 12,
           maxToolCalls: 32,
@@ -49,9 +50,10 @@ export async function runOneShotCommand(
   }
 }
 
-function isGeneratedWebpageTask(prompt: string): boolean {
+function usesExpandedTaskBudget(prompt: string): boolean {
   const lower = prompt.toLowerCase();
   return (
+    lower.includes("evaluation task id:") ||
     lower.includes("website") ||
     lower.includes("webpage") ||
     lower.includes("html") ||

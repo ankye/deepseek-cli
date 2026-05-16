@@ -311,3 +311,79 @@ The core coding tools SHALL expose `core.skill.list` and `core.skill.activate` s
 - **WHEN** either `core.skill.list` or `core.skill.activate` is invoked while `deps.skills` is undefined
 - **THEN** the tool returns a typed `SKILL_SYSTEM_UNAVAILABLE` diagnostic and does not throw
 - **中文** 当 `deps.skills` 未定义时,`core.skill.list` 或 `core.skill.activate` 必须返回 typed `SKILL_SYSTEM_UNAVAILABLE` diagnostic,不得抛错。
+
+### Requirement: Core Tools Map Into Catalog Families / Core Tools 映射到 Catalog Families
+Built-in core coding tools SHALL map each existing core capability id to one or more canonical tool families without removing absent catalog families from the denominator.
+
+内置 core coding tools 必须把每个现有 core capability id 映射到一个或多个 canonical tool families，且不得从分母中移除缺失 catalog families。
+
+#### Scenario: Existing shell tools map to process families / 现有 Shell 工具映射到 Process Families
+- **WHEN** the catalog evaluates `core.shell.run`, `core.shell.output`, and `core.shell.kill`
+- **THEN** they map to `shell.run`, `process.output`, and `process.kill` respectively
+- **中文** 当 catalog 评估 `core.shell.run`、`core.shell.output` 与 `core.shell.kill` 时，它们必须分别映射到 `shell.run`、`process.output` 与 `process.kill`。
+
+### Requirement: Built-In Tools Use Family-Owned Source Layout / 内置工具使用 Family-Owned 源码布局
+Built-in core tool implementations SHALL live under `src/packages/core-coding-tools/src/families/<domain>/<family>/` and SHALL NOT keep implementation or compatibility shim directories under `src/packages/core-coding-tools/src/tools/`.
+
+内置 core tool 实现必须位于 `src/packages/core-coding-tools/src/families/<domain>/<family>/`，不得在 `src/packages/core-coding-tools/src/tools/` 下保留实现或兼容 shim 目录。
+
+#### Scenario: Old tools directory is absent / 旧 Tools 目录不存在
+- **WHEN** repository structure checks inspect `src/packages/core-coding-tools/src`
+- **THEN** no `tools/` implementation tree exists and model-visible built-in tool registration imports from `families/<domain>/<family>/`
+- **中文** 当 repository structure checks 检查 `src/packages/core-coding-tools/src` 时，不得存在 `tools/` implementation tree，并且 model-visible built-in tool registration 必须从 `families/<domain>/<family>/` 导入。
+
+### Requirement: Patch Family Is Separate From File Edit / Patch Family 独立于 File Edit
+The `patch.apply` family SHALL require multi-hunk patch semantics, precondition validation, affected-file accounting, and rollback evidence; exact string edit or whole-file write alone SHALL NOT satisfy it.
+
+`patch.apply` family 必须要求 multi-hunk patch semantics、precondition validation、affected-file accounting 与 rollback evidence；仅 exact string edit 或 whole-file write 不得满足它。
+
+#### Scenario: Exact edit does not satisfy patch / 精确编辑不满足 Patch
+- **WHEN** only `core.file.edit` exists and no patch capability exists
+- **THEN** `file.edit` may pass but `patch.apply` remains absent or unassessed with zero score
+- **中文** 当只存在 `core.file.edit` 而没有 patch capability 时，`file.edit` 可以通过，但 `patch.apply` 必须保持 absent 或 unassessed 且为零分。
+
+### Requirement: Core Tool Absence Is Reported / Core Tool 缺口必须报告
+Core coding tool diagnostics SHALL report catalog families that are not implemented by built-in tools, including browser, media, design, notebook/REPL, pipeline, and scheduling families.
+
+core coding tool diagnostics 必须报告 built-in tools 尚未实现的 catalog families，包括 browser、media、design、notebook/REPL、pipeline 与 scheduling families。
+
+#### Scenario: Missing design tool is visible / 缺失 Design Tool 可见
+- **WHEN** no design/canvas capability is registered
+- **THEN** diagnostics reports `design.document-state`, `design.node-query`, `design.batch-edit`, and `design.export-snapshot` as absent or planned
+- **中文** 当没有注册 design/canvas capability 时，diagnostics 必须报告 `design.document-state`、`design.node-query`、`design.batch-edit` 与 `design.export-snapshot` 为 absent 或 planned。
+
+#### Scenario: Missing family is not a fake tool / 缺失 Family 不是假工具
+- **WHEN** a built-in family is planned but no executable capability exists
+- **THEN** `core-coding-tools` keeps the family visible in diagnostics but does not add a placeholder entry under the family tool list
+- **中文** 当某个 built-in family 已规划但没有可执行 capability 时，`core-coding-tools` 必须在 diagnostics 中保持该 family 可见，但不得在 family tool list 中添加占位条目。
+
+### Requirement: Local Family Tools Are Concrete / 本地 Family 工具必须真实
+Core coding tools SHALL implement all DeepSeek-owned local families with concrete executors, including `workspace.glob`, `asset.view-local`, `notebook.read`, `patch.apply`, `revert.undo`, `repl.execute`, `git.history-branch`, `package.manager`, and local wrappers for owner-package capabilities where appropriate.
+
+core coding tools 必须用真实 executor 实现所有 DeepSeek-owned local families，包括 `workspace.glob`、`asset.view-local`、`notebook.read`、`patch.apply`、`revert.undo`、`repl.execute`、`git.history-branch`、`package.manager`，以及适当的 owner-package capability wrappers。
+
+#### Scenario: Core catalog has no empty local implementation family / Core Catalog 无空本地实现 Family
+- **WHEN** `coreToolManifests()` and the tool family catalog are loaded
+- **THEN** every local built-in family owned by `core-coding-tools` has a capability id, executor, model-visible projection, and test evidence
+- **中文** 当加载 `coreToolManifests()` 与 tool family catalog 时，每个由 `core-coding-tools` 拥有的本地 built-in family 必须拥有 capability id、executor、model-visible projection 与测试证据。
+
+### Requirement: Patch Apply Is Multi-Hunk And Transactional / Patch Apply 支持 Multi-Hunk 与事务
+The `patch.apply` capability SHALL apply unified multi-hunk patches with precondition validation, affected-file accounting, bounded diagnostics, and rollback or checkpoint evidence.
+
+`patch.apply` capability 必须应用 unified multi-hunk patches，并包含 precondition validation、affected-file accounting、有界 diagnostics 与 rollback 或 checkpoint evidence。
+
+#### Scenario: Failed patch does not mutate workspace / Patch 失败不修改 Workspace
+- **WHEN** a patch hunk precondition fails
+- **THEN** no target file is mutated and the result reports the failed hunk with bounded evidence
+- **中文** 当 patch hunk 前置条件失败时，不得修改目标文件，并且结果必须用有界证据报告失败 hunk。
+
+### Requirement: Local Asset And Notebook Output Is Bounded / 本地 Asset 与 Notebook 输出有界
+Asset and notebook capabilities SHALL detect supported file types, bound previews, preserve binary safety, and redact unsafe metadata.
+
+asset 与 notebook capabilities 必须识别支持的文件类型、限制 preview、保持 binary safety，并脱敏不安全 metadata。
+
+#### Scenario: Large notebook is truncated safely / 大 Notebook 安全截断
+- **WHEN** `notebook.read` reads a notebook exceeding output limits
+- **THEN** it returns a cell summary with truncation metadata instead of unbounded cell content
+- **中文** 当 `notebook.read` 读取超过输出限制的 notebook 时，它必须返回带截断元数据的 cell summary，而不是无界 cell content。
+

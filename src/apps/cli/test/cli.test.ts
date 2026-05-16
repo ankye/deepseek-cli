@@ -8,6 +8,7 @@ import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelReques
 import { FakePlatformRuntime, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
+import { DurablePermanentMemoryProvider, InMemoryPermanentMemoryStorageAdapter } from "@deepseek/memory-cache-management";
 import { chatPageIndexPagesFromSnapshot, explainChatPageIndexRecallItem, markStalePageIndexPagesAfterWorkspaceEdits, markStalePageIndexPagesFromWorkspaceWatermark, recordChatPageIndexTurn, renderChatPageIndexRecallExplain, resolveChatPageIndexRecall } from "../src/commands/pageindex.js";
 import { createChatPaletteState } from "../src/commands/palette-state.js";
 import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
@@ -40,6 +41,20 @@ describe("cli host adapter", () => {
       live: false,
       sessionId: asId<"session">("session-resume")
     });
+    assert.deepEqual(parseCliArgs(["run", "json task", "--thinking", "xhigh", "--output", "jsonl"]), {
+      command: "run",
+      prompt: "json task",
+      output: "jsonl",
+      live: false,
+      reasoning: { enabled: true, effort: "xhigh" }
+    });
+    assert.deepEqual(parseCliArgs(["chat", "--live", "--thinking", "max", "--output", "jsonl"]), {
+      command: "chat",
+      prompt: "",
+      output: "jsonl",
+      live: true,
+      reasoning: { enabled: true, providerEffort: "max" }
+    });
     assert.deepEqual(parseCliArgs(["index-provider", "set", "zvec", "enabled", "--user", "--output", "json"]), {
       command: "index-provider",
       prompt: "",
@@ -56,6 +71,14 @@ describe("cli host adapter", () => {
       output: "jsonl",
       live: false,
       modeAction: "workers"
+    });
+    assert.deepEqual(parseCliArgs(["memory", "remember", "Use provider-backed memory", "--scope", "project", "--output", "json"]), {
+      command: "memory",
+      prompt: "",
+      output: "json",
+      live: false,
+      memoryAction: "remember",
+      memoryInput: { action: "remember", content: "Use provider-backed memory", scope: "project" }
     });
     assert.deepEqual(parseCliArgs(["revert", "preview", "--request", "request-1", "--output", "jsonl"]), {
       command: "revert",
@@ -175,10 +198,36 @@ describe("cli host adapter", () => {
     assert.equal(lines.some((line) => line.includes("deepseek revert apply")), true);
     assert.equal(lines.some((line) => line.includes("deepseek index-provider status")), true);
     assert.equal(lines.some((line) => line.includes("deepseek mode [status|agent|workers|verify|plan]")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek memory status|list|candidates")), true);
     assert.equal(lines.some((line) => line.includes("deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate")), true);
     assert.equal(lines.some((line) => line.includes("deepseek chat [--session <session-id>]")), true);
     assert.equal(lines.join("\n").includes("stream-json"), false);
     assert.equal(lines.join("\n").includes(" -p "), false);
+  });
+
+  it("runs permanent memory CLI remember and candidate list commands", async () => {
+    const memory = new DurablePermanentMemoryProvider({ adapter: new InMemoryPermanentMemoryStorageAdapter() });
+    const deps = { ...createDeterministicRuntimeDependencies(), memory };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const outputs: string[] = [];
+    await runCli(["memory", "remember", "Use provider-backed memory", "--output", "json"], (line: string) => {
+      outputs.push(line);
+    }, [], { stdinIsTTY: true, stdoutIsTTY: true }, {
+      createRuntime: async () => ({ deps, kernel })
+    });
+    const remembered = JSON.parse(outputs[0] ?? "{}") as { readonly status?: string; readonly entry?: { readonly state?: string } };
+    assert.equal(remembered.status, "completed");
+    assert.equal(remembered.entry?.state, "candidate");
+
+    outputs.length = 0;
+    await runCli(["memory", "candidates", "--query", "provider-backed", "--output", "json"], (line: string) => {
+      outputs.push(line);
+    }, [], { stdinIsTTY: true, stdoutIsTTY: true }, {
+      createRuntime: async () => ({ deps, kernel })
+    });
+    const listed = JSON.parse(outputs[0] ?? "{}") as { readonly count?: number };
+    assert.equal(listed.count, 1);
+    await kernel.shutdown();
   });
 
   it("runs one-shot tasks through the runtime-owned agent loop as JSONL", async () => {
@@ -221,6 +270,34 @@ describe("cli host adapter", () => {
     assert.equal(capturedRequests[0]?.reasoning?.enabled, false);
     assert.equal(lines.some((line) => line.includes("agent.loop.completed")), true);
     await kernel.shutdown("cli-test-live-reasoning-disabled");
+  });
+
+  it("passes explicit thinking controls through live one-shot runs", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const capturedRequests: ModelRequest[] = [];
+    const runtimeDeps = {
+      ...deps,
+      models: new CaptureModelRequestGateway(capturedRequests)
+    };
+    await registerRuntimeCoreTools(runtimeDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(runtimeDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["run", "需要深度推理", "--output", "jsonl", "--live", "--thinking", "max"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: runtimeDeps, kernel })
+      }
+    );
+
+    assert.deepEqual(capturedRequests[0]?.reasoning, { enabled: true, providerEffort: "max" });
+    assert.equal(lines.some((line) => line.includes("agent.loop.completed")), true);
+    await kernel.shutdown("cli-test-live-reasoning-explicit");
   });
 
   it("renders one-shot final JSON summaries", async () => {
@@ -3004,9 +3081,9 @@ describe("cli host adapter", () => {
     const matrix = records.find((record) => record.kind === "diagnostics.mode-matrix.summary")?.matrix;
 
     assert.equal(matrix?.interactionModes?.some((mode) => mode.mode === "chat" && mode.status === "complete"), true);
-    assert.equal(matrix?.interactionModes?.some((mode) => mode.mode === "remote" && mode.status === "disabled"), true);
+    assert.equal(matrix?.interactionModes?.some((mode) => mode.mode === "remote" && mode.status === "complete"), true);
     assert.equal(matrix?.agentModes?.some((mode) => mode.mode === "verifier" && mode.status === "complete"), true);
-    assert.equal(matrix?.agentModes?.some((mode) => mode.mode === "coordinator" && mode.status === "partial"), true);
+    assert.equal(matrix?.agentModes?.some((mode) => mode.mode === "coordinator" && mode.status === "complete"), true);
     assert.equal(records.some((record) => record.kind === "diagnostics.mode-matrix.agent" && record.mode?.mode === "verifier" && record.mode.productRole === "verifier"), true);
     assert.equal(lines.join("\n").includes("\u001b["), false);
   });
@@ -3981,7 +4058,7 @@ async function withTempReleaseRepo<T>(
     if (options.buildOutput) await writeFile("src/apps/cli/dist/index.js", "#!/usr/bin/env node\n", "utf8");
     for (const file of acceptanceEvidenceFilesForTest()) {
       if (!options.acceptanceEvidence && file === "typecheck.txt") continue;
-      await writeFile(join("tests/acceptance/latest", file), "ok\n", "utf8");
+      await writeFile(join("tests/acceptance/latest", file), acceptanceEvidenceContentForTest(file), "utf8");
     }
     return run();
   });
@@ -3997,8 +4074,62 @@ function acceptanceEvidenceFilesForTest(): readonly string[] {
     "build-cli.txt",
     "release-verify.txt",
     "smoke-headless.txt",
-    "reference-hygiene.txt"
+    "reference-hygiene.txt",
+    "npm-publish-dry-run.txt",
+    "live-provider-smoke.txt",
+    "live-agent-loop-smoke.txt",
+    "live-agent-tool-smoke.txt",
+    "live-cli-run-smoke.txt",
+    "live-doctor-smoke.txt",
+    "live-tool-coverage.json",
+    "tool-family-delivery-capability-score.json",
+    "deepseek-provider-response-cache.json",
+    "overall-delivery-capability-score.json"
   ];
+}
+
+function acceptanceEvidenceContentForTest(file: string): string {
+  if (file === "npm-publish-dry-run.txt") return "npm notice package: deepseek-agent-cli@0.1.3\nnpm notice Tarball Details\n";
+  if (file.startsWith("live-") && file.endsWith("-smoke.txt") && file !== "live-cli-run-smoke.txt" && file !== "live-doctor-smoke.txt") return "# pass 1\n# skipped 0\n";
+  if (file === "live-cli-run-smoke.txt") return liveCliRunSmokeEvidenceForTest();
+  if (file === "live-doctor-smoke.txt") return liveDoctorSmokeEvidenceForTest();
+  if (file === "live-tool-coverage.json") return JSON.stringify({ kind: "deepseek.live-tool-coverage", executionMode: "live", replayOnly: false, summary: { passedToolCount: 64, providerRequestMode: "live" } });
+  if (file === "tool-family-delivery-capability-score.json") return JSON.stringify({ kind: "tool-family.delivery-capability-score.evidence", deliveryCapabilityPassed: true, fakeCoveredFamilyCount: 0, replayedCoveredFamilyCount: 0, liveCoveredFamilyCount: 64 });
+  if (file === "deepseek-provider-response-cache.json") return JSON.stringify({
+    schemaVersion: "1.0.0",
+    kind: "deepseek.provider-response-cache",
+    replayOnly: true,
+    provider: "deepseek",
+    sourceEvidencePath: "tests/acceptance/latest/live-tool-coverage.json",
+    entryCount: 1,
+    entries: [{ executionMode: "live" }]
+  });
+  if (file === "overall-delivery-capability-score.json") return JSON.stringify({ kind: "cli.overall-delivery-capability-score.evidence", status: "pass", score: 1, dimensions: [{ dimensionId: "deepseek-api" }, { dimensionId: "memory" }, { dimensionId: "cache-observability" }] });
+  return "ok\n";
+}
+
+function liveCliRunSmokeEvidenceForTest(): string {
+  return [
+    JSON.stringify({ kind: "model.finished", data: { provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-cli-test" } } }),
+    JSON.stringify({ kind: "usage.updated", data: { metadata: { provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-cli-test" }, cache: { hitTokens: 0, missTokens: 12 } } } }),
+    JSON.stringify({ kind: "agent.loop.completed", data: { modelProvider: "provider-deepseek", status: "completed" } }),
+    ""
+  ].join("\n");
+}
+
+function liveDoctorSmokeEvidenceForTest(): string {
+  return `${JSON.stringify({
+    command: "doctor",
+    metadata: { liveRequested: true },
+    checks: [{ id: "doctor.live", status: "pass" }],
+    live: {
+      reachable: true,
+      usage: {
+        provider: { provider: "deepseek", protocol: "openai-chat-completions", model: "deepseek-v4-flash", requestId: "req-live-doctor-test" },
+        cache: { hitTokens: 0, missTokens: 8 }
+      }
+    }
+  })}\n`;
 }
 
 class ReasoningStreamModelGateway implements ModelGateway {

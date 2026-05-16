@@ -48,9 +48,10 @@ async function webSearchTool(input: JsonObject, context: CapabilityExecutionCont
     const results = await provider.search(parsed);
     const filtered = filterDomains(results, parsed.allowedDomains, parsed.blockedDomains);
     const preview = filtered.map((item) => `- [${item.title}](${item.url})\n  ${item.snippet}`).join("\n");
+    const providerDetails = provider as WebSearchProvider & { readonly providerNativeSupport?: string };
     return success("web.search", filtered.map((item) => item.url), {
       preview: boundedText(preview, 8_000),
-      metadata: { query: parsed.query, count: filtered.length, provider: provider.name, results: filtered as unknown as JsonObject },
+      metadata: { query: parsed.query, count: filtered.length, provider: provider.name, providerNativeSupport: providerDetails.providerNativeSupport ?? "unknown", results: filtered as unknown as JsonObject },
       replay: replay(context)
     });
   } catch (error) {

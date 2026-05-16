@@ -3,6 +3,7 @@ import { cliUsageLines, parseCliArgs } from "../commands/parse.js";
 import { runChatCommand } from "../commands/chat.js";
 import { runCoreToolsSmoke } from "../commands/tools-smoke.js";
 import { runMcpCommand } from "../commands/mcp.js";
+import { runMemoryCommand } from "../commands/memory.js";
 import { runModeCommand } from "../commands/mode.js";
 import { runOneShotCommand } from "../commands/run.js";
 import { runPaletteCommand } from "../commands/palette.js";
@@ -55,6 +56,10 @@ export async function runCli(
   }
   if (options.command === "mode") {
     await runModeCommand(options, writer);
+    return;
+  }
+  if (options.command === "memory") {
+    await runMemoryCommand(options, writer, runOptions);
     return;
   }
   if (options.command === "palette") {

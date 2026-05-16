@@ -384,3 +384,6 @@ function stableHash(value: string): string {
   }
   return `h${(hash >>> 0).toString(16)}`;
 }
+
+export * from "./lossless-context.js";
+export * from "./permanent-memory.js";

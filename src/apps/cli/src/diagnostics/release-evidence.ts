@@ -3,7 +3,10 @@ import type {
   DiagnosticsReleaseReadinessEvidence,
   JsonObject,
   ReadinessCheck,
+  ReleaseLiveEvidenceFileStatus,
+  ReleaseLiveEvidenceSummary,
   ReleasePackageSurface,
+  ReleasePublishDryRunEvidence,
   ReleaseVerificationEvidence,
   SupportBundlePolicyEvidence
 } from "@deepseek/platform-contracts";
@@ -17,7 +20,7 @@ export const diagnosticPitIds = ["pit.diagnostic-redaction.support-bundle", "pit
 export async function collectReleaseReadinessEvidence(): Promise<DiagnosticsReleaseReadinessEvidence> {
   const packageSurface = await releasePackageSurface();
   const supportBundle = supportBundlePolicyEvidence();
-  const verification = await releaseVerificationEvidence();
+  const verification = await releaseVerificationEvidence(packageSurface);
   const checks = releaseReadinessChecks(packageSurface, supportBundle, verification);
   const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "pass";
   return {
@@ -66,19 +69,14 @@ export async function releasePackageSurface(): Promise<ReleasePackageSurface> {
   };
 }
 
-export async function releaseVerificationEvidence(): Promise<ReleaseVerificationEvidence> {
+export async function releaseVerificationEvidence(packageSurface?: ReleasePackageSurface): Promise<ReleaseVerificationEvidence> {
   const acceptanceEvidencePaths = [
-    "tests/acceptance/acceptance-index.md",
-    "tests/acceptance/latest/openspec-validation.txt",
-    "tests/acceptance/latest/typecheck.txt",
-    "tests/acceptance/latest/lint.txt",
-    "tests/acceptance/latest/test-summary.txt",
-    "tests/acceptance/latest/dependency-boundaries.txt",
-    "tests/acceptance/latest/build-cli.txt",
-    "tests/acceptance/latest/release-verify.txt",
-    "tests/acceptance/latest/smoke-headless.txt",
-    "tests/acceptance/latest/reference-hygiene.txt"
+    ...baseAcceptanceEvidencePaths(),
+    ...liveAcceptanceEvidencePaths()
   ];
+  const dryRunCommand = "npm publish --dry-run --workspace deepseek-agent-cli --access public";
+  const liveEvidence = await collectLiveReleaseEvidence();
+  const publishDryRunEvidence = await collectPublishDryRunEvidence(packageSurface, dryRunCommand);
   return {
     schemaVersion: diagnosticsSchemaVersion,
     requiredCommands: [
@@ -89,7 +87,14 @@ export async function releaseVerificationEvidence(): Promise<ReleaseVerification
       "node scripts/check-boundaries.mjs",
       "npm run build:cli",
       "npm run smoke:headless",
-      "npm publish --dry-run --workspace deepseek-agent-cli --access public"
+      "DEEPSEEK_LIVE_TESTS=1 npm run smoke:live:deepseek",
+      "DEEPSEEK_LIVE_AGENT_LOOP_TESTS=1 npm run smoke:live:agent-loop",
+      "DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 npm run smoke:live:agent-tools",
+      "deepseek run --live --output jsonl",
+      "deepseek doctor --live --output json",
+      "npx tsx scripts/run-live-tool-coverage.ts",
+      "deepseek diagnostics evaluate --full --execute-task all --live --output json",
+      dryRunCommand
     ],
     acceptanceEvidencePaths,
     acceptanceEvidenceFiles: await Promise.all(acceptanceEvidencePaths.map(async (path) => ({
@@ -99,11 +104,43 @@ export async function releaseVerificationEvidence(): Promise<ReleaseVerification
       redaction: { class: "internal" as const, fields: ["path"] }
     }))),
     missingAcceptanceEvidencePaths: await missingPaths(acceptanceEvidencePaths),
+    publishDryRunEvidence,
+    liveEvidence,
     referencePitFixtureIds: [...diagnosticPitIds],
-    dryRunCommand: "npm publish --dry-run --workspace deepseek-agent-cli --access public",
+    dryRunCommand,
     rollbackGuidance: "Do not publish; fix failing readiness evidence and rerun diagnostics release.",
-    redaction: { class: "internal", fields: ["acceptanceEvidencePaths"] }
+    redaction: { class: "internal", fields: ["acceptanceEvidencePaths", "liveEvidence.files.path", "liveEvidence.missingEvidencePaths", "liveEvidence.invalidEvidencePaths"] }
   };
+}
+
+function baseAcceptanceEvidencePaths(): readonly string[] {
+  return [
+    "tests/acceptance/acceptance-index.md",
+    "tests/acceptance/latest/openspec-validation.txt",
+    "tests/acceptance/latest/typecheck.txt",
+    "tests/acceptance/latest/lint.txt",
+    "tests/acceptance/latest/test-summary.txt",
+    "tests/acceptance/latest/dependency-boundaries.txt",
+    "tests/acceptance/latest/build-cli.txt",
+    "tests/acceptance/latest/release-verify.txt",
+    "tests/acceptance/latest/smoke-headless.txt",
+    "tests/acceptance/latest/reference-hygiene.txt",
+    "tests/acceptance/latest/npm-publish-dry-run.txt"
+  ];
+}
+
+function liveAcceptanceEvidencePaths(): readonly string[] {
+  return [
+    "tests/acceptance/latest/live-provider-smoke.txt",
+    "tests/acceptance/latest/live-agent-loop-smoke.txt",
+    "tests/acceptance/latest/live-agent-tool-smoke.txt",
+    "tests/acceptance/latest/live-cli-run-smoke.txt",
+    "tests/acceptance/latest/live-doctor-smoke.txt",
+    "tests/acceptance/latest/live-tool-coverage.json",
+    "tests/acceptance/latest/tool-family-delivery-capability-score.json",
+    "tests/acceptance/latest/deepseek-provider-response-cache.json",
+    "tests/acceptance/latest/overall-delivery-capability-score.json"
+  ];
 }
 
 export function supportBundlePolicyEvidence(): SupportBundlePolicyEvidence {
@@ -131,9 +168,207 @@ export function releaseReadinessChecks(
     readinessCheck("release.package-files", "Package files", packageSurface.expectedPackageFiles.includes("dist") && packageSurface.expectedPackageFiles.includes("README.md") ? "pass" : "warn", `Expected package files: ${packageSurface.expectedPackageFiles.join(", ")}.`, ["Keep npm tarball limited to README.md, dist/index.js, and package metadata."], { expectedPackageFiles: packageSurface.expectedPackageFiles }),
     readinessCheck("release.package-surface", "Package surface safety", (packageSurface.unexpectedPackageFiles?.length ?? 0) === 0 ? "pass" : "fail", (packageSurface.unexpectedPackageFiles?.length ?? 0) === 0 ? `Package surface limited to ${packageSurface.packageSurfaceFiles?.join(", ")}.` : `Unexpected package files: ${packageSurface.unexpectedPackageFiles?.join(", ")}.`, (packageSurface.unexpectedPackageFiles?.length ?? 0) === 0 ? [] : ["Restrict src/apps/cli/package.json files/bin/exports to README.md and dist output."], { packageSurfaceFiles: packageSurface.packageSurfaceFiles ?? [], unexpectedPackageFiles: packageSurface.unexpectedPackageFiles ?? [] }),
     readinessCheck("release.generated-hygiene", "Generated bundle hygiene", packageSurface.generatedBundleIgnored ? "pass" : "fail", "Generated CLI dist bundle is treated as ignored local output.", [], { generatedBundlePath: packageSurface.generatedBundlePath }),
+    readinessCheck("release.live-evidence", "DeepSeek live release evidence", verification.liveEvidence?.status ?? "fail", liveEvidenceMessage(verification.liveEvidence), liveEvidenceActions(verification.liveEvidence), { evidence: verification.liveEvidence ?? {} }),
+    readinessCheck("release.publish-dry-run", "npm publish dry-run", verification.publishDryRunEvidence?.status ?? "fail", verification.publishDryRunEvidence?.message ?? "npm publish dry-run evidence is missing.", publishDryRunActions(verification.publishDryRunEvidence), { evidence: verification.publishDryRunEvidence ?? {} }),
     readinessCheck("release.support-bundle", "Support bundle policy", supportBundle.localDiagnosticsAvailable && !supportBundle.externalExportAllowed ? "pass" : "warn", `External export policy: ${supportBundle.externalExportReasonCode}.`, [], { externalExportAllowed: supportBundle.externalExportAllowed, referencePitFixtureIds: supportBundle.referencePitFixtureIds }),
     readinessCheck("release.acceptance", "Acceptance evidence", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? "pass" : "warn", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? `${verification.acceptanceEvidencePaths.length} acceptance evidence files present.` : `Missing acceptance evidence: ${verification.missingAcceptanceEvidencePaths?.join(", ")}.`, (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? [] : ["Refresh tests/acceptance/latest evidence before publishing."], { requiredCommands: verification.requiredCommands, acceptanceEvidencePaths: verification.acceptanceEvidencePaths, missingAcceptanceEvidencePaths: verification.missingAcceptanceEvidencePaths ?? [] })
   ];
+}
+
+async function collectLiveReleaseEvidence(): Promise<ReleaseLiveEvidenceSummary> {
+  const files = await Promise.all(liveAcceptanceEvidencePaths().map(liveEvidenceFileStatus));
+  const missingEvidencePaths = files.filter((file) => !file.exists).map((file) => file.path);
+  const invalidEvidencePaths = files.filter((file) => file.exists && file.status !== "pass").map((file) => file.path);
+  const overall = await readJsonFile("tests/acceptance/latest/overall-delivery-capability-score.json");
+  const toolCoverage = await readJsonFile("tests/acceptance/latest/live-tool-coverage.json");
+  const overallDeliveryCapabilityScore = numberValue(overall?.score);
+  const overallDeliveryCapabilityStatus = typeof overall?.status === "string" ? overall.status : undefined;
+  const liveToolCoveredFamilyCount = numberValue(getNested(toolCoverage, ["summary", "passedToolCount"]));
+  const status: ReadinessCheck["status"] = missingEvidencePaths.length > 0 || invalidEvidencePaths.length > 0 ? "fail" : "pass";
+  return {
+    schemaVersion: diagnosticsSchemaVersion,
+    status,
+    requiredEvidencePaths: liveAcceptanceEvidencePaths(),
+    files,
+    missingEvidencePaths,
+    invalidEvidencePaths,
+    ...(overallDeliveryCapabilityScore !== undefined ? { overallDeliveryCapabilityScore } : {}),
+    ...(overallDeliveryCapabilityStatus ? { overallDeliveryCapabilityStatus } : {}),
+    ...(liveToolCoveredFamilyCount !== undefined ? { liveToolCoveredFamilyCount } : {}),
+    redaction: { class: "internal", fields: ["files.path", "missingEvidencePaths", "invalidEvidencePaths"] }
+  };
+}
+
+async function liveEvidenceFileStatus(path: string): Promise<ReleaseLiveEvidenceFileStatus> {
+  const platform = new NodePlatformRuntime();
+  const raw = await platform.readFile(join(process.cwd(), path)).catch(() => "");
+  const exists = raw.length > 0;
+  if (!exists) return liveFile(path, false, "fail", `${path} is missing.`);
+  if (path.endsWith(".txt")) {
+    const passed = liveTextEvidencePasses(path, raw);
+    return liveFile(path, true, passed ? "pass" : "fail", passed ? `${path} contains passing live evidence.` : `${path} does not prove a non-skipped live pass.`);
+  }
+  if (path.endsWith("live-tool-coverage.json")) {
+    const parsed = safeJson(raw);
+    const passed = parsed?.kind === "deepseek.live-tool-coverage"
+      && parsed.executionMode === "live"
+      && parsed.replayOnly === false
+      && getNested(parsed, ["summary", "passedToolCount"]) === 64
+      && getNested(parsed, ["summary", "providerRequestMode"]) === "live";
+    return liveFile(path, true, passed ? "pass" : "fail", passed ? `${path} proves live tool coverage.` : `${path} is missing live tool coverage proof.`);
+  }
+  if (path.endsWith("tool-family-delivery-capability-score.json")) {
+    const parsed = safeJson(raw);
+    const passed = parsed?.kind === "tool-family.delivery-capability-score.evidence"
+      && parsed.deliveryCapabilityPassed === true
+      && parsed.fakeCoveredFamilyCount === 0
+      && parsed.replayedCoveredFamilyCount === 0
+      && parsed.liveCoveredFamilyCount === 64;
+    return liveFile(path, true, passed ? "pass" : "fail", passed ? `${path} proves live tool-family delivery capability.` : `${path} is missing strict live tool-family delivery proof.`);
+  }
+  if (path.endsWith("deepseek-provider-response-cache.json")) {
+    const parsed = safeJson(raw);
+    const entryCount = numberValue(parsed?.entryCount) ?? (Array.isArray(parsed?.entries) ? parsed.entries.length : 0);
+    const passed = parsed?.kind === "deepseek.provider-response-cache"
+      && entryCount > 0
+      && parsed.sourceEvidencePath === "tests/acceptance/latest/live-tool-coverage.json";
+    return liveFile(path, true, passed ? "pass" : "fail", passed ? `${path} contains cached live provider responses for regression.` : `${path} does not contain live provider response cache records.`);
+  }
+  if (path.endsWith("overall-delivery-capability-score.json")) {
+    const parsed = safeJson(raw);
+    const dimensionIds = Array.isArray(parsed?.dimensions) ? parsed.dimensions.map((dimension: unknown) => isJsonObject(dimension) ? dimension.dimensionId : "") : [];
+    const passed = parsed?.kind === "cli.overall-delivery-capability-score.evidence"
+      && parsed.status === "pass"
+      && typeof parsed.score === "number"
+      && parsed.score >= 0.9
+      && dimensionIds.includes("deepseek-api")
+      && dimensionIds.includes("memory")
+      && dimensionIds.includes("cache-observability");
+    return liveFile(path, true, passed ? "pass" : "fail", passed ? `${path} proves current-schema overall delivery capability.` : `${path} is stale or does not prove all current delivery dimensions.`);
+  }
+  return liveFile(path, true, "pass", `${path} exists.`);
+}
+
+function liveTextEvidencePasses(path: string, raw: string): boolean {
+  const normalized = raw.toLowerCase();
+  if (/# (fail|cancelled|todo) [1-9]/.test(normalized)) return false;
+  if (/# skipped [1-9]/.test(normalized) || normalized.includes("testcontext.skip")) return false;
+  if (path.endsWith("live-cli-run-smoke.txt")) return liveCliRunSmokePasses(raw);
+  if (path.endsWith("live-doctor-smoke.txt")) return liveDoctorSmokePasses(raw);
+  return normalized.includes("# pass 1") && normalized.includes("# skipped 0");
+}
+
+function liveCliRunSmokePasses(raw: string): boolean {
+  return !/DeepSeek mock response/i.test(raw)
+    && jsonStringField(raw, "kind", "agent.loop.completed")
+    && jsonStringField(raw, "kind", "model.finished")
+    && jsonStringField(raw, "kind", "usage.updated")
+    && jsonStringField(raw, "modelProvider", "provider-deepseek")
+    && deepSeekProviderRequestEvidence(raw);
+}
+
+function liveDoctorSmokePasses(raw: string): boolean {
+  return !/DeepSeek mock response/i.test(raw)
+    && jsonBooleanField(raw, "liveRequested", true)
+    && jsonBooleanField(raw, "reachable", true)
+    && jsonStringField(raw, "id", "doctor.live")
+    && deepSeekProviderRequestEvidence(raw);
+}
+
+function deepSeekProviderRequestEvidence(raw: string): boolean {
+  return jsonStringField(raw, "provider", "deepseek")
+    && jsonStringField(raw, "protocol", "openai-chat-completions")
+    && /"requestId"\s*:\s*"[^"]+"/.test(raw)
+    && /"cache"\s*:\s*\{[^}]*"(hitTokens|missTokens)"\s*:\s*\d+/.test(raw);
+}
+
+function jsonStringField(raw: string, key: string, value: string): boolean {
+  return new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"${escapeRegExp(value)}"`).test(raw);
+}
+
+function jsonBooleanField(raw: string, key: string, value: boolean): boolean {
+  return new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*${value ? "true" : "false"}`).test(raw);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function liveFile(path: string, exists: boolean, status: ReadinessCheck["status"], message: string): ReleaseLiveEvidenceFileStatus {
+  return {
+    path,
+    exists,
+    status,
+    message,
+    redaction: { class: "internal", fields: ["path"] }
+  };
+}
+
+function liveEvidenceMessage(evidence: ReleaseLiveEvidenceSummary | undefined): string {
+  if (!evidence) return "DeepSeek live release evidence is missing.";
+  if (evidence.status === "pass") return `${evidence.files.length} live release evidence file(s) passed.`;
+  const missing = evidence.missingEvidencePaths.length;
+  const invalid = evidence.invalidEvidencePaths.length;
+  return `DeepSeek live release evidence is not publish-ready: missing=${missing}, invalid=${invalid}.`;
+}
+
+function liveEvidenceActions(evidence: ReleaseLiveEvidenceSummary | undefined): readonly string[] {
+  if (!evidence || evidence.status !== "pass") {
+    return [
+      "Run the live smoke commands, live tool coverage, and live full evaluation before npm publish dry-run.",
+      "Refresh tests/acceptance/latest/overall-delivery-capability-score.json with current delivery dimensions."
+    ];
+  }
+  return [];
+}
+
+async function collectPublishDryRunEvidence(packageSurface: ReleasePackageSurface | undefined, command: string): Promise<ReleasePublishDryRunEvidence> {
+  const path = "tests/acceptance/latest/npm-publish-dry-run.txt";
+  const packageName = packageSurface?.packageName ?? "deepseek-agent-cli";
+  const packageVersion = packageSurface?.packageVersion ?? "0.0.0";
+  const platform = new NodePlatformRuntime();
+  const raw = await platform.readFile(join(process.cwd(), path)).catch(() => "");
+  const exists = raw.length > 0;
+  const preview = boundedPreview(raw);
+  const packageToken = `${packageName}@${packageVersion}`;
+  const versionMatches = exists && raw.includes(packageToken);
+  const collisionDetected = /cannot publish over (the )?previously published versions|previously published versions/i.test(raw);
+  const npmErrorDetected = /\bnpm\s+(ERR!|error)\b/i.test(raw);
+  const tarballDetailsDetected = /Tarball Details|Tarball Contents/i.test(raw);
+  const status: ReadinessCheck["status"] = !exists || collisionDetected || npmErrorDetected || !versionMatches ? "fail" : tarballDetailsDetected ? "pass" : "warn";
+  const message = !exists
+    ? `${path} is missing; run and save ${command}.`
+    : collisionDetected
+      ? `${packageToken} already exists on npm; publish dry-run is blocked.`
+      : !versionMatches
+        ? `${path} does not match ${packageToken}.`
+        : npmErrorDetected
+          ? `${path} contains npm error output.`
+          : status === "pass"
+            ? `${path} proves ${packageToken} publish dry-run packaging succeeds.`
+            : `${path} exists but does not contain recognizable npm publish dry-run success evidence.`;
+  return {
+    path,
+    exists,
+    command,
+    packageName,
+    packageVersion,
+    status,
+    versionMatches,
+    collisionDetected,
+    npmErrorDetected,
+    message,
+    preview,
+    redaction: { class: "internal", fields: ["preview"] }
+  };
+}
+
+function publishDryRunActions(evidence: ReleasePublishDryRunEvidence | undefined): readonly string[] {
+  if (!evidence?.exists) return [`Run ${evidence?.command ?? "npm publish --dry-run --workspace deepseek-agent-cli --access public"} and save output to tests/acceptance/latest/npm-publish-dry-run.txt.`];
+  if (evidence.collisionDetected) return ["Bump src/apps/cli/package.json to an unpublished version, update package-lock.json, rebuild, and rerun npm publish --dry-run."];
+  if (!evidence.versionMatches) return ["Refresh tests/acceptance/latest/npm-publish-dry-run.txt after the current package version changes."];
+  if (evidence.npmErrorDetected) return ["Fix the npm publish dry-run error and refresh tests/acceptance/latest/npm-publish-dry-run.txt."];
+  return evidence.status === "pass" ? [] : ["Refresh tests/acceptance/latest/npm-publish-dry-run.txt with a successful npm publish dry-run output."];
 }
 
 async function cliPackageJson(): Promise<Record<string, unknown>> {
@@ -147,6 +382,34 @@ async function cliPackageJson(): Promise<Record<string, unknown>> {
     publishConfig: { access: "public" }
   }));
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+async function readJsonFile(path: string): Promise<JsonObject | undefined> {
+  const platform = new NodePlatformRuntime();
+  const raw = await platform.readFile(join(process.cwd(), path)).catch(() => "");
+  return safeJson(raw);
+}
+
+function safeJson(raw: string): JsonObject | undefined {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return isJsonObject(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getNested(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const key of path) {
+    if (!isJsonObject(current)) return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function readinessCheck(id: string, label: string, status: ReadinessCheck["status"], message: string, suggestedActions: readonly string[] = [], metadata: JsonObject = {}): ReadinessCheck {
@@ -163,6 +426,10 @@ function readinessCheck(id: string, label: string, status: ReadinessCheck["statu
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isAllowedPackageSurfaceFile(file: string): boolean {
@@ -183,4 +450,9 @@ async function fileExists(path: string): Promise<boolean> {
 async function missingPaths(paths: readonly string[]): Promise<readonly string[]> {
   const statuses = await Promise.all(paths.map(async (path) => ({ path, exists: await fileExists(path) })));
   return statuses.filter((status) => !status.exists).map((status) => status.path);
+}
+
+function boundedPreview(value: string): string {
+  const normalized = value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim();
+  return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...[truncated]` : normalized;
 }

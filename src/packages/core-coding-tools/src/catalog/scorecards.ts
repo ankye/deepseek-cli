@@ -42,6 +42,10 @@ export function buildToolFamilyParityMatrix(
   }));
   const applicable = scorecards.filter((scorecard) => scorecard.implementationState !== "not_applicable");
   const passedFamilyCount = applicable.filter((scorecard) => scorecard.passed).length;
+  const deliveryCapabilityTargetScore = 0.9;
+  const deliveryCapabilityTargetFamilyCount = Math.ceil(applicable.length * deliveryCapabilityTargetScore);
+  const deliveryCapabilityPassedFamilyCount = applicable.filter((scorecard) => scorecard.passed && scorecard.executionEvidenceMode === "live").length;
+  const deliveryCapabilityScore = roundScore(applicable.length === 0 ? 0 : deliveryCapabilityPassedFamilyCount / applicable.length);
 
   return {
     schemaVersion: TOOL_FAMILY_CATALOG_SCHEMA_VERSION,
@@ -62,6 +66,14 @@ export function buildToolFamilyParityMatrix(
     notApplicableFamilyCount: scorecards.filter((scorecard) => scorecard.implementationState === "not_applicable").length,
     passedFamilyCount,
     objectiveScore: roundScore(applicable.length === 0 ? 0 : passedFamilyCount / applicable.length),
+    deliveryCapabilityScore,
+    deliveryCapabilityTargetScore,
+    deliveryCapabilityTargetFamilyCount,
+    deliveryCapabilityPassedFamilyCount,
+    deliveryCapabilityPassed: deliveryCapabilityScore >= deliveryCapabilityTargetScore && deliveryCapabilityPassedFamilyCount >= deliveryCapabilityTargetFamilyCount,
+    deliveryCapabilityBlockingFamilyIds: applicable
+      .filter((scorecard) => !scorecard.passed || scorecard.executionEvidenceMode !== "live")
+      .map((scorecard) => scorecard.familyId),
     scorecards,
     redaction: { class: "internal" }
   };

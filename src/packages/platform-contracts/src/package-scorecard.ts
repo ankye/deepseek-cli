@@ -88,6 +88,9 @@ export interface PackageScorecardSummary extends JsonObject {
   readonly hardGateStatus: PackageScorecardHardGateStatus;
   readonly weightedScore?: number;
   readonly objectiveScore?: number;
+  readonly deliveryCapabilityScore?: number;
+  readonly deliveryCapabilityTargetScore: number;
+  readonly deliveryCapabilityPassed: boolean;
   readonly passRate?: number;
   readonly assessmentCoverage: number;
   readonly rubricCoverage: number;
@@ -113,6 +116,12 @@ export interface PackageScorecardAggregate extends JsonObject {
   readonly failPackageCount: number;
   readonly averageWeightedScore?: number;
   readonly averageObjectiveScore?: number;
+  readonly averageDeliveryCapabilityScore?: number;
+  readonly deliveryCapabilityTargetScore: number;
+  readonly deliveryCapabilityPassedPackageCount: number;
+  readonly deliveryCapabilityTotalPackageCount: number;
+  readonly deliveryCapabilityBlockingPackageIds: readonly string[];
+  readonly deliveryCapabilityPassed: boolean;
   readonly averagePassRate?: number;
   readonly averageAssessmentCoverage: number;
   readonly averageRubricCoverage: number;

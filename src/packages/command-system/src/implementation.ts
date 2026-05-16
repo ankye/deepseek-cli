@@ -514,8 +514,18 @@ function releaseReadinessChecks(environment: LocalReadinessEnvironment): readonl
     check("release.package", "CLI package metadata", release.packageName === "deepseek-agent-cli" ? "pass" : "fail", `${release.packageName}@${release.packageVersion}.`, [], { packageName: release.packageName, packageVersion: release.packageVersion }),
     check("release.bin", "CLI executable", release.executableName === "deepseek" && release.binEntry === "dist/index.js" ? "pass" : "fail", `${release.executableName} -> ${release.binEntry}.`, [], { executableName: release.executableName, binEntry: release.binEntry }),
     check("release.package-files", "Package files", release.expectedPackageFiles.includes("dist") && release.expectedPackageFiles.includes("README.md") ? "pass" : "warn", `Expected package files: ${release.expectedPackageFiles.join(", ")}.`, [], { expectedPackageFiles: release.expectedPackageFiles }),
+    check("release.publish-dry-run", "npm publish dry-run", verification.publishDryRunEvidence?.status ?? "fail", verification.publishDryRunEvidence?.message ?? "npm publish dry-run evidence is missing.", publishDryRunActions(verification), { evidence: verification.publishDryRunEvidence ?? {} }),
     check("release.verification", "Verification commands", verification.requiredCommands.length > 0 ? "pass" : "warn", `${verification.requiredCommands.length} verification command(s) declared.`, [], { requiredCommands: verification.requiredCommands, acceptanceEvidencePaths: verification.acceptanceEvidencePaths })
   ];
+}
+
+function publishDryRunActions(verification: ReleaseVerificationEvidence): readonly string[] {
+  const evidence = verification.publishDryRunEvidence;
+  if (!evidence?.exists) return [`Run ${verification.dryRunCommand} and save output to tests/acceptance/latest/npm-publish-dry-run.txt.`];
+  if (evidence.collisionDetected) return ["Bump the CLI package version, update the lockfile, rebuild, and rerun npm publish --dry-run."];
+  if (!evidence.versionMatches) return ["Refresh npm publish dry-run evidence after the package version changes."];
+  if (evidence.npmErrorDetected) return ["Fix the npm publish dry-run error and refresh the evidence file."];
+  return evidence.status === "pass" ? [] : ["Refresh npm publish dry-run evidence with a successful dry-run output."];
 }
 
 function indexProviderChecks(environment: LocalReadinessEnvironment): readonly ReadinessCheck[] {

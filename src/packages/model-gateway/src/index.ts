@@ -1,9 +1,15 @@
 import type {
   CredentialRef,
+  DeepSeekAnthropicMessagesRequest,
+  DeepSeekChatPrefixCompletionRequest,
+  DeepSeekFimCompletionRequest,
+  DeepSeekJsonOutputValidationResult,
+  DeepSeekStrictToolSchemaValidationResult,
   JsonObject,
   JsonValue,
   ModelCredentialValue,
   ModelCredentialProvider,
+  ModelChatMessage,
   ModelFinishReason,
   ModelGateway,
   ModelLiveVerificationRequest,
@@ -15,6 +21,8 @@ import type {
   ModelProviderResponseChunk,
   ModelProviderTransport,
   ModelRequest,
+  ModelReasoningEffort,
+  ModelReasoningProviderEffort,
   ModelStreamEvent,
   ModelToolChoice,
   ModelUsageMetadata,
@@ -147,6 +155,9 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
   }
 
   buildProviderRequest(request: ModelRequest, credentialValue = ""): ModelProviderRequest {
+    const reasoningEffort = request.reasoning?.enabled === false
+      ? undefined
+      : deepSeekReasoningEffort(request.reasoning?.providerEffort ?? request.reasoning?.effort);
     const body: JsonObject = {
       model: request.profile.model,
       messages: providerMessagesFrom(request),
@@ -155,7 +166,8 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
       ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
       ...(request.toolChoice !== undefined ? { tool_choice: formatToolChoice(request.toolChoice) } : {}),
       ...(request.reasoning ? { thinking: { type: request.reasoning.enabled === false ? "disabled" : "enabled" } } : {}),
-      ...(request.reasoning?.effort ? { reasoning_effort: request.reasoning.effort } : {}),
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+      ...(validateDeepSeekJsonOutputRequest(request).ok && request.output?.format === "json_object" ? { response_format: { type: "json_object" } } : {}),
       ...(request.profile.providerOptions ? request.profile.providerOptions : {})
     };
 
@@ -172,12 +184,231 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
     };
   }
 
+  buildStrictToolSchemaProviderRequest(request: ModelRequest, credentialValue = ""): {
+    readonly request?: ModelProviderRequest;
+    readonly validation: DeepSeekStrictToolSchemaValidationResult;
+  } {
+    const validation = validateDeepSeekStrictToolSchema(request.tools ?? []);
+    if (!validation.ok) return { validation };
+    const providerRequest = this.buildProviderRequest(request, credentialValue);
+    return {
+      validation,
+      request: {
+        ...providerRequest,
+        url: `${this.config.baseUrl.replace(/\/$/, "")}/beta/chat/completions`,
+        body: {
+          ...providerRequest.body,
+          tools: (request.tools ?? []).map((tool) => withStrictToolFlag(tool))
+        }
+      }
+    };
+  }
+
+  buildChatPrefixCompletionProviderRequest(request: DeepSeekChatPrefixCompletionRequest, credentialValue = ""): ModelProviderRequest {
+    const reasoningEffort = request.reasoning?.enabled === false
+      ? undefined
+      : deepSeekReasoningEffort(request.reasoning?.providerEffort ?? request.reasoning?.effort);
+    return {
+      url: `${this.config.baseUrl.replace(/\/$/, "")}/beta/chat/completions`,
+      method: "POST",
+      headers: this.headers(credentialValue),
+      body: {
+        model: request.profile.model,
+        messages: [
+          ...providerMessagesFrom({
+            profile: request.profile,
+            prompt: request.prompt,
+            ...(request.messages ? { messages: request.messages } : {})
+          }),
+          {
+            role: "assistant",
+            content: request.prefix,
+            prefix: true
+          }
+        ],
+        stream: true,
+        temperature: request.profile.temperature ?? 0,
+        ...(request.reasoning ? { thinking: { type: request.reasoning.enabled === false ? "disabled" : "enabled" } } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+        ...(request.profile.providerOptions ? request.profile.providerOptions : {})
+      },
+      ...(request.timeoutMs ?? this.options.timeoutMs ? { timeoutMs: request.timeoutMs ?? this.options.timeoutMs } : {})
+    };
+  }
+
+  buildFimCompletionProviderRequest(request: DeepSeekFimCompletionRequest, credentialValue = ""): ModelProviderRequest {
+    return {
+      url: `${this.config.baseUrl.replace(/\/$/, "")}/beta/completions`,
+      method: "POST",
+      headers: this.headers(credentialValue),
+      body: {
+        model: request.profile.model,
+        prompt: request.prompt,
+        ...(request.suffix !== undefined ? { suffix: request.suffix } : {}),
+        ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+        temperature: request.temperature ?? request.profile.temperature ?? 0,
+        ...(request.profile.providerOptions ? request.profile.providerOptions : {})
+      },
+      ...(request.timeoutMs ?? this.options.timeoutMs ? { timeoutMs: request.timeoutMs ?? this.options.timeoutMs } : {})
+    };
+  }
+
+  buildAnthropicMessagesProviderRequest(request: DeepSeekAnthropicMessagesRequest, credentialValue = ""): {
+    readonly request?: ModelProviderRequest;
+    readonly validation: DeepSeekStrictToolSchemaValidationResult;
+  } {
+    const validation = validateDeepSeekAnthropicMessagesRequest(request);
+    if (!validation.ok) return { validation };
+    const reasoningEffort = request.reasoning?.enabled === false
+      ? undefined
+      : deepSeekReasoningEffort(request.reasoning?.providerEffort ?? request.reasoning?.effort);
+    return {
+      validation,
+      request: {
+        url: `${this.config.baseUrl.replace(/\/$/, "")}/anthropic/messages`,
+        method: "POST",
+        headers: {
+          ...this.headers(credentialValue),
+          "anthropic-version": "2023-06-01"
+        },
+        body: {
+          model: request.profile.model,
+          max_tokens: request.maxTokens,
+          messages: anthropicMessagesFrom(request.messages),
+          ...(request.system ? { system: request.system } : {}),
+          ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
+          ...(request.toolChoice !== undefined ? { tool_choice: formatAnthropicToolChoice(request.toolChoice) } : {}),
+          ...(reasoningEffort ? { output_config: { effort: reasoningEffort } } : {}),
+          ...(request.profile.providerOptions ? request.profile.providerOptions : {})
+        },
+        ...(request.timeoutMs ?? this.options.timeoutMs ? { timeoutMs: request.timeoutMs ?? this.options.timeoutMs } : {})
+      }
+    };
+  }
+
   private providerMetadata(profile: ModelProfile): ModelProviderEventMetadata {
     return {
       provider: this.config.provider,
       protocol: this.config.protocol,
       model: profile.model
     };
+  }
+
+  private headers(credentialValue = ""): JsonObject {
+    return {
+      "content-type": "application/json",
+      ...(credentialValue ? { authorization: `Bearer ${credentialValue}` } : {}),
+      ...(this.config.defaultHeaders ?? {})
+    };
+  }
+}
+
+export interface DeepSeekJsonOutputParseResult extends JsonObject {
+  readonly ok: boolean;
+  readonly value?: JsonValue;
+  readonly retryable: boolean;
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export function validateDeepSeekJsonOutputRequest(request: Pick<ModelRequest, "prompt" | "messages" | "output">): DeepSeekJsonOutputValidationResult {
+  if (request.output?.format !== "json_object") return { ok: true, mode: "request", retryable: false, diagnostics: [] };
+  const content = [
+    request.prompt,
+    ...(request.messages ?? []).map((message) => message.content)
+  ].join("\n");
+  const diagnostics: RedactedError[] = [];
+  if (!/\bjson\b/i.test(content)) {
+    diagnostics.push(providerError("DEEPSEEK_JSON_PROMPT_GUARDRAIL_MISSING", "DeepSeek JSON output mode requires prompt or messages to explicitly mention JSON.", false));
+  }
+  if (request.output.maxParseRetries !== undefined && (!Number.isInteger(request.output.maxParseRetries) || request.output.maxParseRetries < 0)) {
+    diagnostics.push(providerError("DEEPSEEK_JSON_RETRY_BUDGET_INVALID", "JSON output maxParseRetries must be a non-negative integer.", false));
+  }
+  return { ok: diagnostics.length === 0, mode: "request", retryable: false, diagnostics };
+}
+
+export function parseDeepSeekJsonOutputResponse(text: string, finishReason: ModelFinishReason = "stop"): DeepSeekJsonOutputParseResult {
+  const trimmed = text.trim();
+  const diagnostics: RedactedError[] = [];
+  if (finishReason === "length") {
+    diagnostics.push(providerError("DEEPSEEK_JSON_RESPONSE_TRUNCATED", "DeepSeek JSON output ended with finish_reason=length.", true));
+  }
+  if (!trimmed) {
+    diagnostics.push(providerError("DEEPSEEK_JSON_RESPONSE_EMPTY", "DeepSeek JSON output was empty.", true));
+    return { ok: false, retryable: true, diagnostics };
+  }
+  try {
+    const value = JSON.parse(trimmed) as JsonValue;
+    if (!isJsonObject(value)) {
+      diagnostics.push(providerError("DEEPSEEK_JSON_RESPONSE_NOT_OBJECT", "DeepSeek JSON output must parse to a JSON object.", true));
+      return { ok: false, retryable: true, diagnostics };
+    }
+    if (diagnostics.length > 0) return { ok: false, value, retryable: true, diagnostics };
+    return { ok: true, value, retryable: false, diagnostics };
+  } catch (error) {
+    diagnostics.push(providerError("DEEPSEEK_JSON_RESPONSE_PARSE_FAILED", error instanceof Error ? error.message : "DeepSeek JSON output parse failed.", true));
+    return { ok: false, retryable: true, diagnostics };
+  }
+}
+
+export function validateDeepSeekStrictToolSchema(tools: readonly JsonObject[]): DeepSeekStrictToolSchemaValidationResult {
+  const unsupportedKeywordPaths: string[] = [];
+  const diagnostics: RedactedError[] = [];
+  for (const [index, tool] of tools.entries()) {
+    if (tool.type !== "function" || !isJsonObject(tool.function)) {
+      diagnostics.push(providerError("DEEPSEEK_STRICT_TOOL_SHAPE_INVALID", `Tool at index ${index} must be an OpenAI function tool.`, false));
+      continue;
+    }
+    const fn = tool.function;
+    if (typeof fn.name !== "string" || !fn.name) {
+      diagnostics.push(providerError("DEEPSEEK_STRICT_TOOL_NAME_INVALID", `Tool at index ${index} must include function.name.`, false));
+    }
+    if (!isJsonObject(fn.parameters)) {
+      diagnostics.push(providerError("DEEPSEEK_STRICT_TOOL_PARAMETERS_INVALID", `Tool at index ${index} must include object function.parameters.`, false));
+      continue;
+    }
+    collectUnsupportedJsonSchemaKeywords(fn.parameters, `tools[${index}].function.parameters`, unsupportedKeywordPaths);
+  }
+  if (unsupportedKeywordPaths.length > 0) {
+    diagnostics.push(providerError("DEEPSEEK_STRICT_TOOL_SCHEMA_UNSUPPORTED_KEYWORD", "Strict DeepSeek tool schemas cannot use unsupported JSON Schema composition/reference keywords.", false, { unsupportedKeywordPaths }));
+  }
+  return {
+    ok: diagnostics.length === 0,
+    diagnostics,
+    unsupportedKeywordPaths
+  };
+}
+
+export function validateDeepSeekAnthropicMessagesRequest(request: DeepSeekAnthropicMessagesRequest): DeepSeekStrictToolSchemaValidationResult {
+  const diagnostics: RedactedError[] = [];
+  const unsupportedKeywordPaths: string[] = [];
+  if (!Number.isInteger(request.maxTokens) || request.maxTokens <= 0) {
+    diagnostics.push(providerError("DEEPSEEK_ANTHROPIC_MAX_TOKENS_INVALID", "DeepSeek Anthropic-compatible messages require a positive integer maxTokens.", false));
+  }
+  for (const [index, message] of request.messages.entries()) {
+    if (message.role !== "user" && message.role !== "assistant") {
+      unsupportedKeywordPaths.push(`messages[${index}].role`);
+    }
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      unsupportedKeywordPaths.push(`messages[${index}].toolCalls`);
+    }
+  }
+  if (unsupportedKeywordPaths.length > 0) {
+    diagnostics.push(providerError("DEEPSEEK_ANTHROPIC_UNSUPPORTED_FIELD", "DeepSeek Anthropic-compatible lane only accepts string user/assistant messages in this adapter.", false, { unsupportedKeywordPaths }));
+  }
+  return { ok: diagnostics.length === 0, diagnostics, unsupportedKeywordPaths };
+}
+
+function deepSeekReasoningEffort(effort: ModelReasoningEffort | ModelReasoningProviderEffort | undefined): "high" | "max" | undefined {
+  switch (effort) {
+    case "low":
+    case "medium":
+    case "high":
+      return "high";
+    case "xhigh":
+    case "max":
+      return "max";
+    case undefined:
+      return undefined;
   }
 }
 
@@ -225,6 +456,15 @@ function providerMessagesFrom(request: ModelRequest): readonly JsonObject[] {
     });
   }
   return messages;
+}
+
+function anthropicMessagesFrom(messages: readonly ModelChatMessage[]): readonly JsonObject[] {
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role,
+      content: message.content
+    }));
 }
 
 export class StaticCredentialProvider implements ModelCredentialProvider {
@@ -519,6 +759,37 @@ function parseToolInput(value: unknown): JsonObject {
 export function formatToolChoice(choice: ModelToolChoice): JsonValue {
   if (choice === "auto" || choice === "required" || choice === "none") return choice;
   return { type: "function", function: { name: choice.name } };
+}
+
+function formatAnthropicToolChoice(choice: ModelToolChoice): JsonValue {
+  if (choice === "auto" || choice === "none") return { type: choice };
+  if (choice === "required") return { type: "any" };
+  return { type: "tool", name: choice.name };
+}
+
+function withStrictToolFlag(tool: JsonObject): JsonObject {
+  if (tool.type !== "function" || !isJsonObject(tool.function)) return tool;
+  return {
+    ...tool,
+    function: {
+      ...tool.function,
+      strict: true
+    }
+  };
+}
+
+function collectUnsupportedJsonSchemaKeywords(value: JsonValue | undefined, path: string, paths: string[]): void {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) collectUnsupportedJsonSchemaKeywords(item, `${path}[${index}]`, paths);
+    return;
+  }
+  if (!isJsonObject(value)) return;
+  const unsupported = new Set(["$ref", "oneOf", "anyOf", "allOf", "not", "if", "then", "else", "dependentRequired", "dependentSchemas", "patternProperties", "unevaluatedProperties", "unevaluatedItems", "contains"]);
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (unsupported.has(key)) paths.push(childPath);
+    collectUnsupportedJsonSchemaKeywords(child, childPath, paths);
+  }
 }
 
 function providerError(code: string, message: string, retryable: boolean, details: JsonObject = {}): RedactedError {

@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   CredentialAuthModelCredentialProvider,
-  createDeepSeekCredentialAuthServiceFromEnv
+  createDeepSeekCredentialAuthServiceFromEnv,
+  deepSeekLiveCredentialProcessEnv
 } from "@deepseek/credential-auth-management";
 import { OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import type { ToolResultFeedback } from "@deepseek/platform-contracts";
+import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
 import { createLiveCliDependencies } from "@deepseek/testing-regression";
 
@@ -22,7 +24,7 @@ describe("DeepSeek live agent tool-loop smoke", () => {
       return;
     }
 
-    const credentialAuth = await createDeepSeekCredentialAuthServiceFromEnv();
+    const credentialAuth = await createDeepSeekCredentialAuthServiceFromEnv(await deepSeekLiveCredentialProcessEnv(new NodePlatformRuntime()));
     const workspaceRoot = process.cwd();
     const deps = createLiveCliDependencies({
       workspaceRoot,

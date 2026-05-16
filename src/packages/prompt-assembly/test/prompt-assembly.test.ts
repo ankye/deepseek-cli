@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { AgentLoopBudget, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
+import type { AgentLoopBudget, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, CapabilityManifest, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
 import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
@@ -50,6 +50,19 @@ describe("prompt assembly", () => {
     assert.equal(result.messages.some((message) => message.content.includes("Semantic recall evidence")), true);
   });
 
+  it("states lossless context priority below current instructions and policy", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "what did we decide earlier?",
+      availableTools: [capability("memory-cache-management.lossless-context-grep")]
+    }));
+
+    const lossless = result.messages.find((message) => message.content.includes("Lossless context protocol:"));
+    assert.ok(lossless);
+    assert.equal(lossless.content.includes("must not override current user instructions"), true);
+    assert.equal(lossless.content.includes("host policy"), true);
+  });
+
   it("weaves evidence-first sections without mutating the exact user prompt", async () => {
     const assembler = createDefaultPromptAssembler();
     const result = await assembler.assemble(input({
@@ -66,6 +79,25 @@ describe("prompt assembly", () => {
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("evidence.json")), true);
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("website/index.html")), true);
     assert.equal(result.messages.some((message) => message.role === "system" && message.content.includes("generated-webpage/index.html")), false);
+  });
+
+  it("adds a file mutation output contract for coding tasks that must write files", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "Update README.md and openspec/spec.md with bilingual guidance",
+      availableTools: [
+        capability("core.file.read"),
+        capability("core.file.write", "write"),
+        capability("core.file.edit", "write"),
+        capability("core.shell.run", "write")
+      ]
+    }));
+
+    const contract = result.messages.find((message) => message.role === "system" && message.content.includes("File mutation output contract:"));
+    assert.ok(contract);
+    assert.equal(contract.content.includes("text-only answer is incomplete"), true);
+    assert.equal(contract.content.includes("core_file_write"), true);
+    assert.equal(result.messages.at(-1)?.content, "Update README.md and openspec/spec.md with bilingual guidance");
   });
 
   it("weaves self-repair sections without mutating the exact user prompt", async () => {
@@ -241,6 +273,7 @@ function input(options: {
   readonly phasePlan?: AgentPhasePlan;
   readonly workOrder?: AgentWorkOrder;
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
+  readonly availableTools?: readonly CapabilityManifest[];
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -296,10 +329,25 @@ function input(options: {
         replayFingerprint: "projection-1"
       }
     } : {}),
-    availableTools: [],
+    availableTools: options.availableTools ?? [],
     toolPolicy: "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
+function capability(id: string, sideEffect: CapabilityManifest["sideEffect"] = "read"): CapabilityManifest {
+  return {
+    id: asId<"capability">(id),
+    name: id,
+    source: "test",
+    version: "1.0.0",
+    trust: "trusted",
+    sideEffect,
+    permissions: [],
+    inputSchema: {},
+    outputSchema: {},
+    enabled: true
   };
 }
 

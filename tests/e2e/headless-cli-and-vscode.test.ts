@@ -104,6 +104,7 @@ describe("host adapter smoke", () => {
       [
         "agent.loop.started",
         "turn.started",
+        "context.lcm.node-recorded",
         "hooks.invoked",
         "mode.interaction.changed",
         "mode.agent.bound",
@@ -126,6 +127,7 @@ describe("host adapter smoke", () => {
         "model.finished",
         "model.done",
         "hooks.invoked",
+        "context.lcm.node-recorded",
         "turn.completed",
         "agent.loop.completed"
       ]

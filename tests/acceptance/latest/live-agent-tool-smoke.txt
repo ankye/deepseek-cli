@@ -1,0 +1,27 @@
+
+> deepseek-cli-platform@0.1.0 smoke:live:agent-tools
+> tsx --test "tests/live/deepseek-agent-tool-live-smoke.test.ts"
+
+TAP version 13
+# Subtest: DeepSeek live agent tool-loop smoke
+    # Subtest: runs a live DeepSeek tool turn only when explicitly enabled
+    ok 1 - runs a live DeepSeek tool turn only when explicitly enabled
+      ---
+      duration_ms: 9835.7896
+      type: 'test'
+      ...
+    1..1
+ok 1 - DeepSeek live agent tool-loop smoke
+  ---
+  duration_ms: 9837.294
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10840.7968

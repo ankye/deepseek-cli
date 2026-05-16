@@ -39,12 +39,50 @@ export interface ReleaseEvidenceFileStatus extends JsonObject {
   readonly redaction: RedactionMetadata;
 }
 
+export interface ReleaseLiveEvidenceFileStatus extends JsonObject {
+  readonly path: string;
+  readonly exists: boolean;
+  readonly status: ReadinessStatus;
+  readonly message: string;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface ReleaseLiveEvidenceSummary extends JsonObject {
+  readonly schemaVersion: string;
+  readonly status: ReadinessStatus;
+  readonly requiredEvidencePaths: readonly string[];
+  readonly files: readonly ReleaseLiveEvidenceFileStatus[];
+  readonly missingEvidencePaths: readonly string[];
+  readonly invalidEvidencePaths: readonly string[];
+  readonly overallDeliveryCapabilityScore?: number;
+  readonly overallDeliveryCapabilityStatus?: string;
+  readonly liveToolCoveredFamilyCount?: number;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface ReleasePublishDryRunEvidence extends JsonObject {
+  readonly path: string;
+  readonly exists: boolean;
+  readonly command: string;
+  readonly packageName: string;
+  readonly packageVersion: string;
+  readonly status: ReadinessStatus;
+  readonly versionMatches: boolean;
+  readonly collisionDetected: boolean;
+  readonly npmErrorDetected: boolean;
+  readonly message: string;
+  readonly preview: string;
+  readonly redaction: RedactionMetadata;
+}
+
 export interface ReleaseVerificationEvidence extends JsonObject {
   readonly schemaVersion: string;
   readonly requiredCommands: readonly string[];
   readonly acceptanceEvidencePaths: readonly string[];
   readonly acceptanceEvidenceFiles?: readonly ReleaseEvidenceFileStatus[];
   readonly missingAcceptanceEvidencePaths?: readonly string[];
+  readonly publishDryRunEvidence?: ReleasePublishDryRunEvidence;
+  readonly liveEvidence?: ReleaseLiveEvidenceSummary;
   readonly referencePitFixtureIds: readonly string[];
   readonly dryRunCommand: string;
   readonly rollbackGuidance: string;

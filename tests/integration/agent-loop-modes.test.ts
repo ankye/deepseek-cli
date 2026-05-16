@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AgentLoopSummary, AgentPhasePlan, AgentReasoningEffortMapping, AgentVerifierResult, ModelGateway, ModelLiveVerificationRequest, ModelLiveVerificationResult, ModelRequest, ModelStreamEvent } from "@deepseek/platform-contracts";
-import { collectRuntimeEvents, createDefaultRuntimeKernel, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
+import { collectRuntimeEvents, createDefaultRuntimeKernel, mapReasoningEffort, registerRuntimeCoreTools, runAgentLoop } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 
@@ -140,6 +140,22 @@ describe("agent loop mode orchestration", () => {
     assert.equal(plan?.budgets.some((budget) => budget.kind === "evidence" && budget.requested === 0), true);
     assert.equal(plan?.budgets.some((budget) => budget.kind === "verification" && budget.requested === 0), true);
     await kernel.shutdown();
+  });
+
+  it("maps DeepSeek low and medium thinking effort to high per provider API contract", () => {
+    const low = mapReasoningEffort({
+      requested: "low",
+      provider: String(defaultDeepSeekProfile.providerId),
+      model: defaultDeepSeekProfile.model
+    });
+    const medium = mapReasoningEffort({
+      requested: "medium",
+      provider: String(defaultDeepSeekProfile.providerId),
+      model: defaultDeepSeekProfile.model
+    });
+
+    assert.equal(low.providerEffort, "high");
+    assert.equal(medium.providerEffort, "high");
   });
 });
 

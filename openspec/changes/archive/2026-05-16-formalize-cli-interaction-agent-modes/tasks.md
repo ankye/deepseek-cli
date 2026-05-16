@@ -85,7 +85,7 @@
 - [x] 10.4 Add contract tests proving scratchpad/checkpoint governance records fingerprints, scopes, and lineage without raw secrets or unbounded content.
 - [x] 10.5 Update acceptance evidence index once mode/agent orchestration checks land.
 - [x] 10.6 Run `openspec validate formalize-cli-interaction-agent-modes --strict`.
-- [ ] 10.7 Run relevant verification commands: `npm run typecheck`, `npm run lint`, `npm test`, `node scripts/check-boundaries.mjs`, and targeted golden/e2e suites after implementation begins.
+- [x] 10.7 Run relevant verification commands: `npm run typecheck`, `npm run lint`, `npm test`, `node scripts/check-boundaries.mjs`, and targeted golden/e2e suites after implementation begins.
 
 ## 11. Documentation And Rollout / 文档与发布
 

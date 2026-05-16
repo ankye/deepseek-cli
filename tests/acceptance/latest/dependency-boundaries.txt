@@ -2,7 +2,7 @@
 
 Command: node scripts/check-boundaries.mjs
 Exit Code: 0
-Duration Ms: 3335
+Duration Ms: 5928
 
 ## stdout
 dependency boundaries passed for 29 packages from src (19 rules)

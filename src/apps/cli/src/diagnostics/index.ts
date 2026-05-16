@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type {
   AgentLoopOutputMode,
   CliEvaluationComparisonSummary,
@@ -23,6 +24,8 @@ import { refreshAcceptanceEvidence, refreshStepRecord } from "./refresh-evidence
 import { collectCliEvaluation, evaluationJsonLines } from "./evaluation.js";
 import { collectModeMatrix } from "./mode-matrix.js";
 import type { CliModeMatrixSummary } from "./mode-matrix.js";
+import { collectDeliveryCapabilitySummary } from "./delivery-capability.js";
+import type { CliDeliveryCapabilitySummary } from "./delivery-capability.js";
 import { collectPackageScorecards, releasePackageScorecardAdvisory } from "./package-scorecard.js";
 
 export interface CliDiagnosticNotice {
@@ -44,6 +47,7 @@ export interface CliDiagnosticsResult extends JsonObject {
   readonly evaluation?: CliEvaluationComparisonSummary;
   readonly indexProviders?: IndexProviderDiagnosticsSummary;
   readonly modeMatrix?: CliModeMatrixSummary;
+  readonly overallDeliveryCapability?: CliDeliveryCapabilitySummary;
   readonly referencePitFixtureIds: readonly string[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
 }
@@ -98,12 +102,21 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
     lines.push(`- generated bundle ignored: ${String(result.release.packageSurface.generatedBundleIgnored)}`);
     lines.push(`- verify: ${result.release.verification.requiredCommands.join(" && ")}`);
     lines.push(`- evidence: ${result.release.verification.acceptanceEvidencePaths.join(", ")}`);
+    if (result.release.verification.liveEvidence) {
+      const evidence = result.release.verification.liveEvidence;
+      lines.push(`- live release evidence: ${evidence.status} missing=${evidence.missingEvidencePaths.length} invalid=${evidence.invalidEvidencePaths.length}`);
+    }
+    if (result.release.verification.publishDryRunEvidence) {
+      const evidence = result.release.verification.publishDryRunEvidence;
+      lines.push(`- publish dry-run evidence: ${evidence.status} (${evidence.path})`);
+    }
     if ((result.release.verification.missingAcceptanceEvidencePaths?.length ?? 0) > 0) {
       lines.push(`- missing evidence: ${result.release.verification.missingAcceptanceEvidencePaths?.join(", ")}`);
     }
     if (result.release.packageScorecardAdvisory) {
       const aggregate = result.release.packageScorecardAdvisory.aggregate;
-      lines.push(`- package scorecards: advisory ${result.release.packageScorecardAdvisory.status} packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} objective=${aggregate.averageObjectiveScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
+      lines.push(`- package delivery capability: advisory ${result.release.packageScorecardAdvisory.status} score=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} target=${aggregate.deliveryCapabilityTargetScore} passed=${aggregate.deliveryCapabilityPassedPackageCount}/${aggregate.deliveryCapabilityTotalPackageCount} gate=${aggregate.deliveryCapabilityPassed ? "pass" : "blocked"}`);
+      lines.push(`- package scorecards: packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} delivery=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
     }
     for (const check of result.release.checks) lines.push(`- ${check.id}: ${check.status} - ${check.message}`);
   }
@@ -138,11 +151,13 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
     lines.push(`- task runs: ${result.evaluation.taskRuns.length}`);
     if (result.evaluation.packageScorecardAggregate) {
       const aggregate = result.evaluation.packageScorecardAggregate;
-      lines.push(`- package scorecards: packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} objective=${aggregate.averageObjectiveScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
+      lines.push(`- package delivery capability: score=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} target=${aggregate.deliveryCapabilityTargetScore} passed=${aggregate.deliveryCapabilityPassedPackageCount}/${aggregate.deliveryCapabilityTotalPackageCount} gate=${aggregate.deliveryCapabilityPassed ? "pass" : "blocked"}`);
+      lines.push(`- package scorecards: packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} delivery=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
     }
     if (result.evaluation.toolFamilyParityMatrix) {
       const matrix = result.evaluation.toolFamilyParityMatrix;
-      lines.push(`- tool family parity: families=${matrix.totalFamilyCount} implemented=${matrix.implementedFamilyCount} execution=${matrix.executionCoveredFamilyCount} fake=${matrix.fakeCoveredFamilyCount} replayed=${matrix.replayedCoveredFamilyCount} live=${matrix.liveCoveredFamilyCount} task=${matrix.taskCoveredFamilyCount} safety=${matrix.safetyCoveredFamilyCount} provider-native=${matrix.providerNativeSupportedFamilyCount} planned=${matrix.plannedFamilyCount} absent=${matrix.absentFamilyCount} unavailable=${matrix.unavailableFamilyCount} objective=${matrix.objectiveScore}`);
+      lines.push(`- tool family delivery capability: score=${matrix.deliveryCapabilityScore} target=${matrix.deliveryCapabilityTargetScore} passed=${matrix.deliveryCapabilityPassedFamilyCount}/${matrix.totalFamilyCount} gate=${matrix.deliveryCapabilityPassed ? "pass" : "blocked"}`);
+      lines.push(`- tool family parity: families=${matrix.totalFamilyCount} implemented=${matrix.implementedFamilyCount} execution=${matrix.executionCoveredFamilyCount} fake=${matrix.fakeCoveredFamilyCount} replayed=${matrix.replayedCoveredFamilyCount} live=${matrix.liveCoveredFamilyCount} task=${matrix.taskCoveredFamilyCount} safety=${matrix.safetyCoveredFamilyCount} provider-native=${matrix.providerNativeSupportedFamilyCount} planned=${matrix.plannedFamilyCount} absent=${matrix.absentFamilyCount} unavailable=${matrix.unavailableFamilyCount} delivery=${matrix.objectiveScore}`);
     }
     lines.push(`- next action: ${result.evaluation.nextAction}`);
     for (const run of result.evaluation.taskRuns) {
@@ -153,10 +168,24 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
     }
   }
   if (result.modeMatrix) {
+    lines.push(`- mode delivery capability: score=${result.modeMatrix.modeDeliveryCapabilityScore} target=${result.modeMatrix.modeDeliveryCapabilityTargetScore} complete=${result.modeMatrix.modeDeliveryCapabilityCompletedCount}/${result.modeMatrix.modeDeliveryCapabilityTotalCount} gate=${result.modeMatrix.modeDeliveryCapabilityPassed ? "pass" : "blocked"}`);
     lines.push(`- interaction modes: ${modeMatrixStatusText(result.modeMatrix.interactionModes)}`);
     lines.push(`- agent modes: ${modeMatrixStatusText(result.modeMatrix.agentModes)}`);
     if (result.modeMatrix.missingAcceptanceEvidence.length > 0) lines.push(`- missing mode evidence: ${result.modeMatrix.missingAcceptanceEvidence.join(", ")}`);
     if (result.modeMatrix.nextTasks.length > 0) lines.push(`- mode next tasks: ${result.modeMatrix.nextTasks.join(", ")}`);
+  }
+  if (result.overallDeliveryCapability) {
+    const delivery = result.overallDeliveryCapability;
+    lines.push(`- overall delivery capability: score=${delivery.score} target=${delivery.targetScore} unfinished=${delivery.unfinishedTargetCount} penalty=${delivery.unfinishedPenaltyPerItem} gate=${delivery.status}`);
+    if (typeof delivery.evaluationTaskScore === "number") lines.push(`- evaluation task delivery capability: score=${delivery.evaluationTaskScore} target=1 solved=${delivery.evaluationTaskSolvedCount}/${delivery.evaluationTaskTotalCount} gate=${delivery.evaluationTaskGatePassed ? "pass" : "blocked"}`);
+    lines.push(`- deepseek api delivery capability: score=${delivery.deepSeekApiScore} target=${delivery.targetScore} passed=${delivery.deepSeekApiPassedCount}/${delivery.deepSeekApiTotalCount} gate=${delivery.deepSeekApiGatePassed ? "pass" : "blocked"}`);
+    lines.push(`- memory delivery capability: score=${delivery.memoryScore} target=${delivery.targetScore} passed=${delivery.memoryPassedCount}/${delivery.memoryTotalCount} gate=${delivery.memoryGatePassed ? "pass" : "blocked"}`);
+    lines.push(`- cache observability delivery capability: score=${delivery.cacheObservabilityScore} target=${delivery.targetScore} passed=${delivery.cacheObservabilityPassedCount}/${delivery.cacheObservabilityTotalCount} gate=${delivery.cacheObservabilityGatePassed ? "pass" : "blocked"}`);
+    if (delivery.blockingFamilyIds.length > 0) lines.push(`- blocking tool families: ${delivery.blockingFamilyIds.join(", ")}`);
+    if (delivery.blockingModeIds.length > 0) lines.push(`- blocking modes: ${delivery.blockingModeIds.join(", ")}`);
+    if (delivery.blockingPackageIds.length > 0) lines.push(`- blocking packages: ${delivery.blockingPackageIds.join(", ")}`);
+    if (delivery.blockingEvaluationTaskIds.length > 0) lines.push(`- blocking evaluation tasks: ${delivery.blockingEvaluationTaskIds.join(", ")}`);
+    if (delivery.blockingCapabilityIds.length > 0) lines.push(`- blocking capabilities: ${delivery.blockingCapabilityIds.join(", ")}`);
   }
   lines.push(`- reference pits: ${result.referencePitFixtureIds.join(", ")}`);
   return lines;
@@ -269,16 +298,133 @@ async function evaluateDiagnostics(options: CliOptions): Promise<CliDiagnosticsR
       ? options.diagnosticsInput.extraArgs.filter((item): item is string => typeof item === "string")
       : []
   });
+  const modeMatrix = await collectModeMatrix();
+  const overallDeliveryCapability = collectDeliveryCapabilitySummary(evaluation, modeMatrix);
+  if (
+    options.live === true &&
+    options.diagnosticsInput?.dryRun !== true &&
+    options.diagnosticsInput?.executeTask === "all" &&
+    overallDeliveryCapability
+  ) {
+    await writeEvaluationDeliveryCapabilityEvidence(evaluation, modeMatrix, overallDeliveryCapability);
+  }
   return {
     schemaVersion: diagnosticsSchemaVersion,
     kind: "diagnostics.evaluate",
     status: evaluation.status,
     command: "evaluate",
     evaluation,
-    modeMatrix: await collectModeMatrix(),
+    modeMatrix,
+    ...(overallDeliveryCapability ? { overallDeliveryCapability } : {}),
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["evaluation.taskRuns.task.promptDigest", "evaluation.evidencePaths", "modeMatrix.missingAcceptanceEvidence"] }
+    redaction: { class: "internal", fields: ["evaluation.taskRuns.task.promptDigest", "evaluation.evidencePaths", "modeMatrix.missingAcceptanceEvidence", "overallDeliveryCapability.blockingFamilyIds", "overallDeliveryCapability.blockingModeIds", "overallDeliveryCapability.blockingPackageIds", "overallDeliveryCapability.blockingEvaluationTaskIds", "overallDeliveryCapability.blockingCapabilityIds"] }
   };
+}
+
+async function writeEvaluationDeliveryCapabilityEvidence(
+  evaluation: CliEvaluationComparisonSummary,
+  modeMatrix: CliModeMatrixSummary,
+  overallDeliveryCapability: CliDeliveryCapabilitySummary
+): Promise<void> {
+  const outputPath = join(process.cwd(), "tests", "acceptance", "latest", "overall-delivery-capability-score.json");
+  const evidence = {
+    schemaVersion: "1.0.0",
+    kind: "cli.overall-delivery-capability-score.evidence",
+    generatedAt: new Date().toISOString(),
+    command: "npx tsx src/apps/cli/src/index.ts diagnostics evaluate --full --execute-task all --live --output text",
+    status: overallDeliveryCapability.status === "pass" ? "pass" : "blocked",
+    scoringMethod: overallDeliveryCapability.scoringMethod,
+    score: overallDeliveryCapability.score,
+    targetScore: overallDeliveryCapability.targetScore,
+    unfinishedPenaltyPerItem: overallDeliveryCapability.unfinishedPenaltyPerItem,
+    unfinishedTargetCount: overallDeliveryCapability.unfinishedTargetCount,
+    unfinishedTargetIds: overallDeliveryCapability.unfinishedTargetIds,
+    passedTargetCount: overallDeliveryCapability.passedTargetCount,
+    totalTargetCount: overallDeliveryCapability.totalTargetCount,
+    dimensions: overallDeliveryCapability.dimensions,
+    toolFamily: {
+      score: overallDeliveryCapability.toolFamilyScore,
+      passedFamilyCount: overallDeliveryCapability.toolFamilyPassedCount,
+      totalFamilyCount: overallDeliveryCapability.toolFamilyTotalCount,
+      gate: overallDeliveryCapability.toolFamilyGatePassed ? "pass" : "blocked",
+      fakeCoveredFamilyCount: evaluation.toolFamilyParityMatrix?.fakeCoveredFamilyCount,
+      replayedCoveredFamilyCount: evaluation.toolFamilyParityMatrix?.replayedCoveredFamilyCount,
+      liveCoveredFamilyCount: evaluation.toolFamilyParityMatrix?.liveCoveredFamilyCount,
+      taskCoveredFamilyCount: evaluation.toolFamilyParityMatrix?.taskCoveredFamilyCount,
+      safetyCoveredFamilyCount: evaluation.toolFamilyParityMatrix?.safetyCoveredFamilyCount,
+      providerNativeSupportedFamilyCount: evaluation.toolFamilyParityMatrix?.providerNativeSupportedFamilyCount,
+      sourceEvidencePath: "tests/acceptance/latest/live-tool-coverage.json"
+    },
+    modeMatrix: {
+      score: overallDeliveryCapability.modeScore,
+      completedModeCount: overallDeliveryCapability.modeCompleteCount,
+      totalModeCount: overallDeliveryCapability.modeTotalCount,
+      gate: overallDeliveryCapability.modeGatePassed ? "pass" : "blocked",
+      blockingModeIds: overallDeliveryCapability.blockingModeIds
+    },
+    packageScorecards: {
+      score: overallDeliveryCapability.packageScore,
+      passedPackageCount: overallDeliveryCapability.packagePassedCount,
+      totalPackageCount: overallDeliveryCapability.packageTotalCount,
+      gate: overallDeliveryCapability.packageGatePassed ? "pass" : "blocked",
+      blockingPackageIds: overallDeliveryCapability.blockingPackageIds
+    },
+    evaluationTasks: {
+      score: overallDeliveryCapability.evaluationTaskScore,
+      solvedTaskCount: overallDeliveryCapability.evaluationTaskSolvedCount,
+      totalTaskCount: overallDeliveryCapability.evaluationTaskTotalCount,
+      gate: overallDeliveryCapability.evaluationTaskGatePassed ? "pass" : "blocked",
+      blockingTaskIds: overallDeliveryCapability.blockingEvaluationTaskIds,
+      taskRuns: evaluation.taskRuns
+        .filter((run) => run.baseline.baselineId === "deepseek-cli")
+        .map((run) => ({
+          taskId: run.task.taskId,
+          outcome: run.outcome,
+          checkPassRate: run.metrics.checkPassRate,
+          retryCount: run.metrics.retryCount,
+          evidenceManifestStatus: run.metrics.evidenceManifestStatus,
+          unsupportedClaimCount: run.metrics.unsupportedClaimCount,
+          hallucinatedCommandCount: run.metrics.hallucinatedCommandCount,
+          repairMetricsAvailability: run.metrics.repairMetricsAvailability,
+          repairActivationCount: run.metrics.repairActivationCount,
+          repairSuccessCount: run.metrics.repairSuccessCount
+        }))
+    },
+    deepSeekApi: {
+      score: overallDeliveryCapability.deepSeekApiScore,
+      passedCount: overallDeliveryCapability.deepSeekApiPassedCount,
+      totalCount: overallDeliveryCapability.deepSeekApiTotalCount,
+      gate: overallDeliveryCapability.deepSeekApiGatePassed ? "pass" : "blocked"
+    },
+    memory: {
+      score: overallDeliveryCapability.memoryScore,
+      passedCount: overallDeliveryCapability.memoryPassedCount,
+      totalCount: overallDeliveryCapability.memoryTotalCount,
+      gate: overallDeliveryCapability.memoryGatePassed ? "pass" : "blocked"
+    },
+    cacheObservability: {
+      score: overallDeliveryCapability.cacheObservabilityScore,
+      passedCount: overallDeliveryCapability.cacheObservabilityPassedCount,
+      totalCount: overallDeliveryCapability.cacheObservabilityTotalCount,
+      gate: overallDeliveryCapability.cacheObservabilityGatePassed ? "pass" : "blocked"
+    },
+    blockingCapabilityIds: overallDeliveryCapability.blockingCapabilityIds,
+    calculation: `max(0, 1 - ${overallDeliveryCapability.unfinishedTargetCount} unfinished targets * ${overallDeliveryCapability.unfinishedPenaltyPerItem})`,
+    redaction: {
+      class: "internal",
+      fields: [
+        "modeMatrix.blockingModeIds",
+        "packageScorecards.blockingPackageIds",
+        "evaluationTasks.blockingTaskIds",
+        "dimensions.blockingIds",
+        "blockingCapabilityIds",
+        "unfinishedTargetIds"
+      ]
+    }
+  };
+  const platform = new NodePlatformRuntime();
+  await platform.ensureDirectory(join(process.cwd(), "tests", "acceptance", "latest"));
+  await platform.writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
 }
 
 async function doctorDiagnostics(options: CliOptions): Promise<CliDiagnosticsResult> {
@@ -512,6 +658,14 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
         redaction: mode.redaction
       });
     }
+  }
+  if (result.overallDeliveryCapability) {
+    entries.push({
+      schemaVersion: result.schemaVersion,
+      kind: "diagnostics.delivery-capability.summary",
+      deliveryCapability: result.overallDeliveryCapability,
+      redaction: result.overallDeliveryCapability.redaction
+    });
   }
   return entries;
 }

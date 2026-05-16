@@ -2,9 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   CredentialAuthModelCredentialProvider,
-  createDeepSeekCredentialAuthServiceFromEnv
+  createDeepSeekCredentialAuthServiceFromEnv,
+  deepSeekLiveCredentialProcessEnv
 } from "@deepseek/credential-auth-management";
 import { DeepSeekOpenAIProvider, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
+import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 
 describe("DeepSeek auth live verification", () => {
   it("verifies live connectivity only when explicitly enabled", async (testContext) => {
@@ -13,7 +15,7 @@ describe("DeepSeek auth live verification", () => {
       return;
     }
 
-    const auth = await createDeepSeekCredentialAuthServiceFromEnv();
+    const auth = await createDeepSeekCredentialAuthServiceFromEnv(await deepSeekLiveCredentialProcessEnv(new NodePlatformRuntime()));
     const provider = new DeepSeekOpenAIProvider({
       credentials: new CredentialAuthModelCredentialProvider(auth),
       transport: new OpenAIModelProviderTransport(),

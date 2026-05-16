@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DeepSeekCredentialAuthService, InMemoryCredentialStorageAdapter } from "@deepseek/credential-auth-management";
+import {
+  CredentialAuthModelCredentialProvider,
+  DeepSeekCredentialAuthService,
+  InMemoryCredentialStorageAdapter,
+  createDeepSeekCredentialAuthServiceFromEnv,
+  deepSeekLiveCredentialProcessEnv
+} from "@deepseek/credential-auth-management";
 import { asId } from "@deepseek/platform-contracts";
 import type { ConfigDocument, ModelLiveVerificationResult, ReadinessLiveCheckInput } from "@deepseek/platform-contracts";
 
@@ -28,6 +34,20 @@ describe("persistent config and auth contracts", () => {
     assert.equal(stored.ok, true);
     assert.equal(stored.value?.available, true);
     assert.equal(JSON.stringify(stored).includes(fakeSecret), false);
+  });
+
+  it("hydrates live credentials from a workspace env file without exposing the raw token in references", async () => {
+    const env = await deepSeekLiveCredentialProcessEnv({
+      readFile: async () => `DEEPSEEK_TOKEN=${fakeSecret}\n`
+    }, "/workspace", {});
+    const service = await createDeepSeekCredentialAuthServiceFromEnv(env);
+    const request = {} as Parameters<CredentialAuthModelCredentialProvider["resolve"]>[1];
+    const credential = await new CredentialAuthModelCredentialProvider(service).resolve(asId<"credentialRef">("credential-deepseek-api-key"), request);
+    const references = await service.listDeepSeekCredentials();
+
+    assert.equal(credential?.value, fakeSecret);
+    assert.equal(references.length, 1);
+    assert.equal(JSON.stringify(references).includes(fakeSecret), false);
   });
 
   it("defines readiness live-check and live verification result shapes", () => {

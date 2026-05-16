@@ -1,10 +1,8 @@
 import { join } from "node:path";
-import { deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
 import type {
   CliEvaluationBaselineDefinition,
   CliEvaluationComparisonSummary,
   CliEvaluationDiagnostic,
-  CliEvaluationInstrumentationEvent,
   CliEvaluationMode,
   CliEvaluationPublicBenchmarkReference,
   CliEvaluationTaskDefinition,
@@ -16,39 +14,18 @@ import type { ToolFamilyId, ToolFamilyParityMatrix } from "@deepseek/platform-co
 import { CLI_TASK_EVALUATION_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { buildToolFamilyParityMatrix, coreCapabilityFamilyMappings } from "@deepseek/core-coding-tools";
-import { generatedArtifactMetrics } from "./generated-artifacts.js";
 import {
   aggregateBaselines,
   deriveGapFindings,
-  emptyMetrics,
-  evidenceCredit,
-  extractRuntimeSignals,
-  loopBudgetMetrics,
-  metricAvailabilityForRun,
-  overDelegationFlag,
-  phaseUsageMetrics,
-  reconciliationCredit,
-  repairCredit,
-  repairQuality,
-  repairMetricsFromStdout,
-  roundRatio,
-  verificationCredit,
-  verifierQuality
+  emptyMetrics
 } from "./evaluation-metrics.js";
-import { promptAssemblyMetricsFromJsonl } from "./prompt-assembly-metrics.js";
-import { checkerDiagnostics, evidenceManifestStatus, parseCheckerOutput, webpageProjectEvidence } from "./webpage-evidence.js";
+import { executeEvaluationTask, shouldRetryEvaluationTask } from "./evaluation-task-execution.js";
 import { collectPackageScorecards } from "./package-scorecard.js";
-import { readLiveToolCoverageEvidence } from "./tool-live-coverage.js";
-import { webpageTaskPrompt } from "./webpage-task.js";
+import { readLiveToolCoverageEvidence, type LiveToolCoverageRecord } from "./tool-live-coverage.js";
 
 interface CatalogFile extends JsonObject {
   readonly catalogVersion?: string;
   readonly tasks?: readonly JsonObject[];
-}
-
-interface EvaluationEventRecorder {
-  readonly events: () => readonly CliEvaluationInstrumentationEvent[];
-  readonly record: (kind: CliEvaluationInstrumentationEvent["kind"], metadata?: JsonObject) => void;
 }
 
 export interface CliEvaluationOptions {
@@ -78,14 +55,19 @@ export async function collectCliEvaluation(options: CliEvaluationOptions): Promi
     return comparisonSummary(options, catalog.catalogVersion, baselines, [], [diagnostic("CLI_EVALUATION_INVALID_ARGS", "error", `diagnostics evaluate received ${options.extraArgs.length} unsupported argument(s).`)]);
   }
   const selectedTasks = catalog.tasks.filter((task) => options.mode === "full" || task.mode === "smoke");
-  const runs = (await Promise.all(baselines.map(async (baseline) => Promise.all(selectedTasks.map((task) => taskRun(platform, task, baseline, options)))))).flat();
+  const runs: CliEvaluationTaskRunRecord[] = [];
+  for (const baseline of baselines) {
+    for (const task of selectedTasks) {
+      runs.push(await taskRun(platform, task, baseline, options));
+    }
+  }
   const packageScorecards = await collectPackageScorecards(platform);
   const toolFamilyParityMatrix = await collectToolFamilyParityMatrix(platform);
   const diagnostics = [
     ...baselines
       .filter((baseline) => baseline.status !== "available")
       .map((baseline) => diagnostic("CLI_EVALUATION_BASELINE_DEFERRED", "warn", `${baseline.baselineId} baseline is ${baseline.status}; configure an adapter before comparing live task completion.`)),
-    ...(options.executeTaskId && !selectedTasks.some((task) => task.taskId === options.executeTaskId)
+    ...(options.executeTaskId && options.executeTaskId !== "all" && !selectedTasks.some((task) => task.taskId === options.executeTaskId)
       ? [diagnostic("CLI_EVALUATION_EXECUTE_TASK_NOT_SELECTED", "error", `${options.executeTaskId} is not selected by ${options.mode} evaluation mode.`)]
       : [])
   ];
@@ -305,271 +287,25 @@ async function taskRun(
   baseline: CliEvaluationBaselineDefinition,
   options: CliEvaluationOptions
 ): Promise<CliEvaluationTaskRunRecord> {
-  const shouldExecute = !options.dryRun && options.executeTaskId === task.taskId && task.taskId === "eval.webpage.generation" && baseline.status === "available";
+  const shouldExecute = !options.dryRun && (options.executeTaskId === task.taskId || options.executeTaskId === "all") && baseline.status === "available";
   if (!shouldExecute) return plannedRun(task, baseline, options.dryRun);
-  return executeWebpageTask(platform, task, baseline, options);
-}
-
-async function executeWebpageTask(
-  platform: PlatformRuntime,
-  task: CliEvaluationTaskDefinition,
-  baseline: CliEvaluationBaselineDefinition,
-  options: CliEvaluationOptions
-): Promise<CliEvaluationTaskRunRecord> {
-  const runId = `eval:${baseline.baselineId}:${task.taskId}`;
-  const events = createEventRecorder(runId, baseline.baselineId, task.taskId);
-  events.record("run_started", { dryRun: false });
-  const workspaceRoot = await isolatedWorkspaceRoot(platform, runId);
-  events.record("workspace_created", { workspaceRoot });
-  const generatedDir = platform.resolvePath(workspaceRoot, "generated-webpage");
-  await platform.ensureDirectory(generatedDir);
-  const projectEvidencePath = platform.resolvePath(workspaceRoot, "PROJECT-EVIDENCE.md");
-  await platform.writeFile(projectEvidencePath, await webpageProjectEvidence(platform));
-  events.record("evidence_written", { path: projectEvidencePath, purpose: "webpage-project-evidence" });
-  await platform.writeFile(platform.resolvePath(workspaceRoot, "TASK.md"), webpageTaskPrompt(task));
-  events.record("prompt_written", { path: platform.resolvePath(workspaceRoot, "TASK.md") });
-
-  const started = Date.now();
-  const command = await baselineCommandForExecution(platform, baseline.baselineId, options, workspaceRoot, webpageTaskPrompt(task));
-  if (!command) {
-    return {
-      ...plannedRun(task, baseline, false),
-      outcome: "invalid",
-      diagnostics: [diagnostic("CLI_EVALUATION_EXECUTION_ADAPTER_UNAVAILABLE", "error", `${baseline.baselineId} has no execution adapter for ${task.taskId}.`)],
-      evidencePaths: [workspaceRoot],
-      metrics: { ...emptyMetrics(), elapsedMs: Date.now() - started },
-      instrumentationEvents: withRecordedEvent(events, "run_finished", { outcome: "invalid" }),
-      redaction: { class: "internal", fields: ["task.promptDigest", "checks.command", "evidencePaths", "diagnostics.metadata"] }
-    };
-  }
-
-  events.record("prompt_sent", { adapter: baseline.baselineId });
-  events.record("command_started", { command: command.command, argCount: command.args.length });
-  const runResult = await platform.runProcess(command.command, command.args, {
-    cwd: workspaceRoot,
-    timeoutMs: task.timeBudgetMs,
-    ...(command.env ? { env: command.env } : {})
-  });
-  events.record("command_finished", { exitCode: runResult.exitCode, stdoutBytes: byteLength(runResult.stdout), stderrBytes: byteLength(runResult.stderr) });
-  const promptAssembly = baseline.baselineId === "deepseek-cli" ? promptAssemblyMetricsFromJsonl(runResult.stdout) : { available: false, gapReason: "not-applicable" as const };
-  const runtimeSignals = extractRuntimeSignals(runResult.stdout);
-  const checkCommand = task.checkCommands[0] ?? "node scripts/check-webpage-generation.mjs tests/evaluation/generated-webpage";
-  events.record("checker_started", { command: checkCommand });
-  const checkerResult = await platform.runProcess(process.execPath, [join(process.cwd(), "scripts/check-webpage-generation.mjs"), generatedDir], { cwd: process.cwd(), timeoutMs: 60_000 });
-  events.record("checker_finished", { exitCode: checkerResult.exitCode, stdoutBytes: byteLength(checkerResult.stdout), stderrBytes: byteLength(checkerResult.stderr) });
-  const checkerOutput = parseCheckerOutput(checkerResult.stdout);
-  events.record("artifact_scan_started", { generatedDir });
-  const artifactMetrics = await generatedArtifactMetrics(platform, generatedDir);
-  events.record("artifact_scan_finished", {
-    fileCount: artifactMetrics.fileCount,
-    byteTotal: artifactMetrics.byteTotal,
-    structureScore: artifactMetrics.structureScore
-  });
-  const elapsedMs = Date.now() - started;
-  const checkPassed = checkerResult.exitCode === 0;
-  const commandFailed = runResult.exitCode !== 0;
-  const commandFailureCount = (commandFailed ? 1 : 0) + (checkPassed ? 0 : 1);
-  const commandRunCount = 2;
-  const commandSuccessCount = (commandFailed ? 0 : 1) + (checkPassed ? 1 : 0);
-  const correctionCount = correctionSignalCount([runResult.stdout, runResult.stderr].join("\n"));
-  const outcome = checkPassed ? "solved" : commandFailed ? "failed" : "invalid";
-  const stdoutPreview = boundedPreview(runResult.stdout);
-  const stderrPreview = boundedPreview(runResult.stderr);
-  const repairMetrics = repairMetricsFromStdout(runResult.stdout);
-  await platform.writeFile(platform.resolvePath(workspaceRoot, "baseline-output.txt"), [
-    `# ${baseline.baselineId}`,
-    "",
-    `Command: ${command.command} ${command.args.map(redactPromptArg).join(" ")}`,
-    `Exit Code: ${runResult.exitCode}`,
-    "",
-    "## stdout",
-    stdoutPreview,
-    "",
-    "## stderr",
-    stderrPreview,
-    ""
-  ].join("\n"));
-  events.record("evidence_written", { path: platform.resolvePath(workspaceRoot, "baseline-output.txt") });
-  events.record("run_finished", { outcome, elapsedMs });
-
+  const execute = () => executeEvaluationTask(platform, task, baseline, options);
+  const first = await execute();
+  if (!shouldRetryEvaluationTask(first, baseline, options)) return first;
+  const second = await execute();
   return {
-    schemaVersion: CLI_TASK_EVALUATION_SCHEMA_VERSION,
-    kind: "cli.evaluation.task-run",
-    runId,
-    task,
-    baseline,
-    dryRun: false,
-    outcome,
-    checks: [{
-      command: checkCommand,
-      status: checkPassed ? "pass" : "fail",
-      exitCode: checkerResult.exitCode,
-      evidencePath: generatedDir,
-      stdoutPreview: boundedPreview(checkerResult.stdout),
-      stderrPreview: boundedPreview(checkerResult.stderr),
-      redaction: { class: "internal", fields: ["command", "evidencePath", "stdoutPreview", "stderrPreview"] }
-    }],
+    ...second,
     metrics: {
-      elapsedMs,
-      firstRunSuccess: checkPassed && !commandFailed,
-      checkPassRate: checkPassed ? 1 : 0,
-      retryCount: 0,
-      userInterventionCount: 0,
-      safetyViolationCount: 0,
-      correctionCount,
-      commandRunCount,
-      commandSuccessCount,
-      commandSuccessRate: roundRatio(commandSuccessCount / commandRunCount),
-      commandFailureCount,
-      generatedFileCount: artifactMetrics.fileCount,
-      generatedHtmlFileCount: artifactMetrics.htmlFileCount,
-      generatedCssFileCount: artifactMetrics.cssFileCount,
-      generatedJsFileCount: artifactMetrics.jsFileCount,
-      generatedByteTotal: artifactMetrics.byteTotal,
-      largestGeneratedFileBytes: artifactMetrics.largestFileBytes,
-      codeStructureScore: artifactMetrics.structureScore,
-      contextRecallQuality: "not-applicable",
-      firstPassSuccess: checkPassed && !commandFailed,
-      repairActivationCount: repairMetrics.repairActivationCount,
-      repairSuccessCount: repairMetrics.repairSuccessCount,
-      ...(repairMetrics.repairActivationCount > 0 ? { repairSuccessRate: roundRatio(repairMetrics.repairSuccessCount / repairMetrics.repairActivationCount) } : {}),
-      failedVerificationCount: 0,
-      correctedVerificationCount: correctionCount > 0 && checkPassed ? 1 : 0,
-      repeatedIneffectiveAttemptCount: 0,
-      ...(repairMetrics.repairStopReason ? { repairStopReason: repairMetrics.repairStopReason } : {}),
-      repairMetricsAvailability: baseline.baselineId === "deepseek-cli" ? "available" : "unavailable",
-      promptAssemblyAvailable: promptAssembly.available,
-      ...(promptAssembly.fingerprint ? { promptAssemblyFingerprint: promptAssembly.fingerprint } : {}),
-      ...(promptAssembly.sectionCount !== undefined ? { promptAssemblySectionCount: promptAssembly.sectionCount } : {}),
-      ...(promptAssembly.excludedSectionCount !== undefined ? { promptAssemblyExcludedSectionCount: promptAssembly.excludedSectionCount } : {}),
-      ...(promptAssembly.budgetStatus ? { promptAssemblyBudgetStatus: promptAssembly.budgetStatus } : {}),
-      ...(promptAssembly.visibleToolCount !== undefined ? { promptAssemblyVisibleToolCount: promptAssembly.visibleToolCount } : {}),
-      ...(promptAssembly.gapReason ? { promptAssemblyGapReason: promptAssembly.gapReason } : {}),
-      evidencePlanPresent: true,
-      evidenceItemCount: checkerOutput?.evidence?.evidenceItemCount ?? 0,
-      evidenceSourceCoverageRate: checkerOutput?.evidence?.sourceCoverageRate ?? 0,
-      claimGroundingRate: checkerOutput?.evidence?.claimGroundingRate ?? 0,
-      unsupportedClaimCount: checkerOutput?.evidence?.unsupportedClaimCount ?? 0,
-      assumptionCount: checkerOutput?.evidence?.assumptionCount ?? 0,
-      hallucinatedCommandCount: checkerOutput?.evidence?.hallucinatedCommandCount ?? 0,
-      evidenceManifestStatus: evidenceManifestStatus(checkerOutput),
-      phaseUsage: phaseUsageMetrics(checkerOutput, runtimeSignals, checkPassed),
-      loopBudgets: loopBudgetMetrics(runtimeSignals),
-      workerFanOut: runtimeSignals.workerFanOut,
-      overDelegationFlag: overDelegationFlag(runtimeSignals, commandRunCount, task),
-      ...(overDelegationFlag(runtimeSignals, commandRunCount, task) ? { overDelegationReason: "worker fan-out exceeded useful parallelism for the scenario." } : {}),
-      verifierQuality: verifierQuality(checkerOutput, runtimeSignals, checkPassed),
-      repairQuality: repairQuality(runtimeSignals, correctionCount),
-      ...(runtimeSignals.reasoningEffort ? { reasoningEffort: runtimeSignals.reasoningEffort } : {}),
-      ...(runtimeSignals.providerMappedEffort ? { providerMappedEffort: runtimeSignals.providerMappedEffort } : {}),
-      evidenceCredit: evidenceCredit(checkerOutput),
-      verificationCredit: verificationCredit(checkerOutput, runtimeSignals, checkPassed),
-      repairCredit: repairCredit(runtimeSignals, correctionCount),
-      reconciliationCredit: reconciliationCredit(runtimeSignals, checkPassed),
-      metricAvailability: metricAvailabilityForRun(baseline, runtimeSignals, checkerOutput),
-      recoveryUsed: correctionCount > 0,
-      redaction: { class: "internal", fields: ["estimatedCostUsd"] }
+      ...second.metrics,
+      retryCount: (first.metrics.retryCount ?? 0) + (second.metrics.retryCount ?? 0) + 1
     },
-    instrumentationEvents: events.events(),
     diagnostics: [
-      ...(commandFailed ? [diagnostic("CLI_EVALUATION_BASELINE_COMMAND_FAILED", "warn", `${baseline.baselineId} exited with code ${runResult.exitCode}.`)] : []),
-      ...(checkPassed ? [] : [diagnostic("CLI_EVALUATION_WEBPAGE_CHECK_FAILED", "warn", `${baseline.baselineId} generated webpage failed local artifact checks.`)]),
-      ...checkerDiagnostics(checkerOutput, diagnostic),
-      ...(baseline.baselineId === "deepseek-cli" && !promptAssembly.available ? [diagnostic("CLI_EVALUATION_PROMPT_ASSEMBLY_MISSING", "warn", "DeepSeek CLI run did not expose prompt assembly evidence.")] : []),
-      ...(baseline.baselineId === "deepseek-cli" && !checkPassed && promptAssembly.gapReason && promptAssembly.gapReason !== "not-applicable" ? [diagnostic(`CLI_EVALUATION_PROMPT_ASSEMBLY_${promptAssembly.gapReason.toUpperCase().replace(/-/g, "_")}`, "warn", `DeepSeek CLI webpage failure categorized as ${promptAssembly.gapReason}.`)] : [])
+      diagnostic("CLI_EVALUATION_TASK_RETRIED", "info", `${baseline.baselineId} retried ${task.taskId} after first attempt outcome ${first.outcome}.`),
+      ...second.diagnostics
     ],
-    evidencePaths: [workspaceRoot, generatedDir, projectEvidencePath, platform.resolvePath(workspaceRoot, "baseline-output.txt")],
+    evidencePaths: [...first.evidencePaths, ...second.evidencePaths],
     redaction: { class: "internal", fields: ["task.promptDigest", "checks.command", "checks.evidencePath", "checks.stdoutPreview", "checks.stderrPreview", "instrumentationEvents.metadata", "evidencePaths", "diagnostics.metadata"] }
   };
-}
-
-async function baselineCommandForExecution(
-  platform: PlatformRuntime,
-  baselineId: string,
-  options: CliEvaluationOptions,
-  workspaceRoot: string,
-  prompt: string
-): Promise<{ readonly command: string; readonly args: readonly string[]; readonly env?: JsonObject } | undefined> {
-  if (baselineId === "deepseek-cli") {
-    const args = [
-      join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
-      "--tsconfig",
-      join(process.cwd(), "tsconfig.json"),
-      join(process.cwd(), "src/apps/cli/src/index.ts"),
-      "run",
-      prompt,
-      "--output",
-      "jsonl",
-      "--timeout-ms",
-      String(15 * 60 * 1000)
-    ];
-    if (options.live) {
-      args.push("--live", "--tool-projection", "read-write");
-    }
-    return {
-      command: process.execPath,
-      args,
-      ...(options.live ? { env: await liveCredentialEnv(platform) } : {})
-    };
-  }
-  if (baselineId === "codex") {
-    const command = externalBaselineCommand(options, baselineId);
-    if (!command || !options.allowExternalBaseline) return undefined;
-    return {
-      command,
-      args: [
-        "exec",
-        "--cd",
-        workspaceRoot,
-        "--sandbox",
-        "workspace-write",
-        "--skip-git-repo-check",
-        "--ephemeral",
-        "--color",
-        "never",
-        prompt
-      ]
-    };
-  }
-  if (baselineId === "claude-code") {
-    const command = externalBaselineCommand(options, baselineId);
-    if (!command || !options.allowExternalBaseline) return undefined;
-    return {
-      command,
-      args: [
-        "-p",
-        "--output-format",
-        "json",
-        "--permission-mode",
-        "acceptEdits",
-        "--no-session-persistence",
-        prompt
-      ]
-    };
-  }
-  return undefined;
-}
-
-async function liveCredentialEnv(platform: PlatformRuntime): Promise<JsonObject> {
-  return Object.fromEntries(Object.entries(await deepSeekLiveCredentialProcessEnv(platform)).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0));
-}
-
-async function isolatedWorkspaceRoot(platform: PlatformRuntime, runId: string): Promise<string> {
-  return platform.createTempDirectory(`${sanitizePathSegment(runId)}-`);
-}
-
-function sanitizePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
-}
-
-function correctionSignalCount(value: string): number {
-  const normalized = value.toLowerCase();
-  const matches = normalized.match(/\b(retry|retried|again|fix|fixed|correct|corrected|repair|repaired|failed|error)\b/g);
-  return Math.min(matches?.length ?? 0, 20);
-}
-
-function redactPromptArg(value: string): string {
-  return value.includes("\n") || value.length > 80 ? "[PROMPT]" : value;
 }
 
 function comparisonSummary(
@@ -612,21 +348,49 @@ function comparisonSummary(
         ? "Configure opt-in external baseline adapters before making competitive claims."
         : options.executeTaskId
           ? "Inspect baseline gap findings, then expand the task catalog before making product claims."
-          : "Run diagnostics evaluate --full --execute-task eval.webpage.generation after smoke evaluation is stable.",
+          : "Run diagnostics evaluate --full --execute-task all --live to prove all delivery evaluation tasks.",
     redaction: { class: "internal", fields: ["taskRuns.task.promptDigest", "publicBenchmarkReferences.url", "evidencePaths", "gapFindings.message"] }
   };
 }
 
-async function collectToolFamilyParityMatrix(platform: PlatformRuntime): Promise<ToolFamilyParityMatrix> {
+export async function collectToolFamilyParityMatrix(platform: PlatformRuntime): Promise<ToolFamilyParityMatrix> {
   const liveCoverage = await readLiveToolCoverageEvidence(platform, process.cwd());
   const familyByCapability = new Map(
     coreCapabilityFamilyMappings().map((mapping) => [String(mapping.capabilityId), mapping.familyId as ToolFamilyId])
   );
-  const liveCoveredFamilyIds = (liveCoverage?.records ?? [])
-    .filter((record) => record.status === "pass")
-    .map((record) => familyByCapability.get(record.toolId))
+  const passedRecords = (liveCoverage?.records ?? []).filter((record) => record.status === "pass");
+  const liveCoveredFamilyIds = passedRecords
+    .map((record) => liveCoverageFamilyId(record, familyByCapability))
     .filter((familyId): familyId is ToolFamilyId => familyId !== undefined);
-  return buildToolFamilyParityMatrix({ liveCoveredFamilyIds });
+  const taskCoveredFamilyIds = passedRecords
+    .filter((record) => evidenceStatus(record.taskOutcome) === "pass")
+    .map((record) => liveCoverageFamilyId(record, familyByCapability))
+    .filter((familyId): familyId is ToolFamilyId => familyId !== undefined);
+  const safetyCoveredFamilyIds = passedRecords
+    .filter((record) => evidenceStatus(record.safetyOutcome) === "pass")
+    .map((record) => liveCoverageFamilyId(record, familyByCapability))
+    .filter((familyId): familyId is ToolFamilyId => familyId !== undefined);
+  const providerNativeSupportedFamilyIds = passedRecords
+    .filter((record) => evidenceStatus(record.providerNative) === "native")
+    .map((record) => liveCoverageFamilyId(record, familyByCapability))
+    .filter((familyId): familyId is ToolFamilyId => familyId !== undefined);
+  return buildToolFamilyParityMatrix({
+    liveCoveredFamilyIds,
+    taskCoveredFamilyIds,
+    safetyCoveredFamilyIds,
+    providerNativeSupportedFamilyIds
+  });
+}
+
+function liveCoverageFamilyId(
+  record: LiveToolCoverageRecord,
+  familyByCapability: ReadonlyMap<string, ToolFamilyId>
+): ToolFamilyId | undefined {
+  return record.familyId ?? familyByCapability.get(record.toolId);
+}
+
+function evidenceStatus(value: JsonObject | undefined): string {
+  return typeof value?.status === "string" ? value.status : "";
 }
 
 function publicBenchmarkReferences(): readonly CliEvaluationPublicBenchmarkReference[] {
@@ -648,45 +412,6 @@ function publicBenchmarkReferences(): readonly CliEvaluationPublicBenchmarkRefer
       redaction: { class: "public" }
     }
   ];
-}
-
-function createEventRecorder(runId: string, baselineId: string, taskId: string): EvaluationEventRecorder {
-  const events: CliEvaluationInstrumentationEvent[] = [];
-  return {
-    events: () => events,
-    record: (kind, metadata = {}) => {
-      const sequence = events.length + 1;
-      events.push({
-        schemaVersion: CLI_TASK_EVALUATION_SCHEMA_VERSION,
-        eventId: `${runId}:event:${sequence}`,
-        kind,
-        runId,
-        baselineId,
-        taskId,
-        sequence,
-        recordedAt: "1970-01-01T00:00:00.000Z",
-        metadata,
-        redaction: {
-          class: "internal",
-          fields: [
-            "metadata.workspaceRoot",
-            "metadata.path",
-            "metadata.generatedDir",
-            "metadata.command"
-          ]
-        }
-      });
-    }
-  };
-}
-
-function withRecordedEvent(
-  events: EvaluationEventRecorder,
-  kind: CliEvaluationInstrumentationEvent["kind"],
-  metadata: JsonObject = {}
-): readonly CliEvaluationInstrumentationEvent[] {
-  events.record(kind, metadata);
-  return events.events();
 }
 
 function diagnostic(code: string, severity: CliEvaluationDiagnostic["severity"], message: string): CliEvaluationDiagnostic {
@@ -712,10 +437,6 @@ function hashText(value: string): string {
 function boundedPreview(value: string): string {
   const normalized = value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim();
   return normalized.length > 500 ? `${normalized.slice(0, 500)}...` : normalized;
-}
-
-function byteLength(value: string): number {
-  return Buffer.byteLength(value, "utf8");
 }
 
 function stringField(input: JsonObject, key: string): string {

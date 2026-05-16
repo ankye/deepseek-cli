@@ -14,19 +14,19 @@
 
 - [x] 3.1 Extend capability manifests or projections with family metadata.
 - [x] 3.2 Add registry validation that blocks model-visible projection when executable capabilities lack valid family metadata.
-- [ ] 3.3 Add family-aware projection filtering for agent scope, policy, host requirements, connector trust, and provider support.
+- [x] 3.3 Add family-aware projection filtering for agent scope, policy, host requirements, connector trust, and provider support.
 
 ## 4. Runtime Pipeline Contracts
 
-- [ ] 4.1 Add runtime-owned pipeline records for sequence, parallel, artifact routing, and stream routing.
-- [ ] 4.2 Ensure pipeline steps record policy, preflight, execution, evidence, replay metadata, and bounded artifact references.
-- [ ] 4.3 Add validation or lint coverage that rejects executor-to-executor private tool chaining.
+- [x] 4.1 Add runtime-owned pipeline records for sequence, parallel, artifact routing, and stream routing.
+- [x] 4.2 Ensure pipeline steps record policy, preflight, execution, evidence, replay metadata, and bounded artifact references.
+- [x] 4.3 Add validation or lint coverage that rejects executor-to-executor private tool chaining.
 
 ## 5. Scorecards And Diagnostics
 
 - [x] 5.1 Add tool family scorecard contracts with strict zero-credit handling for missing, partial, failed, planned, absent, unavailable, and unassessed criteria.
 - [x] 5.2 Emit diagnostics parity matrix with total, implemented, live-covered, task-covered, absent, planned, unavailable, and not-applicable family counts.
-- [ ] 5.3 Extend live coverage evidence from per-tool checks to family-level representative task scenarios.
+- [x] 5.3 Extend live coverage evidence from per-tool checks to family-level representative task scenarios.
 
 ## 6. Verification
 

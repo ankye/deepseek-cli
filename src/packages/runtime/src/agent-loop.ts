@@ -13,6 +13,7 @@ import type {
   InteractionModeTransition,
   JsonObject,
   ModelChatMessage,
+  ModelReasoningOptions,
   RedactedError,
   RuntimeDependencies,
   RuntimeEvent,
@@ -55,6 +56,8 @@ import { runtimeTrace, stableHash } from "./trace.js";
 import { executionFeedbackStatus, referenceContextSummary, summarizeAgentLoop } from "./agent-loop-summary.js";
 import { extractSkillActivateMetadata, projectToolSet, recordToolResultEvidence } from "./agent-loop-tools.js";
 import { consumedBudgetEvents } from "./modes/budgets.js";
+import { recordLosslessAssistantMessage, recordLosslessToolResult, recordLosslessUserMessage } from "./lossless-context.js";
+import { proposePermanentMemoryCandidates } from "./permanent-memory.js";
 import { createRuntimeModePlan } from "./modes/phase-planner.js";
 import {
   createAgentModeBinding,
@@ -74,6 +77,9 @@ export const defaultAgentLoopLimits: AgentLoopLimits = {
   maxRetries: 0,
   maxRepairAttempts: 1
 };
+
+const RESTORED_HISTORY_MESSAGE_LIMIT = 12;
+const RESTORED_HISTORY_CONTENT_LIMIT = 4_000;
 
 export async function* runAgentLoop(
   deps: RuntimeDependencies,
@@ -97,7 +103,8 @@ export async function* runAgentLoop(
   let terminalEmitted = false;
   let repairContinuationRequested = false;
   let toolEvidenceEvents: RuntimeEvent[] = [];
-  const messages: ModelChatMessage[] = [{ role: "user", content: request.prompt }];
+  const restoredHistory = await restoreSessionHistory(deps, sessionId);
+  const messages: ModelChatMessage[] = [...restoredHistory.messages, { role: "user", content: request.prompt }];
   let contextProjection: ContextProjectionResult | undefined;
   let evidenceFirst: import("@deepseek/platform-contracts").EvidenceFirstRuntimeContext | undefined;
   let phasePlan: AgentPhasePlan | undefined;
@@ -106,6 +113,7 @@ export async function* runAgentLoop(
   let interactionModeTransitions: readonly InteractionModeTransition[] | undefined;
   let reasoningEffortMapping: AgentReasoningEffortMapping | undefined = request.reasoningEffortMapping;
   let evidenceRevisionAttempted = false;
+  let losslessUserNodeId: string | undefined;
   const signal = control.signal;
 
   const currentRepairOutcome = (): SelfRepairOutcomeSummary => outcomeFromState({
@@ -281,6 +289,14 @@ export async function* runAgentLoop(
   }, request.agentId);
   await recordRuntimeAdapterEvent(deps, turnStarted);
   yield turnStarted;
+  losslessUserNodeId = yield* recordLosslessUserMessage(deps, {
+    sessionId,
+    turnId,
+    trace,
+    content: request.prompt,
+    ...(request.agentId ? { agentId: request.agentId } : {})
+  });
+  yield* proposePermanentMemoryCandidates(deps, request, sessionId, turnId, trace);
 
   const userInputResult = yield* fireHooks("user-input.before", {
     promptHash: stableHash(request.prompt),
@@ -438,6 +454,7 @@ export async function* runAgentLoop(
       iteration: iterations,
       model: request.profile.model,
       visibleToolCount: assembly.toolPlan.visibleToolCount,
+      providerRequestReplay: providerRequestReplayEvidence(assembly.messages, restoredHistory),
       promptAssembly: {
         fingerprint: assembly.fingerprint,
         sectionCount: assembly.sections.length,
@@ -451,13 +468,14 @@ export async function* runAgentLoop(
     yield modelRequested;
 
     let requestedTool = false;
+    const reasoning = modelReasoningOptions(request.reasoning, reasoningEffortMapping);
     for await (const modelEvent of deps.models.stream({
       profile: request.profile,
       prompt: assembly.promptText,
       messages: assembly.messages,
       tools: assembly.toolPlan.visibleTools,
       ...(request.credentialRef ? { credentialRef: request.credentialRef } : {}),
-      ...(request.reasoning ? { reasoning: request.reasoning } : {}),
+      ...(reasoning ? { reasoning } : {}),
       ...(signal ? { signal } : {}),
       timeoutMs: request.timeoutMs ?? limits.turnTimeoutMs,
       metadata: {
@@ -734,6 +752,16 @@ export async function* runAgentLoop(
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
+        yield* recordLosslessToolResult(deps, {
+          sessionId,
+          turnId,
+          trace,
+          toolCallId,
+          toolName,
+          content: toolResultText,
+          ...(losslessUserNodeId ? { assistantNodeId: losslessUserNodeId } : {}),
+          ...(request.agentId ? { agentId: request.agentId } : {})
+        });
         toolEvidenceEvents = [...toolEvidenceEvents, resultEvent];
         if (toolName === "core.skill.activate" && terminal?.kind === "capability.completed") {
           const metadata = extractSkillActivateMetadata(terminal);
@@ -881,6 +909,14 @@ export async function* runAgentLoop(
       for (const event of verification.events) yield event;
       const terminalStatus = verification.terminalStatus;
       const summary = summarizeAgentLoop(terminalStatus, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
+      yield* recordLosslessAssistantMessage(deps, {
+        sessionId,
+        turnId,
+        trace,
+        content: assistantText,
+        ...(losslessUserNodeId ? { userNodeId: losslessUserNodeId } : {}),
+        ...(request.agentId ? { agentId: request.agentId } : {})
+      });
       const completed = agentLoopEvent("turn.completed", sessionId, turnId, trace, summary, request.agentId);
       await recordRuntimeAdapterEvent(deps, completed);
       yield completed;
@@ -899,12 +935,146 @@ export async function* runAgentLoop(
   }
 }
 
+interface RestoredSessionHistory {
+  readonly messages: readonly ModelChatMessage[];
+  readonly sessionEventCount: number;
+  readonly restoredNodeIds: readonly string[];
+  readonly restoredSourceClasses: readonly string[];
+  readonly diagnostics: readonly string[];
+}
+
+async function restoreSessionHistory(deps: RuntimeDependencies, sessionId: SessionId): Promise<RestoredSessionHistory> {
+  const events = await deps.sessions.events(sessionId);
+  if (events.length === 0) {
+    return { messages: [], sessionEventCount: 0, restoredNodeIds: [], restoredSourceClasses: [], diagnostics: [] };
+  }
+  if (!deps.losslessContext) {
+    return { messages: [], sessionEventCount: events.length, restoredNodeIds: [], restoredSourceClasses: [], diagnostics: ["LOSSLESS_CONTEXT_UNAVAILABLE"] };
+  }
+
+  const toolIntents = new Map<string, ModelChatMessage>();
+  for (const event of events) {
+    if (event.kind !== "model.tool.intent") continue;
+    const toolCallId = stringValue(event.payload.toolCallId);
+    const name = stringValue(event.payload.name);
+    const input = jsonObjectValue(event.payload.input);
+    if (!toolCallId || !name || !input) continue;
+    toolIntents.set(toolCallId, {
+      role: "assistant",
+      content: "",
+      toolCalls: [{ id: toolCallId, name, input }]
+    });
+  }
+
+  const messages: ModelChatMessage[] = [];
+  const restoredNodeIds: string[] = [];
+  const sourceClasses: string[] = [];
+  const emittedToolCallIds = new Set<string>();
+  const lcmEvents = events
+    .filter((event) => event.kind === "context.lcm.node-recorded")
+    .slice(-RESTORED_HISTORY_MESSAGE_LIMIT * 2);
+
+  for (const event of lcmEvents) {
+    const nodeId = stringValue(event.payload.nodeId);
+    if (!nodeId) continue;
+    const described = await deps.losslessContext.describe({ nodeId });
+    const node = described.node;
+    if (!node || node.kind === "summary" || node.role === "summary" || node.content.trim().length === 0) continue;
+    if (node.role === "user") {
+      messages.push({ role: "user", content: boundedHistoryContent(node.content) });
+    } else if (node.role === "assistant") {
+      messages.push({ role: "assistant", content: boundedHistoryContent(node.content) });
+    } else if (node.role === "tool") {
+      const toolCallId = stringValue(node.metadata.toolCallId);
+      const toolName = stringValue(node.metadata.toolName);
+      if (toolCallId) {
+        const intent = toolIntents.get(toolCallId);
+        if (intent && !emittedToolCallIds.has(toolCallId)) {
+          messages.push(intent);
+          emittedToolCallIds.add(toolCallId);
+        }
+      }
+      messages.push({
+        role: "tool",
+        content: boundedHistoryContent(node.content),
+        ...(toolCallId ? { toolCallId } : {}),
+        ...(toolName ? { toolName } : {})
+      });
+    }
+    restoredNodeIds.push(node.nodeId);
+    sourceClasses.push(node.sourceClass);
+    if (messages.length >= RESTORED_HISTORY_MESSAGE_LIMIT) break;
+  }
+
+  return {
+    messages,
+    sessionEventCount: events.length,
+    restoredNodeIds,
+    restoredSourceClasses: [...new Set(sourceClasses)],
+    diagnostics: []
+  };
+}
+
+function providerRequestReplayEvidence(messages: readonly ModelChatMessage[], restored: RestoredSessionHistory): JsonObject {
+  const toolResultCount = messages.filter((message) => message.role === "tool").length;
+  const assistantToolCallCount = messages.reduce((count, message) => count + (message.toolCalls?.length ?? 0), 0);
+  const reasoningContinuationCount = messages.filter((message) => typeof message.reasoningContent === "string" && message.reasoningContent.length > 0).length;
+  return {
+    schemaVersion: "1.0.0",
+    status: restored.messages.length > 0 ? "restored" : restored.sessionEventCount > 0 ? "no-restorable-lossless-history" : "empty",
+    sessionEventCount: restored.sessionEventCount,
+    selectedHistoryMessageCount: messages.length,
+    restoredMessageCount: restored.messages.length,
+    messageRoleSequence: messages.map((message) => message.role),
+    toolCallLinkage: {
+      assistantToolCallCount,
+      toolResultCount,
+      paired: assistantToolCallCount === toolResultCount || toolResultCount === 0
+    },
+    losslessContextReferences: restored.restoredNodeIds,
+    losslessSourceClasses: restored.restoredSourceClasses,
+    reasoningContinuationCount,
+    diagnostics: restored.diagnostics,
+    replayFingerprint: `provider-request:${stableHash(JSON.stringify({
+      roles: messages.map((message) => message.role),
+      toolResultCount,
+      assistantToolCallCount,
+      reasoningContinuationCount,
+      restoredNodeIds: restored.restoredNodeIds
+    }))}`,
+    redaction: { class: "internal", fields: ["losslessContextReferences", "diagnostics"] }
+  };
+}
+
+function boundedHistoryContent(value: string): string {
+  return value.length > RESTORED_HISTORY_CONTENT_LIMIT ? value.slice(0, RESTORED_HISTORY_CONTENT_LIMIT) : value;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function jsonObjectValue(value: unknown): JsonObject | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonObject : undefined;
+}
+
 function hasEligibleRepairCheckpoint(deps: RuntimeDependencies, sessionId: SessionId, turnId: TurnId): boolean {
   return deps.workspaceState.checkpoints().some((checkpoint) =>
     checkpoint.status === "eligible" &&
     checkpoint.sessionId === sessionId &&
     (!checkpoint.turnId || checkpoint.turnId === turnId)
   );
+}
+
+function modelReasoningOptions(
+  reasoning: ModelReasoningOptions | undefined,
+  mapping: AgentReasoningEffortMapping | undefined
+): ModelReasoningOptions | undefined {
+  if (!reasoning) return undefined;
+  return {
+    ...reasoning,
+    ...(mapping?.providerEffort ? { providerEffort: mapping.providerEffort } : {})
+  };
 }
 
 function repairFeedbackMessage(

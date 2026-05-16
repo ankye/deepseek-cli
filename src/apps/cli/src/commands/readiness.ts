@@ -17,7 +17,8 @@ import { PersistentConfigService } from "@deepseek/config";
 import {
   createDeepSeekCredentialAuthServiceFromEnv,
   createDeepSeekCredentialPresenceEnv,
-  CredentialAuthModelCredentialProvider
+  CredentialAuthModelCredentialProvider,
+  deepSeekLiveCredentialProcessEnv
 } from "@deepseek/credential-auth-management";
 import { resolveIndexProviderDiagnostics } from "@deepseek/index-provider";
 import { DeepSeekOpenAIProvider, DeterministicMockModelGateway, OpenAIModelProviderTransport, defaultDeepSeekProfile } from "@deepseek/model-gateway";
@@ -66,7 +67,8 @@ export async function createCliReadinessEnvironment(options: CliOptions): Promis
       sandbox: "ask"
     }
   });
-  const credentialAuth = await createDeepSeekCredentialAuthServiceFromEnv();
+  const credentialEnv = await deepSeekLiveCredentialProcessEnv(platform, workspaceRoot);
+  const credentialAuth = await createDeepSeekCredentialAuthServiceFromEnv(credentialEnv);
   const existingWorkspaceDocument = await config.document("workspace");
   let initializedThisRun = false;
   if (options.readinessCommand === "init" && (!existingWorkspaceDocument || options.readinessInput?.force === true)) {
@@ -116,7 +118,7 @@ export async function createCliReadinessEnvironment(options: CliOptions): Promis
     platform: `${platformDescriptor.os}:${platformDescriptor.environmentKind}`,
     packageName: "deepseek-agent-cli",
     packageVersion: "0.1.3",
-    env: createDeepSeekCredentialPresenceEnv(),
+    env: createDeepSeekCredentialPresenceEnv(credentialEnv),
     ignoredPaths: [".env", ".env.*", "参考/"],
     availableCommands: ["node", "npm"],
     platformDescriptor,

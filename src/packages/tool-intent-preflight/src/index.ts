@@ -79,9 +79,15 @@ export class DeterministicToolIntentPreflight implements ToolIntentPreflightServ
     const providerPrepared = prepareProviderIntent(request.intent, profile);
     repairs.push(...providerPrepared.repairs);
     diagnostics.push(...providerPrepared.diagnostics);
-    const preparedIntent = providerPrepared.intent;
+    let preparedIntent = providerPrepared.intent;
+    const visibleNames = request.modelVisibleCapabilities.map(String);
+    const visible = new Set<string>(visibleNames);
+    const visibleAlias = visibleNames.find((name) => providerSafeToolName(name) === preparedIntent.name);
+    if (visibleAlias && visibleAlias !== preparedIntent.name) {
+      repairs.push(repair("provider-tool-alias-normalized", "name", preparedIntent.name, visibleAlias));
+      preparedIntent = { ...preparedIntent, name: visibleAlias };
+    }
     const capabilityId = asId<"capability">(preparedIntent.name);
-    const visible = new Set<string>(request.modelVisibleCapabilities.map(String));
     if (!visible.has(String(capabilityId))) {
       diagnostics.push(diagnostic("TOOL_INTENT_UNKNOWN_TOOL", `Tool is not model-visible: ${preparedIntent.name}`, "name"));
       return result("rejected", request, diagnostics, repairs, undefined, capabilityId, profile);
@@ -271,6 +277,10 @@ function repair(kind: ToolIntentRepairAction["kind"], field: string, before: str
 function stringFromJsonObject(value: JsonObject | undefined, key: string): string | undefined {
   const found = value?.[key];
   return typeof found === "string" ? found : undefined;
+}
+
+function providerSafeToolName(value: string): string {
+  return /^[a-zA-Z0-9_-]+$/.test(value) ? value : value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function isJsonObject(value: unknown): value is JsonObject {

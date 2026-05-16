@@ -4,6 +4,7 @@ import type {
   ExtensionManagementCommandKind,
   JsonObject,
   CliKeymapProfileName,
+  ModelReasoningOptions,
   ReadinessCommandName,
   RuntimeDependencies,
   RuntimeKernel,
@@ -17,7 +18,7 @@ export interface CliTerminalFlags {
   readonly stdoutIsTTY: boolean;
 }
 
-export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode";
+export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode" | "memory";
 export type CliPaletteAction = "list" | "keymap" | "action";
 export type CliRevertAction = "preview" | "apply";
 export type CliIndexProviderAction = "status" | "set";
@@ -29,6 +30,7 @@ export interface CliOptions {
   readonly output: AgentLoopOutputMode;
   readonly live: boolean;
   readonly timeoutMs?: number;
+  readonly reasoning?: ModelReasoningOptions;
   readonly readinessCommand?: ReadinessCommandName;
   readonly readinessInput?: JsonObject;
   readonly diagnosticsCommand?: DiagnosticsCommandName;
@@ -58,6 +60,8 @@ export interface CliOptions {
   readonly modeAction?: CliModeAction;
   readonly modeRequestedTransition?: string;
   readonly toolProjection?: "read-only" | "read-write" | "all";
+  readonly memoryAction?: "status" | "list" | "candidates" | "remember" | "approve" | "reject" | "edit" | "delete" | "enable" | "disable" | "export" | "explain";
+  readonly memoryInput?: JsonObject;
 }
 
 export type CliWrite = (line: string) => void | Promise<void>;

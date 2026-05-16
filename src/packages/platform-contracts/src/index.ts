@@ -12,6 +12,7 @@ export * from "./agent.js";
 export * from "./model.js";
 export * from "./tool-intent.js";
 export * from "./context.js";
+export * from "./lossless-context.js";
 export * from "./memory.js";
 export * from "./index-provider.js";
 export * from "./capability.js";

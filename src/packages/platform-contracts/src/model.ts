@@ -30,6 +30,16 @@ export interface ModelReasoningOptions extends JsonObject {
   readonly providerMapping?: JsonObject;
 }
 
+export type ModelOutputFormat = "text" | "json_object";
+
+export interface ModelOutputOptions extends JsonObject {
+  readonly format: ModelOutputFormat;
+  readonly schema?: JsonObject;
+  readonly description?: string;
+  readonly strict?: boolean;
+  readonly maxParseRetries?: number;
+}
+
 export type ModelChatMessageRole = "system" | "user" | "assistant" | "tool";
 
 export interface ModelChatToolCall extends JsonObject {
@@ -63,6 +73,7 @@ export interface ModelRequest {
   readonly tools?: readonly JsonObject[];
   readonly toolChoice?: ModelToolChoice;
   readonly reasoning?: ModelReasoningOptions;
+  readonly output?: ModelOutputOptions;
   readonly metadata?: JsonObject;
   readonly signal?: AbortSignal;
 }
@@ -115,6 +126,54 @@ export interface ModelUsageMetadata extends JsonObject {
   readonly reasoningTokens?: number;
   readonly cache?: ModelUsageCacheMetadata;
   readonly provider?: ModelProviderEventMetadata;
+}
+
+export interface DeepSeekJsonOutputValidationResult extends JsonObject {
+  readonly ok: boolean;
+  readonly mode: "request" | "response";
+  readonly retryable: boolean;
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface DeepSeekStrictToolSchemaValidationResult extends JsonObject {
+  readonly ok: boolean;
+  readonly diagnostics: readonly RedactedError[];
+  readonly unsupportedKeywordPaths: readonly string[];
+}
+
+export interface DeepSeekChatPrefixCompletionRequest extends JsonObject {
+  readonly profile: ModelProfile;
+  readonly prompt: string;
+  readonly prefix: string;
+  readonly messages?: readonly ModelChatMessage[];
+  readonly credentialRef?: CredentialRef;
+  readonly timeoutMs?: number;
+  readonly reasoning?: ModelReasoningOptions;
+  readonly metadata?: JsonObject;
+}
+
+export interface DeepSeekFimCompletionRequest extends JsonObject {
+  readonly profile: ModelProfile;
+  readonly prompt: string;
+  readonly suffix?: string;
+  readonly maxTokens?: number;
+  readonly temperature?: number;
+  readonly credentialRef?: CredentialRef;
+  readonly timeoutMs?: number;
+  readonly metadata?: JsonObject;
+}
+
+export interface DeepSeekAnthropicMessagesRequest extends JsonObject {
+  readonly profile: ModelProfile;
+  readonly messages: readonly ModelChatMessage[];
+  readonly system?: string;
+  readonly maxTokens: number;
+  readonly credentialRef?: CredentialRef;
+  readonly timeoutMs?: number;
+  readonly tools?: readonly JsonObject[];
+  readonly toolChoice?: ModelToolChoice;
+  readonly reasoning?: ModelReasoningOptions;
+  readonly metadata?: JsonObject;
 }
 
 export type ModelFinishReason = "stop" | "length" | "tool-call" | "content-filter" | "error" | "unknown";

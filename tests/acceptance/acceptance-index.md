@@ -12,8 +12,17 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | CLI build artifact | `npm run build:cli` -> `latest/build-cli.txt` | required |
 | CLI acceptance evidence refresh | `deepseek diagnostics refresh --output json` regenerates allowlisted `latest/*.txt` evidence before verify | required |
 | CLI task completion evaluation | `deepseek diagnostics evaluate --dry-run --output json` plans DeepSeek-owned task-completion comparison evidence | required |
+| Real tool-family delivery capability | `npx tsx scripts/run-live-tool-coverage.ts` -> `latest/live-tool-coverage.json`, `latest/tool-family-delivery-capability-score.json`, `latest/deepseek-provider-response-cache.json` | required |
+| DeepSeek response replay regression | `npx tsx scripts/run-live-tool-coverage.ts --replay` -> `latest/deepseek-provider-response-cache.json`, `latest/live-tool-coverage-replay.json` | replay-only, zero credit for live delivery |
+| DeepSeek live provider smoke | `DEEPSEEK_LIVE_TESTS=1 npm run smoke:live:deepseek` -> `latest/live-provider-smoke.txt` | required for live release rehearsal |
+| DeepSeek live agent loop smoke | `DEEPSEEK_LIVE_AGENT_LOOP_TESTS=1 npm run smoke:live:agent-loop` -> `latest/live-agent-loop-smoke.txt` | required for live release rehearsal |
+| DeepSeek live agent tool smoke | `DEEPSEEK_LIVE_AGENT_TOOL_TESTS=1 npm run smoke:live:agent-tools` -> `latest/live-agent-tool-smoke.txt` | required for live release rehearsal |
+| DeepSeek live CLI run smoke | `deepseek run --live --output jsonl` against README tool-read task -> `latest/live-cli-run-smoke.txt` | required for live release rehearsal |
+| DeepSeek live doctor smoke | `deepseek doctor --live --output json` -> `latest/live-doctor-smoke.txt` | required for live release rehearsal |
+| Overall delivery capability | `deepseek diagnostics evaluate --full --execute-task all --live --output json` -> `latest/overall-delivery-capability-score.json` | required |
 | CLI mode and agent completion matrix | `deepseek diagnostics evaluate --dry-run --output json`, `src/apps/cli/test/cli.test.ts` -> mode matrix diagnostics | required |
-| CLI release diagnostics gate | `deepseek diagnostics release --output json` checks build artifact, acceptance evidence, and package surface | required |
+| CLI release diagnostics gate | `deepseek diagnostics release --output json` checks build artifact, acceptance evidence, package surface, and publish dry-run evidence | required |
+| CLI release publish dry-run | `npm publish --dry-run --workspace deepseek-agent-cli --access public` -> `latest/npm-publish-dry-run.txt` | required |
 | CLI release verify decision | `deepseek diagnostics verify --output json` summarizes release blockers, warnings, next action, and publish dry-run readiness | required |
 | Headless smoke | `npm run smoke:headless` -> `latest/smoke-headless.txt` | required |
 | Runtime kernel smoke | `npx tsx src/apps/cli/src/index.ts run "kernel smoke" --output jsonl` -> `latest/runtime-kernel.txt` | required |
