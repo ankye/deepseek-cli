@@ -2,26 +2,26 @@
 
 Command: npm publish --dry-run --workspace deepseek-agent-cli --access public
 Exit Code: 0
-Duration Ms: 3032
+Duration Ms: 2032
 
 ## stdout
-+ deepseek-agent-cli@0.1.5
++ deepseek-agent-cli@0.1.7
 
 ## stderr
 npm notice
-npm notice package: deepseek-agent-cli@0.1.5
+npm notice package: deepseek-agent-cli@0.1.7
 npm notice Tarball Contents
 npm notice 5.5kB README.md
 npm notice 1.7MB dist/index.js
 npm notice 421B package.json
 npm notice Tarball Details
 npm notice name: deepseek-agent-cli
-npm notice version: 0.1.5
-npm notice filename: deepseek-agent-cli-0.1.5.tgz
-npm notice package size: 350.7 kB
+npm notice version: 0.1.7
+npm notice filename: deepseek-agent-cli-0.1.7.tgz
+npm notice package size: 350.9 kB
 npm notice unpacked size: 1.7 MB
-npm notice shasum: 8f84f2b7c91ac03a29959bf4cef7adc401361a7d
-npm notice integrity: sha512-ScCTZ17FBoI+e[...]jE7Mt7y6sCSHw==
+npm notice shasum: 5d07c55259172b29a3b2444461e4ec789e79d56f
+npm notice integrity: sha512-jbwfgkkWGwggx[...]HnOLRPE5hXVQA==
 npm notice total files: 3
 npm notice
 npm notice Publishing to https://registry.npmjs.org/ with tag latest and public access (dry-run)

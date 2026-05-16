@@ -2,7 +2,7 @@
 
 Command: npm run lint
 Exit Code: 0
-Duration Ms: 6654
+Duration Ms: 6366
 
 ## stdout
 

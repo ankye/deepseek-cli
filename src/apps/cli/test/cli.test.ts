@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, APPROVAL_SCHEMA_VERSION, INTERACTION_MODE_COMPATIBILITY, INTERACTION_MODE_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelRequest, ModelStreamEvent, PlatformRuntime, PolicyDecision, PolicyEngine, PolicyRequest, ProcessResult, RuntimeEvent, SessionEvent, SessionId, WorkspaceEditTransaction } from "@deepseek/platform-contracts";
 import { FakePlatformRuntime, NodePlatformRuntime } from "@deepseek/platform-abstraction";
@@ -15,11 +16,40 @@ import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
 import { refreshAcceptanceEvidence } from "../src/diagnostics/refresh-evidence.js";
 import {
   cliUsageLines,
+  isCliEntryPoint,
   parseCliArgs,
   runCli
 } from "../src/index.js";
 
 describe("cli host adapter", () => {
+  it("recognizes npm bin symlink entrypoints", async (t) => {
+    const tempDir = await mkdtemp(join(tmpdir(), "deepseek-cli-bin-"));
+    try {
+      const packageDistDir = join(tempDir, "node_modules", "deepseek-agent-cli", "dist");
+      const binDir = join(tempDir, "node_modules", ".bin");
+      await mkdir(packageDistDir, { recursive: true });
+      await mkdir(binDir, { recursive: true });
+
+      const targetPath = join(packageDistDir, "index.js");
+      const binPath = join(binDir, "deepseek");
+      await writeFile(targetPath, "#!/usr/bin/env node\n");
+
+      try {
+        await symlink(targetPath, binPath, "file");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM") {
+          t.skip("file symlink creation is not available in this environment");
+          return;
+        }
+        throw error;
+      }
+
+      assert.equal(isCliEntryPoint(binPath, pathToFileURL(targetPath).href), true);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("parses the new run and chat commands without legacy prompt compatibility", () => {
     assert.deepEqual(parseCliArgs(["run", "hello", "--output", "jsonl"]), {
       command: "run",
