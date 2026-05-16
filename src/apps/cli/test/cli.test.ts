@@ -78,6 +78,13 @@ describe("cli host adapter", () => {
       live: false,
       reasoning: { enabled: true, effort: "xhigh" }
     });
+    assert.deepEqual(parseCliArgs(["run", "json task", "--no-tools", "--output", "jsonl"]), {
+      command: "run",
+      prompt: "json task",
+      output: "jsonl",
+      live: false,
+      toolProjection: "none"
+    });
     assert.deepEqual(parseCliArgs(["chat", "--live", "--thinking", "max", "--output", "jsonl"]), {
       command: "chat",
       prompt: "",

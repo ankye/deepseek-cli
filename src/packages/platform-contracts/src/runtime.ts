@@ -284,7 +284,7 @@ export interface AgentLoopLimits extends JsonObject {
   readonly maxRepairAttempts: number;
 }
 
-export type AgentLoopToolProjection = "read-only" | "read-write" | "all";
+export type AgentLoopToolProjection = "none" | "read-only" | "read-write" | "all";
 
 export interface AgentLoopReferenceContextItem extends JsonObject {
   readonly id: string;

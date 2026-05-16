@@ -57,6 +57,7 @@ function toolVisibilityProjection(tools: readonly CapabilityManifest[], policy: 
 }
 
 function isToolVisible(tool: CapabilityManifest, policy: AgentLoopToolProjection): boolean {
+  if (policy === "none") return false;
   if (policy === "all") return true;
   if (policy === "read-write") return tool.sideEffect === "none" || tool.sideEffect === "read" || tool.sideEffect === "write";
   return tool.sideEffect === "none" || tool.sideEffect === "read";

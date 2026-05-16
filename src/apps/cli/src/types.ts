@@ -59,7 +59,7 @@ export interface CliOptions {
   readonly indexProviderScope?: "workspace" | "user";
   readonly modeAction?: CliModeAction;
   readonly modeRequestedTransition?: string;
-  readonly toolProjection?: "read-only" | "read-write" | "all";
+  readonly toolProjection?: "none" | "read-only" | "read-write" | "all";
   readonly memoryAction?: "status" | "list" | "candidates" | "remember" | "approve" | "reject" | "edit" | "delete" | "enable" | "disable" | "export" | "explain";
   readonly memoryInput?: JsonObject;
 }

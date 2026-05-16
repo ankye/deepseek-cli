@@ -156,7 +156,7 @@ export function cliUsageLines(): readonly string[] {
   return [
     "DeepSeek CLI",
     "Usage:",
-    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection read-only|read-write|all] [--timeout-ms <ms>]",
+    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection none|read-only|read-write|all] [--no-tools] [--timeout-ms <ms>]",
     "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
@@ -398,8 +398,9 @@ function parseOutputMode(args: readonly string[]): AgentLoopOutputMode {
 }
 
 function parseToolProjection(args: readonly string[]): CliOptions["toolProjection"] {
+  if (args.includes("--no-tools")) return "none";
   const value = readFlagValue(args, "--tool-projection");
-  if (value === "read-only" || value === "read-write" || value === "all") return value;
+  if (value === "none" || value === "read-only" || value === "read-write" || value === "all") return value;
   return undefined;
 }
 
@@ -459,6 +460,7 @@ function promptFromArgs(args: readonly string[]): string {
     }
     if (value === "--palette") continue;
     if (value === "--live") continue;
+    if (value === "--no-tools") continue;
     filtered.push(value);
   }
   return filtered.join(" ").trim();

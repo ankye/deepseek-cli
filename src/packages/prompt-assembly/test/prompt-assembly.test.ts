@@ -100,6 +100,24 @@ describe("prompt assembly", () => {
     assert.equal(result.messages.at(-1)?.content, "Update README.md and openspec/spec.md with bilingual guidance");
   });
 
+  it("can assemble with tool projection none without exposing model tools", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "Return only a JSON command plan",
+      toolPolicy: "none",
+      availableTools: [
+        capability("core.file.read"),
+        capability("core.file.write", "write"),
+        capability("core.shell.run", "process")
+      ]
+    }));
+
+    assert.equal(result.toolPlan.policy, "none");
+    assert.equal(result.toolPlan.visibleToolCount, 0);
+    assert.equal(result.toolPlan.excludedToolCount, 3);
+    assert.deepEqual(result.toolPlan.visibleTools, []);
+  });
+
   it("weaves self-repair sections without mutating the exact user prompt", async () => {
     const assembler = createDefaultPromptAssembler();
     const result = await assembler.assemble(input({
@@ -274,6 +292,7 @@ function input(options: {
   readonly workOrder?: AgentWorkOrder;
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly availableTools?: readonly CapabilityManifest[];
+  readonly toolPolicy?: PromptAssemblyInput["toolPolicy"];
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -330,7 +349,7 @@ function input(options: {
       }
     } : {}),
     availableTools: options.availableTools ?? [],
-    toolPolicy: "all",
+    toolPolicy: options.toolPolicy ?? "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
   };

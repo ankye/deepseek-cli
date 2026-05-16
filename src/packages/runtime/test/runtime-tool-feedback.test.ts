@@ -178,6 +178,28 @@ describe("agent loop typed tool feedback", () => {
     await kernel.shutdown();
   });
 
+  it("projects no tools when toolProjection is explicitly set to none", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const recorder = new ToolSchemaRecordingGateway();
+    const loopDeps = { ...deps, models: recorder };
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "return a command plan as plain JSON",
+      caller: "runtime.projection.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      live: true,
+      toolProjection: "none",
+      limits: { maxModelIterations: 1 }
+    }));
+
+    assert.deepEqual(recorder.observedToolNames, []);
+    assert.deepEqual(recorder.observedSideEffects, []);
+    await kernel.shutdown();
+  });
+
   it("continues the model loop after a denied tool feedback instead of terminating", async () => {
     const deps = createDeterministicRuntimeDependencies();
     await deps.platform.writeFile("/workspace/README.md", "deny\n");

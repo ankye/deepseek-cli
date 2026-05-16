@@ -17,11 +17,15 @@ export class InMemoryRuntimeMessageBus implements RuntimeMessageBus {
   }
 
   async publish(envelope: BusEnvelope): Promise<void> {
-    if (this.records.length >= this.maxRecords) {
-      throw new Error("BUS_BACKPRESSURE");
-    }
     if (envelope.replayable) {
-      this.records.push(envelope);
+      if (this.maxRecords <= 0) {
+        // Retention can be disabled for constrained hosts while live delivery remains available.
+      } else if (this.records.length >= this.maxRecords) {
+        this.records.shift();
+        this.records.push(envelope);
+      } else {
+        this.records.push(envelope);
+      }
     }
     for (const listener of this.subscribers.get(envelope.topic.name) ?? []) {
       listener(envelope);
