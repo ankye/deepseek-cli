@@ -6,6 +6,7 @@ import type {
   AgentModeSessionSummary,
   AgentPhasePlan,
   AgentReasoningEffortMapping,
+  AgentVerifierResult,
   ContextProjectionResult,
   HookInvocationResult,
   HookLifecyclePoint,
@@ -315,7 +316,7 @@ export async function* runAgentLoop(
   }
 
   evidenceFirst = await createEvidenceFirstRuntimeContext(deps, request, sessionId, turnId, trace);
-  const modePlan = createRuntimeModePlan({ request, sessionId, turnId, trace, limits, evidenceFirst });
+  const modePlan = createRuntimeModePlan({ request, sessionId, turnId, trace, limits, evidenceFirst, selfRepair });
   phasePlan = modePlan.phasePlan;
   interactionModeState = createInteractionModeState({ sessionId, turnId, mode: modePlan.interactionMode, trace });
   const transition = createInteractionModeTransition({ sessionId, turnId, nextMode: modePlan.interactionMode, trace });
@@ -907,6 +908,19 @@ export async function* runAgentLoop(
       });
       modeSummary = verification.modeSummary;
       for (const event of verification.events) yield event;
+      if (verification.repairRequested || verification.terminalStatus === "failed") {
+        const verifierError = finalVerifierFailureError(verification.verifierResult);
+        diagnostics.push(verifierError);
+        if (iterations < limits.maxModelIterations) {
+          const repairQueued = yield* emitFailureWithRepair("failed", "final-verifier-failed", verifierError, lastVerifierEvent(verification.events));
+          if (repairQueued) {
+            assistantText = "";
+            continue;
+          }
+          terminalEmitted = true;
+          return;
+        }
+      }
       const terminalStatus = verification.terminalStatus;
       const summary = summarizeAgentLoop(terminalStatus, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
       yield* recordLosslessAssistantMessage(deps, {
@@ -1096,4 +1110,23 @@ function repairFeedbackMessage(
       "Make the smallest bounded correction, use only visible governed tools, then stop or verify."
     ].join("\n")
   };
+}
+
+function finalVerifierFailureError(verifierResult: AgentVerifierResult | undefined): RedactedError {
+  return kernelError("KERNEL_ENVELOPE_INVALID", "Final verifier failed; revise the result and collect independent verification evidence before stopping.", {
+    verifierResultId: verifierResult?.verifierResultId ?? "unknown",
+    verdict: verifierResult?.verdict ?? "unknown",
+    diagnostics: (verifierResult?.diagnostics ?? []).slice(0, 5).map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message
+    }))
+  });
+}
+
+function lastVerifierEvent(events: readonly RuntimeEvent[]): RuntimeEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.kind === "agent.verifier.verdict") return event;
+  }
+  return undefined;
 }

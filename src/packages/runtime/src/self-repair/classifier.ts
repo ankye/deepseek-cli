@@ -47,6 +47,7 @@ function failureSourceFor(input: SelfRepairFailureInput): SelfRepairFailureSourc
   const terminal = input.terminalKind;
   if (code.includes("TYPECHECK") || code.includes("LINT") || code.includes("TEST") || code.includes("BUILD")) return "build-test-error";
   if (code.includes("ARTIFACT") || code.includes("WEBPAGE") || code.includes("EVIDENCE")) return "task-output-error";
+  if (terminal.includes("verifier") || terminal.includes("verification") || code.includes("VERIFIER")) return "task-output-error";
   if (code.includes("WORKSPACE") || code.includes("CHECKPOINT") || code.includes("PATH")) return "workspace-error";
   if (code.startsWith("MODEL_") || terminal === "runtime.error") return "provider-error";
   if (terminal.includes("tool") || terminal.includes("capability") || terminal === "execution.rejected" || code.startsWith("TOOL_") || code.startsWith("KERNEL_CAPABILITY")) return "tool-error";

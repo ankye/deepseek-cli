@@ -27,8 +27,10 @@ export async function evaluateVerifierPolicy(input: {
 }): Promise<VerifierPolicyResult | undefined> {
   const verifyPhase = input.phasePlan.phases.find((phase) => phase.phase === "verify");
   if (!verifyPhase?.required) return undefined;
-  const baseVerificationBudget = input.phasePlan.budgets.find((budget) => budget.kind === "verification");
-  const baseRepairBudget = input.phasePlan.budgets.find((budget) => budget.kind === "repair");
+  const baseVerificationBudget = input.modeSummary.budgets.find((budget) => budget.kind === "verification")
+    ?? input.phasePlan.budgets.find((budget) => budget.kind === "verification");
+  const baseRepairBudget = input.modeSummary.budgets.find((budget) => budget.kind === "repair")
+    ?? input.phasePlan.budgets.find((budget) => budget.kind === "repair");
   const verifierVerdict = await createRuntimeVerifierResult({
     deps: input.deps,
     request: input.request,
@@ -39,7 +41,7 @@ export async function evaluateVerifierPolicy(input: {
     existingDiagnostics: input.existingDiagnostics
   });
   const repairNeeded = verifierVerdict.verdict === "fail";
-  const repairAllowed = (baseRepairBudget?.allowed ?? 0) > 0;
+  const repairAllowed = repairNeeded && (baseRepairBudget?.remaining ?? baseRepairBudget?.allowed ?? 0) > 0;
   const repairConsumed = repairNeeded && repairAllowed ? 1 : 0;
   const repairBudget = baseRepairBudget ? budgetWith(baseRepairBudget, repairConsumed, repairNeeded && !repairAllowed ? "repair-budget-unavailable" : undefined) : undefined;
   const verificationBudget = baseVerificationBudget ? budgetWith(baseVerificationBudget, 1) : undefined;
@@ -61,7 +63,7 @@ export async function evaluateVerifierPolicy(input: {
         }
       ]
     : [];
-  const terminalStatus = verifierVerdict.verdict === "fail" && !repairAllowed ? "failed" : "completed";
+  const terminalStatus = verifierVerdict.verdict === "fail" ? "failed" : "completed";
   const reconciliation = {
     schemaVersion: AGENT_MODE_SCHEMA_VERSION,
     reconciliationId: `agent-reconciliation:${stableHash(`${input.sessionId}:${input.turnId}:${verifierVerdict.verdict}`)}`,
@@ -214,13 +216,15 @@ function verifierSummary(verdict: AgentVerifierVerdict, commandEvidenceCount: nu
 }
 
 function reconciliationSummary(verdict: AgentVerifierVerdict, repairAttemptCount: number, terminalStatus: "completed" | "failed"): string {
+  if (terminalStatus === "failed" && repairAttemptCount > 0) return "Final result failed verifier and must rerun repair before it can be accepted.";
   if (terminalStatus === "failed") return "Final result failed because verifier failure could not enter repair under the current budget.";
   if (repairAttemptCount > 0) return "Final result is partial after verifier failure and governed repair attempt recording.";
   if (verdict === "pass") return "Final result reconciled as pass with verifier evidence.";
   return "Final result reconciled as partial; completion is not overstated as verified success.";
 }
 
-function budgetWith(budget: AgentLoopBudget, consumed: number, stopReason?: string): AgentLoopBudget {
+function budgetWith(budget: AgentLoopBudget, consumedIncrement: number, stopReason?: string): AgentLoopBudget {
+  const consumed = Math.min(budget.allowed, budget.consumed + consumedIncrement);
   return {
     ...budget,
     consumed,

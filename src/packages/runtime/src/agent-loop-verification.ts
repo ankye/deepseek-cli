@@ -2,6 +2,7 @@ import type {
   AgentLoopRequest,
   AgentModeSessionSummary,
   AgentPhasePlan,
+  AgentVerifierResult,
   RedactedError,
   RuntimeDependencies,
   RuntimeEvent,
@@ -18,8 +19,8 @@ export interface FinalVerificationInput {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
   readonly trace: TraceContext;
-  readonly phasePlan?: AgentPhasePlan;
-  readonly modeSummary?: AgentModeSessionSummary;
+  readonly phasePlan?: AgentPhasePlan | undefined;
+  readonly modeSummary?: AgentModeSessionSummary | undefined;
   readonly assistantText: string;
   readonly toolEvents: readonly RuntimeEvent[];
   readonly diagnostics: RedactedError[];
@@ -30,6 +31,8 @@ export interface FinalVerificationResult {
   readonly modeSummary?: AgentModeSessionSummary;
   readonly terminalStatus: "completed" | "failed";
   readonly events: readonly RuntimeEvent[];
+  readonly repairRequested?: boolean;
+  readonly verifierResult?: AgentVerifierResult;
 }
 
 export async function runFinalVerification(input: FinalVerificationInput): Promise<FinalVerificationResult> {
@@ -85,7 +88,14 @@ export async function runFinalVerification(input: FinalVerificationInput): Promi
     }
   }
   await appendEvent(events, input, "agent.result.reconciled", verifierPolicy.reconciliation);
-  return { modeSummary, terminalStatus: verifierPolicy.terminalStatus, events };
+  const repairRequested = verifierPolicy.verdict.verdict === "fail" && verifierPolicy.repairEvents.some((repair) => repair.status === "attempted");
+  return {
+    modeSummary,
+    terminalStatus: verifierPolicy.terminalStatus,
+    events,
+    repairRequested,
+    verifierResult: verifierPolicy.verdict
+  };
 }
 
 async function appendEvent(

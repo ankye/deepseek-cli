@@ -70,7 +70,7 @@ describe("agent loop mode orchestration", () => {
     await kernel.shutdown();
   });
 
-  it("records verifier failure, governed repair attempt, and rerun chain when repair budget exists", async () => {
+  it("fails closed when verifier repair budget exists but self-repair is disabled", async () => {
     const deps = createDeterministicRuntimeDependencies();
     const loopDeps = { ...deps, models: new FailingVerifierModelGateway() };
     await registerRuntimeCoreTools(loopDeps, "/workspace");
@@ -91,9 +91,42 @@ describe("agent loop mode orchestration", () => {
     assert.equal(events.some((event) => event.kind === "agent.repair.rerun" && event.data.status === "deferred"), true);
     assert.equal(events.some((event) => event.kind === "agent.result.reconciled" && event.data.status === "fail" && event.data.repairAttemptCount === 1), true);
     assert.equal(events.some((event) => event.kind === "agent.loop.budget.consumed" && event.data.kind === "repair" && event.data.consumed === 1), true);
-    assert.equal(terminal?.kind, "agent.loop.completed");
+    assert.equal(terminal?.kind, "agent.loop.failed");
     const summary = terminal?.data as AgentLoopSummary | undefined;
     assert.equal(summary?.modeSummary?.verifierResults[0]?.verdict, "fail");
+    await kernel.shutdown();
+  });
+
+  it("feeds verifier failure back through self-repair before accepting final completion", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const gateway = new RepairingVerifierModelGateway();
+    const loopDeps = { ...deps, models: gateway };
+    await deps.platform.writeFile("/workspace/README.md", "verified repair evidence\n");
+    await registerRuntimeCoreTools(loopDeps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(loopDeps);
+    const events = await collectRuntimeEvents(runAgentLoop(loopDeps, kernel, {
+      prompt: "生成一个 HTML 网站",
+      caller: "mode-test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      selfRepair: { enabled: true, maxAttempts: 1, requireCheckpointForWrites: false, verificationMode: "targeted" },
+      limits: { maxModelIterations: 4, maxRepairAttempts: 1 }
+    }));
+
+    const verifierVerdicts = events
+      .filter((event) => event.kind === "agent.verifier.verdict")
+      .map((event) => (event.data as AgentVerifierResult).verdict);
+    const terminal = events.at(-1)?.data as AgentLoopSummary | undefined;
+
+    assert.deepEqual(verifierVerdicts, ["fail", "pass"]);
+    assert.equal(events.some((event) => event.kind === "agent.repair.started"), true);
+    assert.equal(events.some((event) => event.kind === "agent.repair.stopped" && event.data.stopReason === "completed"), true);
+    assert.equal(gateway.requests.length, 3);
+    assert.equal(gateway.requests[1]?.messages?.some((message) => message.role === "tool" && message.toolName === "agent.self-repair"), true);
+    assert.equal(events.at(-1)?.kind, "agent.loop.completed");
+    assert.equal(terminal?.selfRepair?.activated, true);
+    assert.equal(terminal?.modeSummary?.verifierResults.at(-1)?.verdict, "pass");
     await kernel.shutdown();
   });
 
@@ -184,6 +217,65 @@ class FailingVerifierModelGateway implements ModelGateway {
         retryable: false,
         redaction: { class: "internal" }
       }],
+      redaction: { class: "internal" }
+    };
+  }
+}
+
+class RepairingVerifierModelGateway implements ModelGateway {
+  readonly requests: ModelRequest[] = [];
+  private verifyCalls = 0;
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    this.requests.push(request);
+    const hasSelfRepairFeedback = request.messages?.some((message) => message.role === "tool" && message.toolName === "agent.self-repair") ?? false;
+    const hasReadEvidence = request.messages?.some((message) => message.role === "tool" && message.toolName === "core.file.read") ?? false;
+    if (hasSelfRepairFeedback && !hasReadEvidence) {
+      yield { kind: "tool-call", id: "repair-readme", name: "core.file.read", input: { path: "README.md" } };
+      yield { kind: "finish", reason: "tool-call" };
+      yield { kind: "done" };
+      return;
+    }
+    if (hasReadEvidence) {
+      yield { kind: "delta", text: "Repaired with independent README evidence." };
+      yield { kind: "finish", reason: "stop" };
+      yield { kind: "done" };
+      return;
+    }
+    yield { kind: "delta", text: "Needs verifier repair." };
+    yield { kind: "finish", reason: "stop" };
+    yield { kind: "done" };
+  }
+
+  async countTokens(text: string): Promise<number> {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  }
+
+  async verify(_request: ModelLiveVerificationRequest): Promise<ModelLiveVerificationResult> {
+    this.verifyCalls += 1;
+    if (this.verifyCalls === 1) {
+      return {
+        ok: false,
+        provider: { provider: "deepseek", protocol: "openai-chat-completions", model: defaultDeepSeekProfile.model },
+        reachable: true,
+        terminalStatus: "failed",
+        eventKinds: ["delta", "finish", "done"],
+        diagnostics: [{
+          code: "TEST_VERIFIER_FAIL",
+          message: "Verifier failed before repair feedback.",
+          retryable: false,
+          redaction: { class: "internal" }
+        }],
+        redaction: { class: "internal" }
+      };
+    }
+    return {
+      ok: true,
+      provider: { provider: "deepseek", protocol: "openai-chat-completions", model: defaultDeepSeekProfile.model },
+      reachable: true,
+      terminalStatus: "completed",
+      eventKinds: ["delta", "finish", "done"],
+      diagnostics: [],
       redaction: { class: "internal" }
     };
   }

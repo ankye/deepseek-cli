@@ -9,6 +9,7 @@ import type {
   AgentPhaseStatus,
   EvidenceFirstRuntimeContext,
   InteractionModeName,
+  SelfRepairConfig,
   SessionId,
   TraceContext,
   TurnId
@@ -31,6 +32,7 @@ export function createRuntimeModePlan(input: {
   readonly trace: TraceContext;
   readonly limits: AgentLoopLimits;
   readonly evidenceFirst: EvidenceFirstRuntimeContext;
+  readonly selfRepair: SelfRepairConfig;
 }): RuntimeModePlan {
   const interactionMode = input.request.interactionMode ?? interactionModeFor(input.request);
   const agentMode = input.request.agentMode ?? "default";
@@ -52,12 +54,13 @@ export function createRuntimeModePlan(input: {
     consumed: 0,
     policySource: "runtime.phase-planner"
   });
+  const repairAttemptBudget = input.selfRepair.enabled ? input.selfRepair.maxAttempts : input.limits.maxRetries;
   const repairBudget = createAgentLoopBudget({
     kind: "repair",
-    requested: input.limits.maxRetries,
-    allowed: input.limits.maxRetries,
+    requested: repairAttemptBudget,
+    allowed: repairAttemptBudget,
     consumed: 0,
-    ...(input.limits.maxRetries === 0 ? { stopReason: "user-disabled" } : {}),
+    ...(repairAttemptBudget === 0 ? { stopReason: "user-disabled" } : {}),
     policySource: "runtime.phase-planner"
   });
   const delegationBudget = createAgentLoopBudget({
@@ -88,7 +91,7 @@ export function createRuntimeModePlan(input: {
     nonTrivial
       ? phase("verify", "required", true, "verifier", [verificationBudget])
       : phase("verify", "skipped", false, "verifier", [verificationBudget], "low-risk"),
-    input.limits.maxRetries > 0
+    repairAttemptBudget > 0
       ? phase("repair", "required", false, "repair", [repairBudget])
       : phase("repair", "skipped", false, "repair", [repairBudget], "user-disabled"),
     nonTrivial

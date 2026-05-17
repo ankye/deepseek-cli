@@ -113,7 +113,6 @@ describe("host adapter smoke", () => {
         "agent.phase.skipped",
         "agent.phase.skipped",
         "agent.phase.skipped",
-        "agent.phase.skipped",
         "model.reasoning.effort.mapped",
         "evidence.classified",
         "context.projection.started",

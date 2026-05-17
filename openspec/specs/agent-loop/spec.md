@@ -214,6 +214,16 @@ agent loop 必须在检测到可修复失败与发出 terminal failure 之间支
 - **THEN** the agent loop emits self-repair classification and planning events before either attempting a governed repair or failing with a typed stop reason
 - **中文** 当 tool execution、model provider event、artifact checker 或 verification command 以可修复分类失败时，agent loop 必须在尝试受治理修复或以 typed stop reason 失败之前，发出 self-repair classification 与 planning events。
 
+#### Scenario: Final verifier failure reruns through repair feedback / 最终验证失败通过修复反馈重跑
+- **WHEN** final verification fails and self-repair is enabled with remaining repair and model-iteration budget
+- **THEN** the agent loop feeds bounded verifier diagnostics back to the model as runtime-owned repair context, clears the unaccepted assistant draft, and reruns the normal model/tool loop before any terminal completion can be emitted
+- **中文** 当最终验证失败，且 self-repair 已启用并仍有 repair 与 model-iteration 预算时，agent loop 必须将有界 verifier diagnostics 作为 runtime-owned repair context 回灌给模型、清空尚未被接受的 assistant draft，并在发出任何 terminal completion 之前重跑正常 model/tool loop。
+
+#### Scenario: Unrepaired verifier failure fails closed / 未修复验证失败安全失败
+- **WHEN** final verification fails but repair is disabled, unsafe, exhausted, or there is no remaining model-iteration budget
+- **THEN** the agent loop emits a typed failed terminal event instead of reporting verifier failure as completed delivery
+- **中文** 当最终验证失败但 repair 被禁用、不安全、耗尽，或没有剩余 model-iteration 预算时，agent loop 必须发出 typed failed terminal event，而不是把 verifier failure 报告成已完成交付。
+
 #### Scenario: Non-repairable failure remains fail-closed / 不可修复失败保持安全失败
 - **WHEN** a failure is classified as non-repairable, unsafe, missing approval, missing credential, or outside allowed tool projection
 - **THEN** the agent loop emits terminal failure or escalation evidence without mutating the workspace or creating an extra model repair turn
@@ -314,4 +324,3 @@ agent loop 必须只在记录类型化 skip decision 时，才能为简单或低
 - **WHEN** policy marks a task as high risk and a required evidence or verification phase has no available budget or provider
 - **THEN** the loop fails closed or asks for explicit user approval instead of silently skipping the phase
 - **中文** 当 policy 将任务标记为 high risk，且必需 evidence 或 verification phase 没有可用 budget 或 provider 时，loop 必须安全失败或请求显式用户批准，而不是静默跳过阶段。
-
