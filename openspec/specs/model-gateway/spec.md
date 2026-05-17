@@ -103,6 +103,24 @@ model gateway 必须把 DeepSeek text deltas、reasoning deltas、tool-call inte
 - **THEN** the gateway emits a provider-neutral terminal model event that lets runtime decide whether to execute tools, send feedback, continue the model, or fail closed
 - **中文** 当 DeepSeek 返回表示 tool calls 已就绪的 finish reason 时，gateway 必须发出 provider-neutral terminal model event，由 runtime 决定是否执行 tools、发送 feedback、继续模型或 fail closed。
 
+### Requirement: Model Metadata Fallback Evidence / 模型元数据 Fallback 证据
+
+The model gateway SHALL resolve model metadata such as pricing and context-window facts through auditable sources and SHALL NOT fabricate usage cost when explicit pricing metadata is unavailable.
+
+model gateway 必须通过可审计来源解析 pricing、context-window 等模型元数据；当缺少显式 pricing metadata 时，不得伪造 usage cost。
+
+#### Scenario: Remote metadata outage falls back without blocking generation / 远程元数据异常时降级但不阻塞生成
+
+- **WHEN** a remote model metadata catalog cannot be fetched or does not contain the requested model
+- **THEN** the gateway records a typed diagnostic and may fall back to last-known-good or pinned metadata while keeping token usage real
+- **中文** 当远程 model metadata catalog 无法获取或不包含请求的 model 时，gateway 必须记录 typed diagnostic，并可降级到 last-known-good 或 pinned metadata，同时保持 token usage 为真实值。
+
+#### Scenario: Missing pricing yields unknown cost / 缺少定价时成本为 unknown
+
+- **WHEN** token usage exists but the selected metadata entry has no explicit pricing
+- **THEN** the gateway reports cost reliability as `unknown` and does not emit a numeric cost estimate
+- **中文** 当 token usage 存在但所选 metadata entry 没有显式 pricing 时，gateway 必须报告 cost reliability 为 `unknown`，且不得输出数字成本估算。
+
 ### Requirement: Provider Boundary Enforcement
 
 Provider adapters SHALL NOT execute capabilities, commands, skills, hooks, MCP tools, plugins, sandbox work, scheduler work, workflow work, policy decisions, runtime bus publishing, session mutation, or tool result continuation loops directly.
@@ -306,4 +324,3 @@ provider-neutral tool result continuation 必须包含 family id、domain id、t
 - **WHEN** an image edit tool returns an artifact to the model
 - **THEN** the continuation metadata attributes the result to `image.edit`
 - **中文** 当 image edit tool 把 artifact 返回给模型时，continuation metadata 必须把结果归因到 `image.edit`。
-

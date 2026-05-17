@@ -8,8 +8,10 @@ import {
   FixtureModelProviderTransport,
   StaticCredentialProvider,
   defaultDeepSeekProfile,
+  estimateModelUsageCostMicros,
   normalizeDeepSeekChunk,
   parseDeepSeekJsonOutputResponse,
+  resolveModelMetadata,
   validateDeepSeekAnthropicMessagesRequest,
   validateDeepSeekJsonOutputRequest,
   validateDeepSeekStrictToolSchema
@@ -402,6 +404,77 @@ describe("DeepSeek OpenAI provider", () => {
 
     assert.deepEqual(events.map((event) => event.kind), ["delta", "finish", "usage"]);
     assert.equal(events[0]?.kind === "delta" ? events[0].text : "", "ok");
+  });
+
+  it("resolves model metadata with audited fallback and no fabricated cost", async () => {
+    const fresh = await resolveModelMetadata({
+      provider: "deepseek",
+      model: defaultDeepSeekProfile.model,
+      remoteCatalog: async () => [{
+        provider: "deepseek",
+        model: defaultDeepSeekProfile.model,
+        source: "remote",
+        pricing: {
+          inputCostMicrosPerMillionTokens: 20_000,
+          outputCostMicrosPerMillionTokens: 60_000
+        }
+      }]
+    });
+    const priced = estimateModelUsageCostMicros({ inputTokens: 1_000, outputTokens: 500 }, fresh);
+
+    assert.equal(fresh.status, "resolved");
+    assert.equal(fresh.freshness, "fresh");
+    assert.equal(fresh.diagnostics.length, 0);
+    assert.equal(priced.reliability, "priced");
+    assert.equal(priced.costMicros, 50);
+    assert.equal(priced.source, "remote");
+
+    const fallback = await resolveModelMetadata({
+      provider: "deepseek",
+      model: defaultDeepSeekProfile.model,
+      remoteCatalog: async () => {
+        throw new Error("metadata fetch failed");
+      },
+      pinnedCatalog: [{
+        provider: "deepseek",
+        model: defaultDeepSeekProfile.model,
+        source: "pinned"
+      }]
+    });
+    const unknown = estimateModelUsageCostMicros({ inputTokens: 10, outputTokens: 2 }, fallback);
+
+    assert.equal(fallback.status, "fallback");
+    assert.equal(fallback.freshness, "pinned");
+    assert.equal(fallback.diagnostics[0]?.code, "MODEL_METADATA_REMOTE_UNAVAILABLE");
+    assert.equal(unknown.reliability, "unknown");
+    assert.equal(unknown.costMicros, undefined);
+    assert.equal(unknown.diagnostics[0]?.code, "MODEL_USAGE_COST_UNKNOWN");
+  });
+
+  it("marks stale last-known-good model metadata as a stale estimate", async () => {
+    const stale = await resolveModelMetadata({
+      provider: "deepseek",
+      model: "deepseek-stale",
+      remoteCatalog: async () => [],
+      lastKnownGoodCatalog: [{
+        provider: "deepseek",
+        model: "deepseek-stale",
+        source: "last-known-good",
+        expiresAt: "2026-01-01T00:00:00.000Z",
+        pricing: {
+          inputCostMicrosPerMillionTokens: 10_000,
+          outputCostMicrosPerMillionTokens: 10_000
+        }
+      }],
+      now: new Date("2026-05-17T00:00:00.000Z")
+    });
+    const estimate = estimateModelUsageCostMicros({ inputTokens: 100, outputTokens: 100 }, stale);
+
+    assert.equal(stale.status, "fallback");
+    assert.equal(stale.freshness, "stale");
+    assert.equal(stale.diagnostics[0]?.code, "MODEL_METADATA_REMOTE_MODEL_MISSING");
+    assert.equal(estimate.reliability, "stale-estimate");
+    assert.equal(estimate.costMicros, 2);
   });
 
   it("keeps deterministic mock gateway behavior available", async () => {

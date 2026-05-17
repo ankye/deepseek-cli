@@ -120,11 +120,52 @@ export interface ModelUsageCacheMetadata extends JsonObject {
   readonly missTokens?: number;
 }
 
+export type ModelMetadataCatalogSource = "remote" | "last-known-good" | "pinned" | "user-config";
+export type ModelMetadataFreshness = "fresh" | "cached" | "pinned" | "stale" | "unavailable";
+export type ModelMetadataResolutionStatus = "resolved" | "fallback" | "unavailable";
+export type ModelUsageCostReliability = "priced" | "stale-estimate" | "unknown";
+
+export interface ModelPricingMetadata extends JsonObject {
+  readonly inputCostMicrosPerMillionTokens?: number;
+  readonly outputCostMicrosPerMillionTokens?: number;
+  readonly cacheHitCostMicrosPerMillionTokens?: number;
+  readonly cacheMissCostMicrosPerMillionTokens?: number;
+}
+
+export interface ModelMetadataCatalogEntry extends JsonObject {
+  readonly provider: string;
+  readonly model: string;
+  readonly source: ModelMetadataCatalogSource;
+  readonly fetchedAt?: string;
+  readonly expiresAt?: string;
+  readonly contextWindowTokens?: number;
+  readonly maxOutputTokens?: number;
+  readonly pricing?: ModelPricingMetadata;
+}
+
+export interface ModelMetadataResolution extends JsonObject {
+  readonly status: ModelMetadataResolutionStatus;
+  readonly freshness: ModelMetadataFreshness;
+  readonly provider: string;
+  readonly model: string;
+  readonly entry?: ModelMetadataCatalogEntry;
+  readonly diagnostics: readonly RedactedError[];
+  readonly redaction: RedactionMetadata;
+}
+
+export interface ModelUsageCostEstimate extends JsonObject {
+  readonly reliability: ModelUsageCostReliability;
+  readonly costMicros?: number;
+  readonly source?: ModelMetadataCatalogSource;
+  readonly diagnostics: readonly RedactedError[];
+}
+
 export interface ModelUsageMetadata extends JsonObject {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly reasoningTokens?: number;
   readonly cache?: ModelUsageCacheMetadata;
+  readonly cost?: ModelUsageCostEstimate;
   readonly provider?: ModelProviderEventMetadata;
 }
 

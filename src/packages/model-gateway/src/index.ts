@@ -14,6 +14,11 @@ import type {
   ModelGateway,
   ModelLiveVerificationRequest,
   ModelLiveVerificationResult,
+  ModelMetadataCatalogEntry,
+  ModelMetadataCatalogSource,
+  ModelMetadataFreshness,
+  ModelMetadataResolution,
+  ModelPricingMetadata,
   ModelProfile,
   ModelProviderConfig,
   ModelProviderEventMetadata,
@@ -25,6 +30,7 @@ import type {
   ModelReasoningProviderEffort,
   ModelStreamEvent,
   ModelToolChoice,
+  ModelUsageCostEstimate,
   ModelUsageMetadata,
   RedactedError
 } from "@deepseek/platform-contracts";
@@ -50,6 +56,24 @@ export const defaultDeepSeekProfile: ModelProfile = {
   model: "deepseek-v4-flash",
   temperature: 0
 };
+
+export const pinnedDeepSeekModelMetadataCatalog: readonly ModelMetadataCatalogEntry[] = [
+  {
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    source: "pinned",
+    fetchedAt: "2026-05-17T00:00:00.000Z"
+  }
+];
+
+export interface ModelMetadataResolverOptions {
+  readonly provider: string;
+  readonly model: string;
+  readonly remoteCatalog?: () => Promise<readonly ModelMetadataCatalogEntry[]>;
+  readonly lastKnownGoodCatalog?: readonly ModelMetadataCatalogEntry[];
+  readonly pinnedCatalog?: readonly ModelMetadataCatalogEntry[];
+  readonly now?: Date;
+}
 
 export interface DeepSeekOpenAIProviderOptions {
   readonly config?: ModelProviderConfig;
@@ -308,6 +332,80 @@ export interface DeepSeekJsonOutputParseResult extends JsonObject {
   readonly value?: JsonValue;
   readonly retryable: boolean;
   readonly diagnostics: readonly RedactedError[];
+}
+
+export async function resolveModelMetadata(options: ModelMetadataResolverOptions): Promise<ModelMetadataResolution> {
+  const diagnostics: RedactedError[] = [];
+  const now = options.now ?? new Date();
+  if (options.remoteCatalog) {
+    try {
+      const remoteEntry = findCatalogEntry(await options.remoteCatalog(), options.provider, options.model);
+      if (remoteEntry) {
+        return modelMetadataResolution("resolved", "fresh", options.provider, options.model, withCatalogSource(remoteEntry, "remote"), diagnostics);
+      }
+      diagnostics.push(providerError("MODEL_METADATA_REMOTE_MODEL_MISSING", "Remote model metadata catalog did not include the requested model.", false, {
+        provider: options.provider,
+        model: options.model
+      }));
+    } catch (error) {
+      diagnostics.push(providerError("MODEL_METADATA_REMOTE_UNAVAILABLE", "Remote model metadata catalog is unavailable; using local fallback evidence when present.", true, {
+        provider: options.provider,
+        model: options.model,
+        cause: error instanceof Error ? error.name : "unknown"
+      }));
+    }
+  }
+
+  const lastKnownGoodEntry = findCatalogEntry(options.lastKnownGoodCatalog ?? [], options.provider, options.model);
+  if (lastKnownGoodEntry) {
+    const freshness: ModelMetadataFreshness = isCatalogEntryStale(lastKnownGoodEntry, now) ? "stale" : "cached";
+    return modelMetadataResolution("fallback", freshness, options.provider, options.model, withCatalogSource(lastKnownGoodEntry, "last-known-good"), diagnostics);
+  }
+
+  const pinnedEntry = findCatalogEntry(options.pinnedCatalog ?? pinnedDeepSeekModelMetadataCatalog, options.provider, options.model);
+  if (pinnedEntry) {
+    return modelMetadataResolution("fallback", "pinned", options.provider, options.model, withCatalogSource(pinnedEntry, "pinned"), diagnostics);
+  }
+
+  diagnostics.push(providerError("MODEL_METADATA_UNAVAILABLE", "No model metadata catalog entry is available; token usage remains real but cost and context metadata are unknown.", false, {
+    provider: options.provider,
+    model: options.model
+  }));
+  return modelMetadataResolution("unavailable", "unavailable", options.provider, options.model, undefined, diagnostics);
+}
+
+export function estimateModelUsageCostMicros(usage: ModelUsageMetadata, metadata: ModelMetadataResolution): ModelUsageCostEstimate {
+  const diagnostics: RedactedError[] = [];
+  const pricing = metadata.entry?.pricing;
+  if (!pricing) {
+    diagnostics.push(providerError("MODEL_USAGE_COST_UNKNOWN", "Model usage cost cannot be estimated without explicit pricing metadata.", false, {
+      provider: metadata.provider,
+      model: metadata.model,
+      metadataStatus: metadata.status
+    }));
+    return { reliability: "unknown", diagnostics };
+  }
+
+  const inputCost = estimateInputCostMicros(usage, pricing);
+  const outputRate = pricing.outputCostMicrosPerMillionTokens;
+  const outputCost = outputRate === undefined && usage.outputTokens > 0
+    ? undefined
+    : (usage.outputTokens * (outputRate ?? 0)) / 1_000_000;
+  if (inputCost === undefined || outputCost === undefined) {
+    diagnostics.push(providerError("MODEL_USAGE_COST_PRICING_INCOMPLETE", "Model pricing metadata is incomplete for the reported token usage.", false, {
+      provider: metadata.provider,
+      model: metadata.model,
+      metadataStatus: metadata.status
+    }));
+    return { reliability: "unknown", source: metadata.entry.source, diagnostics };
+  }
+
+  return {
+    reliability: metadata.freshness === "stale" ? "stale-estimate" : "priced",
+    costMicros: Math.round(inputCost + outputCost),
+    source: metadata.entry.source,
+    diagnostics
+  };
 }
 
 export function validateDeepSeekJsonOutputRequest(request: Pick<ModelRequest, "prompt" | "messages" | "output">): DeepSeekJsonOutputValidationResult {
@@ -790,6 +888,76 @@ function collectUnsupportedJsonSchemaKeywords(value: JsonValue | undefined, path
     if (unsupported.has(key)) paths.push(childPath);
     collectUnsupportedJsonSchemaKeywords(child, childPath, paths);
   }
+}
+
+function findCatalogEntry(catalog: readonly ModelMetadataCatalogEntry[], provider: string, model: string): ModelMetadataCatalogEntry | undefined {
+  return catalog.find((entry) => entry.provider.toLowerCase() === provider.toLowerCase() && entry.model === model);
+}
+
+function withCatalogSource(entry: ModelMetadataCatalogEntry, source: ModelMetadataCatalogSource): ModelMetadataCatalogEntry {
+  return {
+    ...entry,
+    source
+  };
+}
+
+function modelMetadataResolution(
+  status: ModelMetadataResolution["status"],
+  freshness: ModelMetadataFreshness,
+  provider: string,
+  model: string,
+  entry: ModelMetadataCatalogEntry | undefined,
+  diagnostics: readonly RedactedError[]
+): ModelMetadataResolution {
+  return {
+    status,
+    freshness,
+    provider,
+    model,
+    ...(entry ? { entry } : {}),
+    diagnostics,
+    redaction: { class: "internal", fields: ["diagnostics.details"] }
+  };
+}
+
+function isCatalogEntryStale(entry: ModelMetadataCatalogEntry, now: Date): boolean {
+  if (!entry.expiresAt) return false;
+  const expiresAtMs = Date.parse(entry.expiresAt);
+  return Number.isFinite(expiresAtMs) && expiresAtMs < now.getTime();
+}
+
+function estimateInputCostMicros(usage: ModelUsageMetadata, pricing: ModelPricingMetadata): number | undefined {
+  const inputRate = pricing.inputCostMicrosPerMillionTokens;
+  const hitTokens = usage.cache?.hitTokens;
+  const missTokens = usage.cache?.missTokens;
+  const hasCacheBreakdown = hitTokens !== undefined || missTokens !== undefined;
+  const hasCachePricing = pricing.cacheHitCostMicrosPerMillionTokens !== undefined || pricing.cacheMissCostMicrosPerMillionTokens !== undefined;
+
+  if (hasCacheBreakdown && hasCachePricing) {
+    let coveredTokens = 0;
+    let costMicros = 0;
+    if (hitTokens !== undefined) {
+      const rate = pricing.cacheHitCostMicrosPerMillionTokens ?? inputRate;
+      if (rate === undefined) return undefined;
+      coveredTokens += hitTokens;
+      costMicros += (hitTokens * rate) / 1_000_000;
+    }
+    if (missTokens !== undefined) {
+      const rate = pricing.cacheMissCostMicrosPerMillionTokens ?? inputRate;
+      if (rate === undefined) return undefined;
+      coveredTokens += missTokens;
+      costMicros += (missTokens * rate) / 1_000_000;
+    }
+    const remainderTokens = Math.max(0, usage.inputTokens - coveredTokens);
+    if (remainderTokens > 0) {
+      if (inputRate === undefined) return undefined;
+      costMicros += (remainderTokens * inputRate) / 1_000_000;
+    }
+    return costMicros;
+  }
+
+  if (inputRate === undefined && usage.inputTokens > 0) return undefined;
+  return (usage.inputTokens * (inputRate ?? 0)) / 1_000_000;
 }
 
 function providerError(code: string, message: string, retryable: boolean, details: JsonObject = {}): RedactedError {
