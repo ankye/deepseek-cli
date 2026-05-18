@@ -91,6 +91,7 @@ export type RuntimeEventKind =
   | "agent.worker.stopped"
   | "agent.worker.result"
   | "agent.verifier.verdict"
+  | "agent.output-contract.verified"
   | "agent.repair.attempted"
   | "agent.repair.rerun"
   | "agent.result.reconciled"
@@ -286,6 +287,60 @@ export interface AgentLoopLimits extends JsonObject {
 
 export type AgentLoopToolProjection = "none" | "read-only" | "read-write" | "all";
 
+export type AgentLoopProjectRuleSource = "agents-md" | "claude-md" | "host-policy" | "repository-guidance";
+export type AgentLoopProjectRuleStatus = "included" | "missing" | "excluded" | "degraded";
+
+export interface AgentLoopProjectRuleEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly source: AgentLoopProjectRuleSource;
+  readonly status: AgentLoopProjectRuleStatus;
+  readonly priority: number;
+  readonly path?: string;
+  readonly content?: string;
+  readonly bytes?: number;
+  readonly fingerprint?: string;
+  readonly diagnostics: readonly RedactedError[];
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
+export type AgentLoopVerificationExpectationKind = "schema" | "artifact" | "check-command" | "generated-output";
+
+export interface AgentLoopVerificationExpectation extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly kind: AgentLoopVerificationExpectationKind;
+  readonly required: boolean;
+  readonly description: string;
+  readonly path?: string;
+  readonly command?: string;
+  readonly schema?: JsonObject;
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
+export type AgentLoopOutputContractKind = "json-object" | "json-file" | "file" | "command-plan";
+export type AgentLoopOutputContractStatus = "pass" | "fail" | "not_applicable";
+
+export interface AgentLoopOutputContract extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly kind: AgentLoopOutputContractKind;
+  readonly required: boolean;
+  readonly description?: string;
+  readonly path?: string;
+  readonly schema?: JsonObject;
+  readonly verificationExpectations?: readonly AgentLoopVerificationExpectation[];
+  readonly maxParseRetries?: number;
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
+export interface AgentLoopOutputContractVerification extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly contract: AgentLoopOutputContract;
+  readonly status: AgentLoopOutputContractStatus;
+  readonly checkedPaths: readonly string[];
+  readonly diagnostics: readonly RedactedError[];
+  readonly evidenceIds: readonly string[];
+  readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
+}
+
 export interface AgentLoopReferenceContextItem extends JsonObject {
   readonly id: string;
   readonly kind: CliReferenceKind;
@@ -339,6 +394,8 @@ export interface AgentLoopRequest extends JsonObject {
   readonly toolProjection?: AgentLoopToolProjection;
   readonly selfRepair?: Partial<SelfRepairConfig>;
   readonly evidenceFirst?: { readonly enabled?: boolean };
+  readonly projectRules?: readonly AgentLoopProjectRuleEvidence[];
+  readonly outputContract?: AgentLoopOutputContract;
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly trace?: TraceContext;
 }
@@ -365,6 +422,7 @@ export interface AgentLoopSummary extends JsonObject {
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly modelProvider?: ModelProviderId;
   readonly modelProfile?: ModelProfileId;
+  readonly outputContract?: AgentLoopOutputContractVerification;
   readonly selfRepair?: SelfRepairOutcomeSummary;
   readonly diagnostics: readonly RedactedError[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };

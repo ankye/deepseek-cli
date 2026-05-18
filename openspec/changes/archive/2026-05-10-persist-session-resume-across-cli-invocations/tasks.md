@@ -35,10 +35,10 @@
 
 ## 7. Verification / 验证
 
-- [ ] 7.1 `npm run typecheck`.
-- [ ] 7.2 `npm run lint`.
-- [ ] 7.3 `npm test` (expect existing suite + 5 new cases, 0 fail).
-- [ ] 7.4 `node scripts/check-boundaries.mjs`.
-- [ ] 7.5 `npm run smoke:live:e2e` to confirm live-path regression still green (env-gated — will skip without live key).
-- [ ] 7.6 Refresh `tests/acceptance/latest/` evidence and regenerate `acceptance-index.md`.
-- [ ] 7.7 `openspec validate persist-session-resume-across-cli-invocations --strict` and `openspec validate --specs --strict`.
+- [x] 7.1 `npm run typecheck`.
+- [x] 7.2 `npm run lint`.
+- [x] 7.3 `npm test` (expect existing suite + 5 new cases, 0 fail).
+- [x] 7.4 `node scripts/check-boundaries.mjs`.
+- [x] 7.5 `npm run smoke:live:e2e` to confirm live-path regression still green (env-gated — will skip without live key).
+- [x] 7.6 Refresh `tests/acceptance/latest/` evidence and regenerate `acceptance-index.md`.
+- [x] 7.7 `openspec validate persist-session-resume-across-cli-invocations --strict` and `openspec validate --specs --strict`.

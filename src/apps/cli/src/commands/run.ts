@@ -1,6 +1,7 @@
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import type { CliOptions, CliRunOptions } from "../types.js";
 import { createCliAgentRuntime } from "../host/runtime.js";
+import { collectCliProjectRuleEvidence } from "../host/project-rules.js";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
 import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint } from "../renderers/runtime-events.js";
 
@@ -15,6 +16,7 @@ export async function runOneShotCommand(
   const workspaceRoot = process.cwd();
   const runtime = await createCliAgentRuntime({ live: options.live, workspaceRoot, ...(options.toolProjection ? { toolProjection: options.toolProjection } : {}) }, runOptions);
   const reasoning = options.reasoning ?? (options.live ? { enabled: false } : undefined);
+  const projectRules = await collectCliProjectRuleEvidence(runtime.deps.platform, workspaceRoot);
   try {
     const events = await emitAgentLoop(runtime.deps, runtime.kernel, {
       prompt: options.prompt,
@@ -24,6 +26,8 @@ export async function runOneShotCommand(
       profile: defaultDeepSeekProfile,
       live: options.live,
       ...(reasoning ? { reasoning } : {}),
+      projectRules,
+      ...(options.outputContract ? { outputContract: options.outputContract } : {}),
       selfRepair: {
         enabled: true,
         maxAttempts: 1,

@@ -43,10 +43,10 @@
 
 ## G. Verification / 验证
 
-- [ ] G.1 `npm run typecheck` —— 通过。
-- [ ] G.2 `npm run lint` —— ast lint passed (237 files, 16 rules)。
-- [ ] G.3 `node scripts/check-boundaries.mjs` —— 27 packages 通过。
-- [ ] G.4 `npm test` —— 300 pass + 4 skip（新增 20 case）。
-- [ ] G.5 `npm run smoke:live:e2e` —— 环境门控；无 key 时 skip。
-- [ ] G.6 刷新 `tests/acceptance/latest/` 证据。
-- [ ] G.7 `openspec validate align-builtin-tools-with-claude-cli --strict` + `openspec validate --specs --strict` —— 通过。
+- [x] G.1 `npm run typecheck` —— 通过。
+- [x] G.2 `npm run lint` —— ast lint passed (237 files, 16 rules)。
+- [x] G.3 `node scripts/check-boundaries.mjs` —— 27 packages 通过。
+- [x] G.4 `npm test` —— 300 pass + 4 skip（新增 20 case）。
+- [x] G.5 `npm run smoke:live:e2e` —— 环境门控；无 key 时 skip。
+- [x] G.6 刷新 `tests/acceptance/latest/` 证据。
+- [x] G.7 `openspec validate align-builtin-tools-with-claude-cli --strict` + `openspec validate --specs --strict` —— 通过。

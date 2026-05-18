@@ -14,6 +14,7 @@ export function createTaskOutputContractProvider(): PromptSectionProviderRegistr
     required: false,
     compatibility: { schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION },
     provide(input) {
+      if (input.outputContract) return explicitOutputContractSections(input);
       if (input.mode !== "webpage-generation") return fileMutationContractSections(input);
       const outputDir = requestedWebpageDirectory(input.prompt);
       return [createPromptSection({
@@ -38,6 +39,47 @@ export function createTaskOutputContractProvider(): PromptSectionProviderRegistr
       })];
     }
   };
+}
+
+function explicitOutputContractSections(input: Parameters<PromptSectionProviderRegistration["provide"]>[0]) {
+  const contract = input.outputContract;
+  if (!contract) return [];
+  return [createPromptSection({
+    id: "section.explicit-output-contract",
+    providerId: "core.task-output-contract",
+    kind: "task.output-contract",
+    source: "runtime",
+    role: "system",
+    content: [
+      "Task output contract:",
+      `- Kind: ${contract.kind}.`,
+      `- Required: ${contract.required ? "yes" : "no"}.`,
+      contract.description ? `- Description: ${contract.description}.` : undefined,
+      contract.path ? `- Required path: ${contract.path}.` : undefined,
+      contract.kind === "json-object" ? "- Final answer must be a parseable JSON object and should not include surrounding prose." : undefined,
+      contract.kind === "command-plan" ? "- Final answer must be a parseable JSON object with a commands array of shell command strings and a done boolean. Do not include surrounding prose." : undefined,
+      contract.kind === "json-file" ? "- Write a parseable JSON object to the required path." : undefined,
+      contract.kind === "file" ? "- Create or update the required path on disk." : undefined,
+      contract.schema ? `- JSON schema: ${JSON.stringify(contract.schema)}` : undefined,
+      ...(contract.verificationExpectations?.length
+        ? [
+            "- Verification expectations:",
+            ...contract.verificationExpectations.map((expectation) => `  - ${expectation.kind} (${expectation.required ? "required" : "optional"}): ${expectation.description}${expectation.path ? `; path=${expectation.path}` : ""}${expectation.command ? "; command=<redacted>" : ""}`)
+          ]
+        : []),
+      "- The runtime verifier will check this contract after the final response. If verification fails, repair the artifact or final answer instead of claiming completion."
+    ].filter((line): line is string => typeof line === "string").join("\n"),
+    priority: 900,
+    budgetClass: "required",
+    trust: "system",
+    required: contract.required,
+    provenance: {
+      contractKind: contract.kind,
+      ...(contract.path ? { path: contract.path } : {}),
+      hasSchema: contract.schema !== undefined,
+      expectationCount: contract.verificationExpectations?.length ?? 0
+    }
+  })];
 }
 
 function fileMutationContractSections(input: Parameters<PromptSectionProviderRegistration["provide"]>[0]) {

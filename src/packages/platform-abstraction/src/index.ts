@@ -19,6 +19,7 @@ import type {
   PlatformResolvedPath,
   ProcessProviderDescriptor,
   ProcessResult,
+  ProcessRunOptions,
   RedactedError,
   SandboxCapabilityMatrix,
   SearchProviderDescriptor,
@@ -430,7 +431,7 @@ export class NodePlatformRuntime implements PlatformRuntime {
     return results;
   }
 
-  async runProcess(command: string, args: readonly string[], options: JsonObject = {}): Promise<ProcessResult> {
+  async runProcess(command: string, args: readonly string[], options: ProcessRunOptions = {}): Promise<ProcessResult> {
     const processProvider = await this.resolveProcessProvider();
     if (!processProvider.available) {
       return {
@@ -441,17 +442,34 @@ export class NodePlatformRuntime implements PlatformRuntime {
       };
     }
     return new Promise((resolvePromise) => {
-      const scopedEnv = isStringRecord(options.env) ? options.env : {};
-      const invocation = processSpawnInvocation(this.os, command, args);
+      const executionProfile = options.executionProfile ?? "default";
+      const stdinMode = options.stdin ?? (executionProfile === "noninteractive" ? "ignore" : "pipe");
+      const scopedEnv = stringRecord(options.env);
+      const profileEnv = executionProfile === "noninteractive" ? noninteractiveProcessEnv() : {};
+      const profileDiagnostics = executionProfile === "noninteractive"
+        ? [
+            diagnostic("PROCESS_NONINTERACTIVE_PROFILE", "info", "Process ran with noninteractive stdin, pager/editor guards, and bounded machine-output hygiene."),
+            ...(isGitCommand(command) ? [diagnostic("GIT_PAGER_DISABLED", "info", "Git process ran with pager and editor prompts disabled.")] : [])
+          ]
+        : [];
+      const outputLimitBytes = typeof options.outputLimitBytes === "number" && Number.isFinite(options.outputLimitBytes) && options.outputLimitBytes > 0
+        ? Math.floor(options.outputLimitBytes)
+        : undefined;
+      const invocation = processSpawnInvocation(this.os, command, args, executionProfile);
       const child = spawn(invocation.command, [...invocation.args], {
         cwd: typeof options.cwd === "string" ? options.cwd : undefined,
-        env: Object.keys(scopedEnv).length > 0 ? { ...process.env, ...scopedEnv } : process.env,
-        shell: false
+        env: { ...process.env, ...profileEnv, ...scopedEnv },
+        shell: false,
+        stdio: [stdinMode === "ignore" ? "ignore" : "pipe", "pipe", "pipe"],
+        windowsHide: true
       });
       const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : undefined;
       let stdout = "";
       let stderr = "";
       let settled = false;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
+      if (stdinMode === "pipe") child.stdin?.end();
       const finish = (result: ProcessResult) => {
         if (settled) return;
         settled = true;
@@ -462,17 +480,32 @@ export class NodePlatformRuntime implements PlatformRuntime {
         ? setTimeout(() => {
           stderr += `${stderr ? "\n" : ""}Process timed out after ${timeoutMs}ms.`;
           child.kill("SIGKILL");
-          finish({ exitCode: 124, stdout, stderr, metadata: providerMetadata("argv", "degraded", [], "PROCESS_TIMEOUT", [diagnostic("PROCESS_TIMEOUT", "error", `Process timed out after ${timeoutMs}ms.`)]) });
+          finish({ exitCode: 124, stdout, stderr, metadata: providerMetadata("argv", "degraded", [], "PROCESS_TIMEOUT", [diagnostic("PROCESS_TIMEOUT", "error", `Process timed out after ${timeoutMs}ms.`), ...profileDiagnostics], timeoutMs) });
         }, timeoutMs)
         : undefined;
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
+      child.stdout?.on("data", (chunk) => {
+        const next = appendBoundedOutput(stdout, String(chunk), outputLimitBytes);
+        stdout = next.text;
+        stdoutTruncated ||= next.truncated;
       });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
+      child.stderr?.on("data", (chunk) => {
+        const next = appendBoundedOutput(stderr, String(chunk), outputLimitBytes);
+        stderr = next.text;
+        stderrTruncated ||= next.truncated;
       });
-      child.on("close", (exitCode) => finish({ exitCode: exitCode ?? 0, stdout, stderr, metadata: providerMetadata("argv", "available", [], undefined, []) }));
-      child.on("error", (error) => finish({ exitCode: 1, stdout, stderr: error.message, metadata: providerMetadata("argv", "degraded", [], "PROCESS_SPAWN_FAILED", [diagnostic("PROCESS_SPAWN_FAILED", "error", error.message)]) }));
+      child.on("close", (exitCode) => {
+        const truncationDiagnostics = [
+          ...(stdoutTruncated ? [diagnostic("PROCESS_STDOUT_TRUNCATED", "warn", `Process stdout exceeded ${outputLimitBytes} bytes and was truncated.`)] : []),
+          ...(stderrTruncated ? [diagnostic("PROCESS_STDERR_TRUNCATED", "warn", `Process stderr exceeded ${outputLimitBytes} bytes and was truncated.`)] : [])
+        ];
+        finish({
+          exitCode: exitCode ?? 0,
+          stdout,
+          stderr,
+          metadata: providerMetadata("argv", truncationDiagnostics.length > 0 ? "degraded" : "available", [], truncationDiagnostics[0]?.code, [...profileDiagnostics, ...truncationDiagnostics], timeoutMs)
+        });
+      });
+      child.on("error", (error) => finish({ exitCode: 1, stdout, stderr: error.message, metadata: providerMetadata("argv", "degraded", [], "PROCESS_SPAWN_FAILED", [diagnostic("PROCESS_SPAWN_FAILED", "error", error.message), ...profileDiagnostics], timeoutMs) }));
     });
   }
 
@@ -807,7 +840,7 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
     return results;
   }
 
-  override async runProcess(command: string, args: readonly string[]): Promise<ProcessResult> {
+  override async runProcess(command: string, args: readonly string[], options: ProcessRunOptions = {}): Promise<ProcessResult> {
     const processProvider = await this.resolveProcessProvider();
     if (!processProvider.available) {
       return {
@@ -819,14 +852,22 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
     }
     return {
       exitCode: 0,
-      stdout: JSON.stringify({ command, args }),
+      stdout: JSON.stringify({
+        command,
+        args,
+        executionProfile: options.executionProfile ?? "default",
+        stdin: options.stdin ?? (options.executionProfile === "noninteractive" ? "ignore" : "pipe")
+      }),
       stderr: "",
-      metadata: providerMetadata("argv", "available", [], undefined, [])
+      metadata: providerMetadata("argv", "available", [], undefined, options.executionProfile === "noninteractive" ? [diagnostic("PROCESS_NONINTERACTIVE_PROFILE", "info", "Fake process observed noninteractive profile.")] : [])
     };
   }
 }
 
-function processSpawnInvocation(os: PlatformOsFamily, command: string, args: readonly string[]): { readonly command: string; readonly args: readonly string[] } {
+function processSpawnInvocation(os: PlatformOsFamily, command: string, args: readonly string[], executionProfile: "default" | "noninteractive" = "default"): { readonly command: string; readonly args: readonly string[] } {
+  if (executionProfile === "noninteractive" && isGitCommand(command) && !args.includes("--no-pager")) {
+    return { command, args: ["--no-pager", ...args] };
+  }
   if (os === "windows" && /\.(?:cmd|bat)$/i.test(command)) {
     return { command: "cmd.exe", args: ["/d", "/s", "/c", command, ...args] };
   }
@@ -984,21 +1025,68 @@ function providerMetadata(
   status: PlatformProviderResultMetadata["status"],
   fallbackChain: readonly PlatformProviderName[],
   fallbackReason: string | undefined,
-  diagnostics: readonly PlatformDiagnostic[]
+  diagnostics: readonly PlatformDiagnostic[],
+  timeoutMs?: number
 ): PlatformProviderResultMetadata {
   return {
     selectedProvider,
     status,
     fallbackChain,
     ...(fallbackReason ? { fallbackReason } : {}),
+    ...(timeoutMs ? { timeoutMs } : {}),
     degradedReasons: diagnostics.filter((entry) => entry.severity !== "info").map((entry) => entry.code),
     diagnostics,
     redaction: { class: "internal" }
   };
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
+function stringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
+function noninteractiveProcessEnv(): Record<string, string> {
+  return {
+    CI: "1",
+    TERM: "dumb",
+    NO_COLOR: "1",
+    PAGER: "cat",
+    GIT_PAGER: "cat",
+    GIT_EDITOR: "true",
+    GIT_TERMINAL_PROMPT: "0",
+    EDITOR: "true",
+    VISUAL: "true",
+    LESS: "-FRX",
+    SSH_ASKPASS: "",
+    GCM_INTERACTIVE: "Never",
+    npm_config_yes: "true",
+    npm_config_color: "false"
+  };
+}
+
+function isGitCommand(command: string): boolean {
+  return /(?:^|[/\\])git(?:\.exe)?$/i.test(command);
+}
+
+function appendBoundedOutput(current: string, chunk: string, limitBytes: number | undefined): { readonly text: string; readonly truncated: boolean } {
+  if (!limitBytes) return { text: current + chunk, truncated: false };
+  const currentBytes = Buffer.byteLength(current, "utf8");
+  if (currentBytes >= limitBytes) return { text: current, truncated: true };
+  const remaining = limitBytes - currentBytes;
+  if (Buffer.byteLength(chunk, "utf8") <= remaining) return { text: current + chunk, truncated: false };
+  return { text: current + truncateUtf8(chunk, remaining), truncated: true };
+}
+
+function truncateUtf8(text: string, limitBytes: number): string {
+  const chunks: string[] = [];
+  let bytes = 0;
+  for (const character of text) {
+    const nextBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + nextBytes > limitBytes) break;
+    chunks.push(character);
+    bytes += nextBytes;
+  }
+  return chunks.join("");
 }
 
 function diagnostic(code: string, severity: PlatformDiagnostic["severity"], message: string, details: JsonObject = {}): PlatformDiagnostic {

@@ -31,6 +31,7 @@ export function defineShellRunTool(deps: ShellRunToolDeps | undefined) {
       timeoutMs: { type: "number" },
       limitBytes: { type: "number" },
       shellProfile: { type: "string" },
+      executionProfile: { type: "string" },
       runInBackground: { type: "boolean" }
     }),
     objectSchema(["evidence"], { evidence: { type: "object" } }),
@@ -66,6 +67,12 @@ async function shellRunTool(input: JsonObject, context: CapabilityExecutionConte
   if (!processProvider.available) {
     return failure("shell.run", "PROCESS_UNAVAILABLE", processProvider.diagnostics[0]?.message ?? "Process unavailable.", [cwd], { processProvider });
   }
-  const result = await deps.platform.runProcess(parsed.command, parsed.args ?? [], { cwd, timeoutMs: parsed.timeoutMs ?? 30_000 });
+  const result = await deps.platform.runProcess(parsed.command, parsed.args ?? [], {
+    cwd,
+    timeoutMs: parsed.timeoutMs ?? 30_000,
+    executionProfile: parsed.executionProfile ?? "noninteractive",
+    stdin: "ignore",
+    outputLimitBytes: parsed.limitBytes ?? 16_000
+  });
   return processResultToEvidence("shell.run", result, cwd, context, parsed.limitBytes);
 }

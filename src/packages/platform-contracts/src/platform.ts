@@ -134,6 +134,18 @@ export interface ProcessResult {
   readonly metadata?: PlatformProviderResultMetadata;
 }
 
+export type ProcessExecutionProfile = "default" | "noninteractive";
+export type ProcessStdinMode = "pipe" | "ignore";
+
+export interface ProcessRunOptions extends JsonObject {
+  readonly cwd?: string;
+  readonly timeoutMs?: number;
+  readonly env?: JsonObject;
+  readonly executionProfile?: ProcessExecutionProfile;
+  readonly stdin?: ProcessStdinMode;
+  readonly outputLimitBytes?: number;
+}
+
 export interface SearchResult {
   readonly path: string;
   readonly line: number;
@@ -165,7 +177,7 @@ export interface PlatformRuntime {
   writeFile(path: string, content: string): Promise<void>;
   findFiles(pattern: string, root: string): Promise<readonly string[]>;
   searchText(pattern: string, root: string): Promise<readonly SearchResult[]>;
-  runProcess(command: string, args: readonly string[], options?: JsonObject): Promise<ProcessResult>;
+  runProcess(command: string, args: readonly string[], options?: ProcessRunOptions): Promise<ProcessResult>;
   availability(): Promise<JsonObject>;
 }
 

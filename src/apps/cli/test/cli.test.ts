@@ -85,6 +85,47 @@ describe("cli host adapter", () => {
       live: false,
       toolProjection: "none"
     });
+    assert.deepEqual(parseCliArgs([
+      "run",
+      "contract task",
+      "--output-contract",
+      "json-object",
+      "--output-schema",
+      "{\"type\":\"object\",\"required\":[\"ok\"],\"properties\":{\"ok\":{\"type\":\"boolean\"}}}",
+      "--output-contract-description",
+      "Return status JSON.",
+      "--output",
+      "jsonl"
+    ]), {
+      command: "run",
+      prompt: "contract task",
+      output: "jsonl",
+      live: false,
+      outputContract: {
+        schemaVersion: "1.0.0",
+        kind: "json-object",
+        required: true,
+        description: "Return status JSON.",
+        schema: {
+          type: "object",
+          required: ["ok"],
+          properties: { ok: { type: "boolean" } }
+        },
+        redaction: { class: "internal" }
+      }
+    });
+    assert.deepEqual(parseCliArgs(["run", "plan task", "--output-contract", "command-plan", "--output", "jsonl"]), {
+      command: "run",
+      prompt: "plan task",
+      output: "jsonl",
+      live: false,
+      outputContract: {
+        schemaVersion: "1.0.0",
+        kind: "command-plan",
+        required: true,
+        redaction: { class: "internal" }
+      }
+    });
     assert.deepEqual(parseCliArgs(["chat", "--live", "--thinking", "max", "--output", "jsonl"]), {
       command: "chat",
       prompt: "",
@@ -335,6 +376,93 @@ describe("cli host adapter", () => {
     assert.deepEqual(capturedRequests[0]?.reasoning, { enabled: true, providerEffort: "max" });
     assert.equal(lines.some((line) => line.includes("agent.loop.completed")), true);
     await kernel.shutdown("cli-test-live-reasoning-explicit");
+  });
+
+  it("projects one-shot output contracts through prompt assembly and verification", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await deps.platform.writeFile(`${process.cwd().replace(/\\/g, "/")}/AGENTS.md`, "Use repository rules from AGENTS.md.\n");
+    const capturedRequests: ModelRequest[] = [];
+    const runtimeDeps = {
+      ...deps,
+      models: new CaptureModelRequestGateway(capturedRequests, "{\"ok\":true}")
+    };
+    await registerRuntimeCoreTools(runtimeDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(runtimeDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      [
+        "run",
+        "contract task",
+        "--output",
+        "jsonl",
+        "--output-contract",
+        "json-object",
+        "--output-schema",
+        "{\"type\":\"object\",\"required\":[\"ok\"],\"properties\":{\"ok\":{\"type\":\"boolean\"}}}"
+      ],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: runtimeDeps, kernel })
+      }
+    );
+
+    const firstRequest = capturedRequests[0];
+    const promptText = firstRequest?.messages ? firstRequest.messages.map((message) => message.content).join("\n") : "";
+    const events = lines.map((line) => JSON.parse(line) as { kind?: string; data?: { status?: string; outputContract?: { status?: string } } });
+    assert.equal(promptText.includes("Task output contract:"), true);
+    assert.equal(promptText.includes("Project repository instructions:"), true);
+    assert.equal(promptText.includes("AGENTS.md"), true);
+    assert.equal(promptText.includes("\"ok\""), true);
+    assert.deepEqual(firstRequest?.output, {
+      format: "json_object",
+      schema: {
+        type: "object",
+        required: ["ok"],
+        properties: { ok: { type: "boolean" } }
+      },
+      strict: true
+    });
+    assert.equal(events.some((event) => event.kind === "agent.output-contract.verified" && event.data?.status === "pass"), true);
+    assert.equal(events.at(-1)?.data?.outputContract?.status, "pass");
+    await kernel.shutdown("cli-test-output-contract");
+  });
+
+  it("verifies command-plan output contracts as JSON object mode", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    const capturedRequests: ModelRequest[] = [];
+    const runtimeDeps = {
+      ...deps,
+      models: new CaptureModelRequestGateway(capturedRequests, "{\"commands\":[\"pwd\"],\"done\":true}")
+    };
+    await registerRuntimeCoreTools(runtimeDeps, process.cwd());
+    const kernel = await createDefaultRuntimeKernel(runtimeDeps);
+    const lines: string[] = [];
+
+    await runCli(
+      ["run", "plan task", "--output", "jsonl", "--output-contract", "command-plan"],
+      (line: string) => {
+        lines.push(line);
+      },
+      [],
+      { stdinIsTTY: false, stdoutIsTTY: false },
+      {
+        createRuntime: async () => ({ deps: runtimeDeps, kernel })
+      }
+    );
+
+    const firstRequest = capturedRequests[0];
+    const promptText = firstRequest?.messages ? firstRequest.messages.map((message) => message.content).join("\n") : "";
+    const events = lines.map((line) => JSON.parse(line) as { kind?: string; data?: { status?: string; outputContract?: { status?: string } } });
+    assert.equal(firstRequest?.output?.format, "json_object");
+    assert.equal(promptText.includes("commands array of shell command strings"), true);
+    assert.equal(events.some((event) => event.kind === "agent.output-contract.verified" && event.data?.status === "pass"), true);
+    assert.equal(events.at(-1)?.data?.outputContract?.status, "pass");
+    await kernel.shutdown("cli-test-command-plan-output-contract");
   });
 
   it("renders one-shot final JSON summaries", async () => {
@@ -4185,11 +4313,11 @@ class ReasoningStreamModelGateway implements ModelGateway {
 }
 
 class CaptureModelRequestGateway implements ModelGateway {
-  constructor(private readonly requests: ModelRequest[]) {}
+  constructor(private readonly requests: ModelRequest[], private readonly responseText = "ok") {}
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     this.requests.push(request);
-    yield { kind: "delta", text: "ok" };
+    yield { kind: "delta", text: this.responseText };
     yield { kind: "finish", reason: "stop" };
     yield { kind: "done" };
   }

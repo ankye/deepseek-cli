@@ -28,6 +28,11 @@ async function gitTool(input: JsonObject, context: CapabilityExecutionContext, d
   const cwdPath = resolveToolPath(deps, parsed.workspaceRoot, ".");
   if (!cwdPath.ok || !cwdPath.value) return failure("git.status", "PATH_REJECTED", cwdPath.error?.message ?? "Path rejected.", [String(parsed.workspaceRoot ?? ".")]);
   const cwd = cwdPath.value.path;
-  const result = await deps.platform.runProcess("git", ["status", "--short"], { cwd });
+  const result = await deps.platform.runProcess("git", ["status", "--short"], {
+    cwd,
+    executionProfile: "noninteractive",
+    stdin: "ignore",
+    outputLimitBytes: parsed.limitBytes ?? 16_000
+  });
   return processResultToEvidence("git.status", result, cwd, context, parsed.limitBytes, { gitMode: "status" });
 }

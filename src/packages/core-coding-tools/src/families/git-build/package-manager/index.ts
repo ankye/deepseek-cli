@@ -83,7 +83,13 @@ async function packageManagerTool(input: JsonObject, context: CapabilityExecutio
 
   const processProvider = await deps.platform.resolveProcessProvider();
   if (!processProvider.available) return failure(TOOL_NAME, "PROCESS_UNAVAILABLE", processProvider.diagnostics[0]?.message ?? "Process unavailable.", [cwd], { processProvider });
-  const result = await deps.platform.runProcess(manager, args, { cwd, timeoutMs: parsed.timeoutMs ?? 30_000 });
+  const result = await deps.platform.runProcess(manager, args, {
+    cwd,
+    timeoutMs: parsed.timeoutMs ?? 30_000,
+    executionProfile: "noninteractive",
+    stdin: "ignore",
+    outputLimitBytes: parsed.limitBytes ?? 16_000
+  });
   return processResultToEvidence(TOOL_NAME, result, cwd, context, parsed.limitBytes, { operation: parsed.operation, manager, dryRun: false });
 }
 

@@ -1,5 +1,6 @@
 import type {
   AgentLoopRequest,
+  AgentLoopOutputContractVerification,
   AgentLoopSummary,
   AgentModeSessionSummary,
   AgentPhasePlan,
@@ -23,6 +24,7 @@ export interface AgentLoopModeSummaryInput {
   readonly interactionModeState?: InteractionModeState | undefined;
   readonly interactionModeTransitions?: readonly InteractionModeTransition[] | undefined;
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping | undefined;
+  readonly outputContract?: AgentLoopOutputContractVerification | undefined;
   readonly selfRepair?: SelfRepairOutcomeSummary | undefined;
 }
 
@@ -77,6 +79,7 @@ export function summarizeAgentLoop(
     ...(mode?.reasoningEffortMapping ? { reasoningEffortMapping: mode.reasoningEffortMapping } : {}),
     modelProvider: request.profile.providerId,
     modelProfile: request.profile.id,
+    ...(mode?.outputContract ? { outputContract: mode.outputContract } : {}),
     ...(mode?.selfRepair ? { selfRepair: mode.selfRepair } : {}),
     diagnostics,
     redaction: { class: "internal", fields: ["assistantText", "diagnostics.details", "selfRepair.classifications.diagnostics", "selfRepair.attempts.diagnostics"] }

@@ -1,7 +1,7 @@
 import type { JsonObject, RedactedError, RedactionMetadata } from "./common.js";
 import type { AgentId, AgentInstanceId, CapabilityId, SessionId, TurnId } from "./ids.js";
 import type { AgentDelegationReasonCode, AgentModeName, AgentVerifierVerdict, AgentWorkerResult, AgentWorkerStopReason, AgentWorkOrder } from "./agent-mode.js";
-import type { PlatformProviderResultMetadata } from "./platform.js";
+import type { PlatformProviderResultMetadata, ProcessExecutionProfile } from "./platform.js";
 
 export type CoreCodingToolName =
   | "file.read"
@@ -112,6 +112,7 @@ export interface ShellRunInput extends JsonObject {
   readonly timeoutMs?: number;
   readonly limitBytes?: number;
   readonly shellProfile?: string;
+  readonly executionProfile?: ProcessExecutionProfile;
   readonly runInBackground?: boolean;
 }
 
@@ -168,6 +169,7 @@ export interface TestRunInput extends JsonObject {
   readonly timeoutMs?: number;
   readonly limitBytes?: number;
   readonly intent?: string;
+  readonly executionProfile?: ProcessExecutionProfile;
 }
 
 export interface TodoPlanItem extends JsonObject {

@@ -34,11 +34,11 @@
 
 ## 7. 验证 / Verification
 
-- [ ] 7.1 `npm run typecheck`。
-- [ ] 7.2 `npm run lint`。
-- [ ] 7.3 `node scripts/check-boundaries.mjs`。
-- [ ] 7.4 `npm test`（期望 275 pass + 4 skip）。
-- [ ] 7.5 `ls src/packages/ | wc -l` = 27。
-- [ ] 7.6 `npm run smoke:live:e2e`（环境门控；无 key 时 skip）。
-- [ ] 7.7 `openspec validate consolidate-placeholder-packages --strict` 和 `openspec validate --specs --strict` 都通过。
-- [ ] 7.8 刷新 `tests/acceptance/latest/` 证据，重新生成 `acceptance-index.md`。
+- [x] 7.1 `npm run typecheck`。
+- [x] 7.2 `npm run lint`。
+- [x] 7.3 `node scripts/check-boundaries.mjs`。
+- [x] 7.4 `npm test`（期望 275 pass + 4 skip）。
+- [x] 7.5 `ls src/packages/ | wc -l` = 27。
+- [x] 7.6 `npm run smoke:live:e2e`（环境门控；无 key 时 skip）。
+- [x] 7.7 `openspec validate consolidate-placeholder-packages --strict` 和 `openspec validate --specs --strict` 都通过。
+- [x] 7.8 刷新 `tests/acceptance/latest/` 证据，重新生成 `acceptance-index.md`。

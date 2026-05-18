@@ -28,6 +28,11 @@ async function gitTool(input: JsonObject, context: CapabilityExecutionContext, d
   const cwdPath = resolveToolPath(deps, parsed.workspaceRoot, ".");
   if (!cwdPath.ok || !cwdPath.value) return failure("git.diff", "PATH_REJECTED", cwdPath.error?.message ?? "Path rejected.", [String(parsed.workspaceRoot ?? ".")]);
   const cwd = cwdPath.value.path;
-  const result = await deps.platform.runProcess("git", ["diff"], { cwd });
+  const result = await deps.platform.runProcess("git", ["diff"], {
+    cwd,
+    executionProfile: "noninteractive",
+    stdin: "ignore",
+    outputLimitBytes: parsed.limitBytes ?? 16_000
+  });
   return processResultToEvidence("git.diff", result, cwd, context, parsed.limitBytes, { gitMode: "diff" });
 }

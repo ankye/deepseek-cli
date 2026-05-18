@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "kind": "cli.overall-delivery-capability-score.evidence",
-  "generatedAt": "2026-05-16T20:21:39.485Z",
+  "generatedAt": "2026-05-18T00:02:44.841Z",
   "command": "npx tsx src/apps/cli/src/index.ts diagnostics evaluate --full --execute-task all --live --output text",
   "status": "pass",
   "scoringMethod": "unfinished-penalty",
@@ -170,8 +170,8 @@
         "retryCount": 0,
         "evidenceManifestStatus": "passed",
         "repairMetricsAvailability": "available",
-        "repairActivationCount": 1,
-        "repairSuccessCount": 1
+        "repairActivationCount": 2,
+        "repairSuccessCount": 0
       },
       {
         "taskId": "eval.docs.spec-update",

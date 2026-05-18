@@ -18,7 +18,7 @@ export function defineTestRunTool(deps: CoreCodingToolsDependencies | undefined)
     "Test Run",
     "process",
     ["process:test"],
-    objectSchema(["command"], { command: { type: "string" }, args: { type: "array" }, cwd: { type: "string" }, workspaceRoot: { type: "string" }, timeoutMs: { type: "number" }, limitBytes: { type: "number" }, intent: { type: "string" } }),
+    objectSchema(["command"], { command: { type: "string" }, args: { type: "array" }, cwd: { type: "string" }, workspaceRoot: { type: "string" }, timeoutMs: { type: "number" }, limitBytes: { type: "number" }, intent: { type: "string" }, executionProfile: { type: "string" } }),
     objectSchema(["evidence"], { evidence: { type: "object" } }),
     (input, context) => requireDeps(deps).then((ready) => testRunTool(input, context, ready))
   );
@@ -39,6 +39,12 @@ async function testRunTool(input: JsonObject, context: CapabilityExecutionContex
   if (!processProvider.available) {
     return failure("test.run", "PROCESS_UNAVAILABLE", processProvider.diagnostics[0]?.message ?? "Process unavailable.", [cwd], { processProvider });
   }
-  const result = await deps.platform.runProcess(parsed.command, parsed.args ?? [], { cwd, timeoutMs: parsed.timeoutMs ?? 30_000 });
+  const result = await deps.platform.runProcess(parsed.command, parsed.args ?? [], {
+    cwd,
+    timeoutMs: parsed.timeoutMs ?? 30_000,
+    executionProfile: parsed.executionProfile ?? "noninteractive",
+    stdin: "ignore",
+    outputLimitBytes: parsed.limitBytes ?? 16_000
+  });
   return processResultToEvidence("test.run", result, cwd, context, parsed.limitBytes, { intent: parsed.intent ?? "test" });
 }

@@ -1,6 +1,7 @@
 import type {
   AgentLoopControl,
   AgentLoopLimits,
+  AgentLoopOutputContractVerification,
   AgentLoopRequest,
   AgentLoopSummary,
   AgentModeSessionSummary,
@@ -14,6 +15,7 @@ import type {
   InteractionModeTransition,
   JsonObject,
   ModelChatMessage,
+  ModelOutputOptions,
   ModelReasoningOptions,
   RedactedError,
   RuntimeDependencies,
@@ -104,6 +106,7 @@ export async function* runAgentLoop(
   let terminalEmitted = false;
   let repairContinuationRequested = false;
   let toolEvidenceEvents: RuntimeEvent[] = [];
+  let outputContractVerification: AgentLoopOutputContractVerification | undefined;
   const restoredHistory = await restoreSessionHistory(deps, sessionId);
   const messages: ModelChatMessage[] = [...restoredHistory.messages, { role: "user", content: request.prompt }];
   let contextProjection: ContextProjectionResult | undefined;
@@ -131,6 +134,7 @@ export async function* runAgentLoop(
     interactionModeState,
     interactionModeTransitions,
     reasoningEffortMapping,
+    outputContract: outputContractVerification,
     selfRepair: currentRepairOutcome()
   });
 
@@ -470,6 +474,7 @@ export async function* runAgentLoop(
 
     let requestedTool = false;
     const reasoning = modelReasoningOptions(request.reasoning, reasoningEffortMapping);
+    const output = modelOutputOptions(request);
     for await (const modelEvent of deps.models.stream({
       profile: request.profile,
       prompt: assembly.promptText,
@@ -477,6 +482,7 @@ export async function* runAgentLoop(
       tools: assembly.toolPlan.visibleTools,
       ...(request.credentialRef ? { credentialRef: request.credentialRef } : {}),
       ...(reasoning ? { reasoning } : {}),
+      ...(output ? { output } : {}),
       ...(signal ? { signal } : {}),
       timeoutMs: request.timeoutMs ?? limits.turnTimeoutMs,
       metadata: {
@@ -906,10 +912,11 @@ export async function* runAgentLoop(
         diagnostics,
         iteration: iterations
       });
+      outputContractVerification = verification.outputContract ?? outputContractVerification;
       modeSummary = verification.modeSummary;
       for (const event of verification.events) yield event;
       if (verification.repairRequested || verification.terminalStatus === "failed") {
-        const verifierError = finalVerifierFailureError(verification.verifierResult);
+        const verifierError = finalVerifierFailureError(verification.verifierResult, verification.outputContract);
         diagnostics.push(verifierError);
         if (iterations < limits.maxModelIterations) {
           const repairQueued = yield* emitFailureWithRepair("failed", "final-verifier-failed", verifierError, lastVerifierEvent(verification.events));
@@ -947,6 +954,18 @@ export async function* runAgentLoop(
     diagnostics.push(error);
     yield* emitFailureWithRepair("rejected", "model-iteration-limit", error);
   }
+}
+
+function modelOutputOptions(request: AgentLoopRequest): ModelOutputOptions | undefined {
+  const contract = request.outputContract;
+  if (contract?.kind !== "json-object" && contract?.kind !== "command-plan") return undefined;
+  return {
+    format: "json_object",
+    ...(contract.schema ? { schema: contract.schema } : {}),
+    ...(contract.description ? { description: contract.description } : {}),
+    ...(contract.maxParseRetries !== undefined ? { maxParseRetries: contract.maxParseRetries } : {}),
+    strict: true
+  };
 }
 
 interface RestoredSessionHistory {
@@ -1112,7 +1131,17 @@ function repairFeedbackMessage(
   };
 }
 
-function finalVerifierFailureError(verifierResult: AgentVerifierResult | undefined): RedactedError {
+function finalVerifierFailureError(verifierResult: AgentVerifierResult | undefined, outputContract: AgentLoopOutputContractVerification | undefined): RedactedError {
+  if (outputContract?.status === "fail") {
+    return kernelError("KERNEL_ENVELOPE_INVALID", "Output contract verification failed; repair the final answer or required artifact before stopping.", {
+      contractKind: outputContract.contract.kind,
+      requiredPath: outputContract.contract.path ?? "assistant-response",
+      diagnostics: outputContract.diagnostics.slice(0, 5).map((diagnostic) => ({
+        code: diagnostic.code,
+        message: diagnostic.message
+      }))
+    });
+  }
   return kernelError("KERNEL_ENVELOPE_INVALID", "Final verifier failed; revise the result and collect independent verification evidence before stopping.", {
     verifierResultId: verifierResult?.verifierResultId ?? "unknown",
     verdict: verifierResult?.verdict ?? "unknown",

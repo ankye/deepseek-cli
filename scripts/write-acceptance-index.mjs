@@ -18,6 +18,7 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | CLI build artifact | \`npm run build:cli\` -> \`latest/build-cli.txt\` | required |
 | CLI acceptance evidence refresh | \`deepseek diagnostics refresh --output json\` regenerates allowlisted \`latest/*.txt\` evidence before verify | required |
 | CLI task completion evaluation | \`deepseek diagnostics evaluate --dry-run --output json\` plans DeepSeek-owned task-completion comparison evidence | required |
+| Systemized delivery capability layers | \`openspec validate systematize-agent-delivery-capability-layers --strict\`, verification suites, and implementation evidence -> \`latest/systematized-delivery-capability-layers.json\` | required |
 | Real tool-family delivery capability | \`npx tsx scripts/run-live-tool-coverage.ts\` -> \`latest/live-tool-coverage.json\`, \`latest/tool-family-delivery-capability-score.json\`, \`latest/deepseek-provider-response-cache.json\` | required |
 | DeepSeek response replay regression | \`npx tsx scripts/run-live-tool-coverage.ts --replay\` -> \`latest/deepseek-provider-response-cache.json\`, \`latest/live-tool-coverage-replay.json\` | replay-only, zero credit for live delivery |
 | DeepSeek live provider smoke | \`DEEPSEEK_LIVE_TESTS=1 npm run smoke:live:deepseek\` -> \`latest/live-provider-smoke.txt\` | required for live release rehearsal |

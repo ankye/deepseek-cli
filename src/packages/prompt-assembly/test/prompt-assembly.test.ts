@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { AgentLoopBudget, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, CapabilityManifest, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
+import type { AgentLoopBudget, AgentLoopProjectRuleEvidence, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, CapabilityManifest, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
 import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
@@ -27,6 +27,23 @@ describe("prompt assembly", () => {
 
     assert.equal(result.messages[0]?.content, "semantic recall evidence");
     assert.equal(result.trace.providerIds.includes("custom.semantic"), true);
+  });
+
+  it("prioritizes project repository instructions while preserving the exact user prompt", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "run the task",
+      projectRules: [projectRule("AGENTS.md", "Do not bypass platform-contracts.")]
+    }));
+
+    const project = result.messages.find((message) => message.content.includes("Project repository instructions:"));
+    assert.ok(project);
+    assert.equal(project.content.includes("Do not bypass platform-contracts."), true);
+    assert.equal(project.content.includes("lower priority than current system/developer/user instructions"), true);
+    assert.equal(result.messages.at(-1)?.role, "user");
+    assert.equal(result.messages.at(-1)?.content, "run the task");
+    assert.equal(result.trace.projectRules[0]?.status, "included");
+    assert.equal(result.trace.replay.inputFingerprint.length > 0, true);
   });
 
   it("labels projected PageIndex, semantic, tool, skill, and code evidence separately", async () => {
@@ -293,6 +310,7 @@ function input(options: {
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly availableTools?: readonly CapabilityManifest[];
   readonly toolPolicy?: PromptAssemblyInput["toolPolicy"];
+  readonly projectRules?: readonly AgentLoopProjectRuleEvidence[];
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -316,6 +334,7 @@ function input(options: {
       correlationId: asId<"correlation">("corr-prompt-assembly")
     },
     history: [{ role: "user", content: options.prompt }],
+    ...(options.projectRules ? { projectRules: options.projectRules } : {}),
     ...(options.evidenceFirst ? { evidenceFirst: options.evidenceFirst } : {}),
     ...(options.selfRepair ? { selfRepair: options.selfRepair } : {}),
     ...(options.phasePlan ? {
@@ -352,6 +371,21 @@ function input(options: {
     toolPolicy: options.toolPolicy ?? "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
+function projectRule(path: string, content: string): AgentLoopProjectRuleEvidence {
+  return {
+    schemaVersion: "1.0.0",
+    source: "agents-md",
+    status: "included",
+    priority: 100,
+    path,
+    content,
+    bytes: content.length,
+    fingerprint: "sha256:project-rule",
+    diagnostics: [],
+    redaction: { class: "internal", fields: ["content"] }
   };
 }
 

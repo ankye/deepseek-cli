@@ -51,11 +51,11 @@
 
 ## 9. Verification / 验证
 
-- [ ] 9.1 `npm run typecheck`。
-- [ ] 9.2 `npm run lint`。
-- [ ] 9.3 `node scripts/check-boundaries.mjs`（27 packages 不变）。
-- [ ] 9.4 `npm test`（280 pass + 4 skip）。
-- [ ] 9.5 `npm run smoke:live:e2e`（环境门控；无 key 时 skip）。
-- [ ] 9.6 手动验证：`node scripts/mcp-echo-server.mjs` 可独立启动并响应 `initialize`。
-- [ ] 9.7 刷新 `tests/acceptance/latest/` 证据。
-- [ ] 9.8 `openspec validate mcp-client-against-real-servers --strict` + `openspec validate --specs --strict`。
+- [x] 9.1 `npm run typecheck`。
+- [x] 9.2 `npm run lint`。
+- [x] 9.3 `node scripts/check-boundaries.mjs`（27 packages 不变）。
+- [x] 9.4 `npm test`（280 pass + 4 skip）。
+- [x] 9.5 `npm run smoke:live:e2e`（环境门控；无 key 时 skip）。
+- [x] 9.6 手动验证：`node scripts/mcp-echo-server.mjs` 可独立启动并响应 `initialize`。
+- [x] 9.7 刷新 `tests/acceptance/latest/` 证据。
+- [x] 9.8 `openspec validate mcp-client-against-real-servers --strict` + `openspec validate --specs --strict`。

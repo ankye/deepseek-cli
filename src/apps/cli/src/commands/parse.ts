@@ -1,4 +1,4 @@
-import type { AgentLoopOutputMode, CliKeymapProfileName, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, ModelReasoningEffort, ModelReasoningOptions, ModelReasoningProviderEffort, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
+import type { AgentLoopOutputContract, AgentLoopOutputContractKind, AgentLoopOutputMode, CliKeymapProfileName, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, JsonValue, ModelReasoningEffort, ModelReasoningOptions, ModelReasoningProviderEffort, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import type { CliOptions, CliTerminalFlags } from "../types.js";
 import { defaultTerminalFlags } from "../host/terminal.js";
@@ -13,12 +13,13 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
   const live = args.includes("--live");
   const toolProjection = parseToolProjection(args);
   const reasoning = parseReasoningOptions(args);
+  const outputContract = parseOutputContract(args);
   const first = args[0];
   if (!first || first === "help" || first === "--help" || first === "-h") {
     return { command: "help", prompt: "", output, live };
   }
   if (first === "run") {
-    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(timeoutMs ? { timeoutMs } : {}), ...(toolProjection ? { toolProjection } : {}), ...(reasoning ? { reasoning } : {}) };
+    return { command: "run", prompt: promptFromArgs(args.slice(1)), output, live, ...(outputContract ? { outputContract } : {}), ...(timeoutMs ? { timeoutMs } : {}), ...(toolProjection ? { toolProjection } : {}), ...(reasoning ? { reasoning } : {}) };
   }
   if (first === "chat") {
     const sessionId = readFlagValue(args, "--session");
@@ -156,7 +157,7 @@ export function cliUsageLines(): readonly string[] {
   return [
     "DeepSeek CLI",
     "Usage:",
-    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection none|read-only|read-write|all] [--no-tools] [--timeout-ms <ms>]",
+    "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection none|read-only|read-write|all] [--no-tools] [--timeout-ms <ms>] [--output-contract json-object|json-file|file|command-plan]",
     "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
@@ -397,6 +398,43 @@ function parseOutputMode(args: readonly string[]): AgentLoopOutputMode {
   return value === "json" || value === "jsonl" || value === "text" ? value : defaultOutputMode;
 }
 
+function parseOutputContract(args: readonly string[]): AgentLoopOutputContract | undefined {
+  const kind = parseOutputContractKind(readFlagValue(args, "--output-contract"));
+  if (!kind) return undefined;
+  const schema = parseJsonObjectFlag(args, "--output-schema");
+  const path = readFlagValue(args, "--output-contract-path");
+  const description = readFlagValue(args, "--output-contract-description");
+  return {
+    schemaVersion: "1.0.0",
+    kind,
+    required: !args.includes("--output-contract-optional"),
+    ...(description ? { description } : {}),
+    ...(path ? { path } : {}),
+    ...(schema ? { schema } : {}),
+    redaction: { class: "internal" }
+  };
+}
+
+function parseOutputContractKind(value: string | undefined): AgentLoopOutputContractKind | undefined {
+  if (value === "json-object" || value === "json-file" || value === "file" || value === "command-plan") return value;
+  return undefined;
+}
+
+function parseJsonObjectFlag(args: readonly string[], name: string): JsonObject | undefined {
+  const value = readFlagValue(args, name);
+  if (!value) return undefined;
+  return jsonObjectFromString(value);
+}
+
+function jsonObjectFromString(value: string): JsonObject | undefined {
+  try {
+    const parsed = JSON.parse(value) as JsonValue;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as JsonObject : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseToolProjection(args: readonly string[]): CliOptions["toolProjection"] {
   if (args.includes("--no-tools")) return "none";
   const value = readFlagValue(args, "--tool-projection");
@@ -454,13 +492,25 @@ function promptFromArgs(args: readonly string[]): string {
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (!value) continue;
-    if (value === "--output" || value === "--timeout-ms" || value === "--tool-projection" || value === "--thinking" || value === "--reasoning-effort") {
+    if (
+      value === "--output" ||
+      value === "--timeout-ms" ||
+      value === "--tool-projection" ||
+      value === "--thinking" ||
+      value === "--reasoning-effort" ||
+      value === "--output-contract" ||
+      value === "--output-contract-path" ||
+      value === "--output-schema" ||
+      value === "--output-schema-file" ||
+      value === "--output-contract-description"
+    ) {
       index += 1;
       continue;
     }
     if (value === "--palette") continue;
     if (value === "--live") continue;
     if (value === "--no-tools") continue;
+    if (value === "--output-contract-optional") continue;
     filtered.push(value);
   }
   return filtered.join(" ").trim();

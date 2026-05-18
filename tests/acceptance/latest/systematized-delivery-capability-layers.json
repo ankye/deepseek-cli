@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "systemized-delivery-capability-layers.acceptance-evidence",
+  "changeId": "systematize-agent-delivery-capability-layers",
+  "status": "pass",
+  "generatedAt": "2026-05-18T00:00:00.000+08:00",
+  "scope": {
+    "projectRules": "AGENTS.md and CLAUDE.md are loaded through PlatformRuntime as prioritized project.instructions sections without mutating the user prompt.",
+    "outputContracts": "json-object, json-file, file, and command-plan contracts are represented in platform contracts, prompt assembly, model JSON mode, final verification, and repair failure handling.",
+    "verificationExpectations": "schema, artifact, check-command, and generated-output expectations run through the normal final verifier path with bounded diagnostics.",
+    "executionGovernance": "shell, git, test, and package process tools use noninteractive execution profiles, pager/editor avoidance, and bounded output evidence.",
+    "memoryContext": "current context, PageIndex, lossless context, permanent memory, provider cache, and external memory hooks are separated in diagnostics and prompt priority.",
+    "scoring": "delivery capability scoring keeps fake/replay evidence separate; fake, replay-only, missing, partial, planned, absent, and unavailable states do not receive live delivery credit.",
+    "adapterBoundary": "Terminal-Bench adapter remains a local thin bridge: it calls the CLI command-plan output contract, executes returned commands in the harness, records logs, and does not encode task-specific SQLite or artifact semantics."
+  },
+  "implementationEvidence": [
+    "src/packages/platform-contracts/src/runtime.ts",
+    "src/packages/platform-contracts/src/prompt-assembly.ts",
+    "src/apps/cli/src/host/project-rules.ts",
+    "src/packages/prompt-assembly/src/providers/project.ts",
+    "src/packages/prompt-assembly/src/providers/webpage.ts",
+    "src/packages/runtime/src/agent-loop-verification.ts",
+    "src/packages/runtime/src/agent-loop.ts",
+    "src/apps/cli/src/commands/parse.ts",
+    "src/apps/cli/src/commands/run.ts",
+    "tests/integration/output-contract-runtime.test.ts",
+    "src/apps/cli/test/cli.test.ts",
+    "src/packages/prompt-assembly/test/prompt-assembly.test.ts"
+  ],
+  "verification": [
+    { "command": "openspec validate systematize-agent-delivery-capability-layers --strict", "status": "pass" },
+    { "command": "npm run typecheck", "status": "pass" },
+    { "command": "npm run lint", "status": "pass" },
+    { "command": "npm test", "status": "pass", "summary": "711 tests, 707 pass, 4 skipped, 0 fail" },
+    { "command": "node scripts/check-boundaries.mjs", "status": "pass" },
+    { "command": "npm run build:cli", "status": "pass" },
+    { "command": "npm run test:contracts", "status": "pass" },
+    { "command": "npm run test:integration", "status": "pass" },
+    { "command": "npm run test:golden", "status": "pass" },
+    { "command": "npm run test:versioning", "status": "pass" },
+    { "command": "npm run test:matrix", "status": "pass" },
+    { "command": "npm run test:e2e", "status": "pass" },
+    { "command": "npm run smoke:headless", "status": "pass" },
+    { "command": "python -m py_compile .codex/tmp/terminal_bench/deepseek_tb_agent.py", "status": "pass", "committed": false }
+  ],
+  "liveDeliveryEvidence": {
+    "status": "referenced-existing-live-evidence",
+    "rerunInThisChange": false,
+    "reason": "This change systemizes product layers and verifier contracts; the existing live evidence remains the source of live delivery scoring and replay cache. Replay and fake evidence are not counted as live credit.",
+    "evidencePaths": [
+      "tests/acceptance/latest/live-tool-coverage.json",
+      "tests/acceptance/latest/tool-family-delivery-capability-score.json",
+      "tests/acceptance/latest/deepseek-provider-response-cache.json",
+      "tests/acceptance/latest/overall-delivery-capability-score.json"
+    ]
+  },
+  "terminalBenchAdapter": {
+    "path": ".codex/tmp/terminal_bench/deepseek_tb_agent.py",
+    "tracked": false,
+    "role": "generic-harness-bridge",
+    "taskSpecificRulesRemoved": true,
+    "usesCliOutputContract": "command-plan",
+    "doesNotCountAsProductCapability": true
+  },
+  "redaction": {
+    "class": "internal",
+    "fields": [
+      "terminalBenchAdapter.path",
+      "liveDeliveryEvidence.evidencePaths"
+    ]
+  }
+}

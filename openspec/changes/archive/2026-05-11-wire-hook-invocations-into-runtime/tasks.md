@@ -44,10 +44,10 @@
 
 ## 8. Verification / 验证
 
-- [ ] 8.1 `npm run typecheck`。
-- [ ] 8.2 `npm run lint`(240 files / 16 rules)。
-- [ ] 8.3 `node scripts/check-boundaries.mjs`(27 packages)。
-- [ ] 8.4 `npm test`(307 pass + 4 skip)。
-- [ ] 8.5 `npm run smoke:live:e2e`(env-gated)。
-- [ ] 8.6 刷新 `tests/acceptance/latest/`。
-- [ ] 8.7 `openspec validate wire-hook-invocations-into-runtime --strict` + `openspec validate --specs --strict`。
+- [x] 8.1 `npm run typecheck`。
+- [x] 8.2 `npm run lint`(240 files / 16 rules)。
+- [x] 8.3 `node scripts/check-boundaries.mjs`(27 packages)。
+- [x] 8.4 `npm test`(307 pass + 4 skip)。
+- [x] 8.5 `npm run smoke:live:e2e`(env-gated)。
+- [x] 8.6 刷新 `tests/acceptance/latest/`。
+- [x] 8.7 `openspec validate wire-hook-invocations-into-runtime --strict` + `openspec validate --specs --strict`。

@@ -1,5 +1,6 @@
 import type {
   AgentLoopOutputMode,
+  AgentLoopOutputContract,
   DiagnosticsCommandName,
   ExtensionManagementCommandKind,
   JsonObject,
@@ -28,6 +29,7 @@ export interface CliOptions {
   readonly command: CliCommand;
   readonly prompt: string;
   readonly output: AgentLoopOutputMode;
+  readonly outputContract?: AgentLoopOutputContract;
   readonly live: boolean;
   readonly timeoutMs?: number;
   readonly reasoning?: ModelReasoningOptions;

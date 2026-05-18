@@ -89,6 +89,7 @@ export class DefaultPromptAssembler implements PromptAssembler {
       stageOrder: STAGES,
       providerIds: this.providers.map((provider) => provider.id),
       sections: [...budgeted.included.map((section) => sectionTrace(section, true, undefined, this.previewChars)), ...budgeted.report.exclusions],
+      projectRules: input.projectRules ?? [],
       diagnostics,
       replay,
       redaction: { class: "internal", fields: ["sections.preview", "diagnostics.details"] },
@@ -372,6 +373,23 @@ function createReplayEvidence(input: {
         profile: input.input.profile,
         toolPolicy: input.input.toolPolicy,
         budget: input.input.budget,
+        projectRules: input.input.projectRules?.map((rule) => ({
+          source: rule.source,
+          status: rule.status,
+          priority: rule.priority,
+          path: rule.path,
+          fingerprint: rule.fingerprint,
+          bytes: rule.bytes
+        })),
+        outputContract: input.input.outputContract
+          ? {
+              kind: input.input.outputContract.kind,
+              required: input.input.outputContract.required,
+              path: input.input.outputContract.path,
+              hasSchema: input.input.outputContract.schema !== undefined,
+              expectationCount: input.input.outputContract.verificationExpectations?.length ?? 0
+            }
+          : undefined,
         contextFingerprint: input.input.contextProjection?.replayFingerprint,
         evidenceFirst: input.input.evidenceFirst
           ? {

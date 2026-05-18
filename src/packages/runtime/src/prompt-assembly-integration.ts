@@ -52,6 +52,7 @@ export async function assemblePromptForIteration(
     ...(contextProjection ? { contextProjection } : {}),
     ...(evidenceFirst ? { evidenceFirst } : {}),
     ...(selfRepair ? { selfRepair } : {}),
+    ...(request.projectRules ? { projectRules: request.projectRules } : {}),
     ...(mode?.phasePlan ? {
       interactionMode: mode.phasePlan.interactionMode,
       agentMode: mode.phasePlan.agentMode,
@@ -59,6 +60,7 @@ export async function assemblePromptForIteration(
     } : {}),
     ...(mode?.reasoningEffortMapping ? { reasoningEffortMapping: mode.reasoningEffortMapping } : {}),
     ...(request.referenceContext ? { referenceContext: request.referenceContext } : {}),
+    ...(request.outputContract ? { outputContract: request.outputContract } : {}),
     availableTools: availableCapabilities,
     toolPolicy: toolProjectionPolicy(request),
     budget: {
@@ -87,6 +89,16 @@ export function promptAssemblyEventPayload(assembly: PromptAssemblyResult, reque
       model: request.profile.model
     },
     trace: assembly.trace,
+    projectRules: assembly.trace.projectRules.map((rule) => ({
+      source: rule.source,
+      status: rule.status,
+      priority: rule.priority,
+      ...(rule.path ? { path: rule.path } : {}),
+      ...(rule.fingerprint ? { fingerprint: rule.fingerprint } : {}),
+      bytes: rule.bytes ?? 0,
+      diagnosticCount: rule.diagnostics.length,
+      redaction: rule.redaction
+    })),
     diagnostics: assembly.diagnostics,
     redaction: assembly.redaction,
     compatibility: assembly.compatibility

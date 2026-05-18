@@ -47,9 +47,9 @@ async function gitHistoryBranchTool(input: JsonObject, context: CapabilityExecut
 
   const limit = Number.isFinite(parsed.limit) ? Math.max(1, Math.min(100, Math.floor(parsed.limit ?? 10))) : 10;
   const [current, branches, log] = await Promise.all([
-    deps.platform.runProcess("git", ["branch", "--show-current"], { cwd }),
-    deps.platform.runProcess("git", ["branch", "--list", "--no-color"], { cwd }),
-    deps.platform.runProcess("git", ["log", "--oneline", `-${limit}`], { cwd })
+    deps.platform.runProcess("git", ["branch", "--show-current"], { cwd, executionProfile: "noninteractive", stdin: "ignore", outputLimitBytes: parsed.limitBytes ?? 16_000 }),
+    deps.platform.runProcess("git", ["branch", "--list", "--no-color"], { cwd, executionProfile: "noninteractive", stdin: "ignore", outputLimitBytes: parsed.limitBytes ?? 16_000 }),
+    deps.platform.runProcess("git", ["log", "--oneline", `-${limit}`], { cwd, executionProfile: "noninteractive", stdin: "ignore", outputLimitBytes: parsed.limitBytes ?? 16_000 })
   ]);
   const preview = [
     "current:",

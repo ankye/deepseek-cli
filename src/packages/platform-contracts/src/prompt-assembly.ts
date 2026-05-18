@@ -3,7 +3,7 @@ import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadat
 import type { ContextProjectionResult } from "./context.js";
 import type { EvidenceFirstRuntimeContext } from "./evidence-first.js";
 import type { SelfRepairOutcomeSummary } from "./self-repair.js";
-import type { AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
+import type { AgentLoopOutputContract, AgentLoopProjectRuleEvidence, AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
 import type { AgentModeName, AgentPhasePlan, AgentReasoningEffortMapping, AgentVerifierResult, AgentWorkOrder } from "./agent-mode.js";
 import type { InteractionModeName } from "./interaction-mode.js";
 import type { ModelChatMessage, ModelProfile, ModelReasoningOptions, ModelToolChoice } from "./model.js";
@@ -141,6 +141,7 @@ export interface PromptAssemblyTrace extends JsonObject {
   readonly stageOrder: readonly PromptAssemblyStage[];
   readonly providerIds: readonly string[];
   readonly sections: readonly PromptSectionTrace[];
+  readonly projectRules: readonly AgentLoopProjectRuleEvidence[];
   readonly diagnostics: readonly RedactedError[];
   readonly replay: PromptAssemblyReplayEvidence;
   readonly redaction: RedactionMetadata;
@@ -176,6 +177,7 @@ export interface PromptAssemblyInput {
   readonly contextProjection?: ContextProjectionResult;
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
   readonly selfRepair?: SelfRepairOutcomeSummary;
+  readonly projectRules?: readonly AgentLoopProjectRuleEvidence[];
   readonly interactionMode?: InteractionModeName;
   readonly agentMode?: AgentModeName;
   readonly phasePlan?: AgentPhasePlan;
@@ -183,6 +185,7 @@ export interface PromptAssemblyInput {
   readonly verifierResult?: AgentVerifierResult;
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping;
   readonly referenceContext?: AgentLoopReferenceContext;
+  readonly outputContract?: AgentLoopOutputContract;
   readonly availableTools: readonly CapabilityManifest[];
   readonly toolPolicy: AgentLoopToolProjection;
   readonly budget: PromptBudgetConfig;
@@ -216,6 +219,7 @@ export interface PromptAssemblyEventPayload extends JsonObject {
   readonly toolPlan: Omit<PromptToolPlan, "visibleTools" | "excludedTools">;
   readonly providerTarget: JsonObject;
   readonly trace: PromptAssemblyTrace;
+  readonly projectRules: readonly JsonObject[];
   readonly diagnostics: readonly RedactedError[];
   readonly redaction: RedactionMetadata;
   readonly compatibility: CompatibilityMetadata;

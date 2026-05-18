@@ -106,6 +106,26 @@ describe("core coding tool contracts", () => {
     assert.equal(await platform.readFile(`${workspaceRoot}/app.ts`), "after");
     assert.equal(workspaceState.records().length, 1);
   });
+
+  it("runs process tools with the governed noninteractive execution profile", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    const registry = new InMemoryCapabilityRegistry();
+    await registerCoreCodingTools(registry, { platform, workspaceState: new InMemoryWorkspaceStateManager(), workspaceRoot });
+
+    const binding = await registry.resolveExecutable(coreToolIds.shellRun);
+    assert.ok(binding);
+    const result = await binding.execute(
+      { command: "echo", args: ["ok"], workspaceRoot, cwd: "." },
+      context(coreToolIds.shellRun)
+    ) as SerializableResult<CoreToolResult>;
+
+    assert.equal(result.ok, true);
+    const preview = result.value?.evidence.preview?.text ?? "{}";
+    const parsed = JSON.parse(preview) as { executionProfile?: string; stdin?: string };
+    assert.equal(parsed.executionProfile, "noninteractive");
+    assert.equal(parsed.stdin, "ignore");
+    assert.equal(result.value?.evidence.provider?.diagnostics.some((diagnostic) => diagnostic.code === "PROCESS_NONINTERACTIVE_PROFILE"), true);
+  });
 });
 
 function context(capabilityId: (typeof coreToolIds)[keyof typeof coreToolIds]): CapabilityExecutionContext {
