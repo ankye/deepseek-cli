@@ -91,6 +91,24 @@ describe("professional vi TUI contracts", () => {
     assert.equal(tornDown.chunks.join("").includes("\u001b[?1049l"), true);
   });
 
+  it("renders a dense split-pane full-screen workbench frame", () => {
+    const state = createChatTuiState({ enabled: true, terminalProfile: fullScreenProfile(128) });
+    const repainted = renderChatTuiFullscreenFrame({ workbench: state.workbench, phase: "repaint", rows: 24 });
+    const frame = repainted.chunks[1] ?? "";
+    const lines = frame.split("\n");
+
+    assert.equal(repainted.lifecycle.repaintBounds.columns, 128);
+    assert.equal(repainted.lifecycle.repaintBounds.rows, 24);
+    assert.equal(lines.length, 24);
+    assert.equal(lines.every((line) => line.length === 128), true);
+    assert.equal(lines.some((line) => line.includes("+ Transcript *")), true);
+    assert.equal(lines.some((line) => line.includes("+ Reasoning")), true);
+    assert.equal(lines.some((line) => line.includes("+ Inspector")), true);
+    assert.equal(lines.some((line) => line.includes("+ Plugins")), true);
+    assert.equal(lines.some((line) => line.includes("+ Command")), true);
+    assert.equal(lines.some((line) => line.includes("No assistant turn is streaming yet.")), true);
+  });
+
   it("explains plugin contributions and governed descriptors, including hidden conflicts", () => {
     const registry = createChatTuiContributionRegistry({
       keymapProfile: "vi-professional",
@@ -123,7 +141,7 @@ describe("professional vi TUI contracts", () => {
   });
 });
 
-function fullScreenProfile(): CliTerminalCapabilityProfile {
+function fullScreenProfile(columns = 120): CliTerminalCapabilityProfile {
   return {
     rendererProfile: "full-screen",
     inputStrategy: "raw",
@@ -131,7 +149,7 @@ function fullScreenProfile(): CliTerminalCapabilityProfile {
     stdoutIsTTY: true,
     isCI: false,
     platform: "linux",
-    columns: 120,
+    columns,
     colorDepth: "ansi256",
     unicode: "unicode",
     rawInput: true,
