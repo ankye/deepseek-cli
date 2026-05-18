@@ -94,6 +94,26 @@ export interface SupportBundlePolicyEvidence extends JsonObject {
   readonly localDiagnosticsAvailable: boolean;
   readonly externalExportAllowed: boolean;
   readonly externalExportReasonCode: string;
+  readonly visibleReasoningPolicy: "redacted-summary-and-projection-fingerprint-only";
+  readonly visibleReasoningRawProviderReasoningAllowed: boolean;
+  readonly visibleReasoningExportFields: readonly string[];
+  readonly referencePitFixtureIds: readonly string[];
+  readonly redaction: RedactionMetadata;
+}
+
+export interface FirstPartyPluginPackReadinessEvidence extends JsonObject {
+  readonly schemaVersion: string;
+  readonly status: ReadinessStatus;
+  readonly packId: string;
+  readonly packVersion: string;
+  readonly pluginCount: number;
+  readonly commandCount: number;
+  readonly paletteEntryCount: number;
+  readonly resultListProviderCount: number;
+  readonly keymapCount: number;
+  readonly rendererHintCount: number;
+  readonly manifestIds: readonly string[];
+  readonly diagnostics: readonly JsonObject[];
   readonly referencePitFixtureIds: readonly string[];
   readonly redaction: RedactionMetadata;
 }
@@ -104,6 +124,7 @@ export interface DiagnosticsReleaseReadinessEvidence extends JsonObject {
   readonly packageSurface: ReleasePackageSurface;
   readonly verification: ReleaseVerificationEvidence;
   readonly supportBundle: SupportBundlePolicyEvidence;
+  readonly firstPartyPluginPack?: FirstPartyPluginPackReadinessEvidence;
   readonly packageScorecardAdvisory?: PackageScorecardReleaseAdvisory;
   readonly checks: readonly ReadinessCheck[];
   readonly redaction: RedactionMetadata;

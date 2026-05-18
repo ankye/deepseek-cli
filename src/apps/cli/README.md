@@ -20,6 +20,8 @@ deepseek mode agent --output json
 deepseek mode workers --output jsonl
 deepseek mode verify --output json
 deepseek mode plan --output json
+deepseek context status --output json
+deepseek context grep "prior decision" --session <session-id> --output jsonl
 deepseek extension list --output jsonl
 deepseek extension plugin install ./plugin.json --output json
 deepseek extension skill activate repo-summary --output json
@@ -32,6 +34,14 @@ deepseek revert apply --request request-id --output json
 ```
 
 This package exposes the first runtime-owned agent loop through thin CLI adapters. Local runs are deterministic by default; live DeepSeek provider behavior is opt-in through `--live` and local credentials.
+
+`deepseek chat` now runs as the DeepSeek Workbench in compatible text terminals: transcript, command bar, reasoning rail, inspector, activity feed, plugin shelf, visible prompt, vi-inspired focus keys, shared slash/key action dispatch, declarative contribution diagnostics, and deterministic fallback for scripted or structured output. Current terminals render bounded text frames over the workbench projection; raw-key/full-screen renderers are future renderer profiles over the same model. Plugin commands/actions/keymaps/palette entries/result lists/render hints are metadata-only until routed through governed execution contracts.
+
+Visible reasoning is first-class in chat/run output. Text mode renders compact `[reasoning:*]` records with stable ids, JSON adds a `visibleReasoning` projection, JSONL streams schema-versioned `visible.reasoning.recorded` and `visible.reasoning.projected` events, and the TUI state exposes a reasoning rail with compact/full/debug detail levels, evidence counts, active focus, and inspector targets. These are bounded user-visible summaries, not raw provider reasoning or hidden chain-of-thought.
+
+The first-party development plugin pack is bundled as trusted metadata for release: `@deepseek/plugin-dev-checks`, `@deepseek/plugin-repo-navigator`, `@deepseek/plugin-git-review`, and `@deepseek/plugin-context-compactor`. Projection is inert and deterministic; execution, where available, routes through existing command/runtime/platform contracts instead of plugin-private code.
+
+`@deepseek/plugin-context-compactor` is active through `deepseek context ...` and `/context ...`. It uses the lossless context DAG for status, grep, describe, summarize, expand, budget, and pin workflows; summaries keep coverage metadata and can expand back to redacted original nodes. Pinning creates session/palette references and does not write permanent memory automatically.
 
 Fact-sensitive repository, product, command, release, and evaluation tasks run evidence-first by default: the runtime classifies the task, selects bounded local evidence, keeps the user prompt exact, and rejects unsupported strict claims after one revision attempt. One-shot CLI tasks also carry a bounded self-repair loop for repairable failures; repair events and diagnostics record classification, attempts, verification summaries, stop reasons, and redacted replay evidence.
 
@@ -46,6 +56,8 @@ Verification is evidence-based. For non-trivial tasks, a successful result needs
 Reasoning effort is a model/provider parameter. Evidence loops, verification depth, repair attempts, delegation fan-out, and model iteration caps are product orchestration budgets owned by runtime policy and reported separately in `/model`, diagnostics, and evaluation records.
 
 Diagnostics commands are local and redacted by default. `diagnostics bundle` creates support-bundle evidence without uploading it, `diagnostics refresh` regenerates allowlisted acceptance evidence under `tests/acceptance/latest/`, `diagnostics evaluate` plans DeepSeek-owned task-completion comparison evidence with evidence-grounding and repair metrics while keeping Claude Code and Codex baselines opt-in/deferred by default, `diagnostics release` reports package surface, build artifact presence, acceptance evidence file status, ignored generated bundles, and required release verification commands, and `diagnostics verify` summarizes those gates into a read-only pre-publish decision.
+
+Support bundles keep visible reasoning on the same privacy rail: redacted summaries, evidence counts/fingerprints, projection replay fingerprints, pit fixture ids, and no raw provider/internal reasoning payloads.
 
 External evaluation baselines require explicit opt-in. `--allow-external-baseline --baseline-command <cmd>` only probes the configured CLI and records planned task runs; it does not send task prompts or allow the external tool to mutate the workspace in this slice.
 

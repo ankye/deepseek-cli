@@ -2,6 +2,9 @@ import type { CliInputStream, CliRunOptions, CliTerminalFlags, CliWrite } from "
 import { cliUsageLines, parseCliArgs } from "../commands/parse.js";
 import { runChatCommand } from "../commands/chat.js";
 import { runCoreToolsSmoke } from "../commands/tools-smoke.js";
+import { runContextCommand } from "../commands/context.js";
+import { runDevCheckCommand } from "../commands/dev-check.js";
+import { runGitReviewCommand } from "../commands/git-review.js";
 import { runMcpCommand } from "../commands/mcp.js";
 import { runMemoryCommand } from "../commands/memory.js";
 import { runModeCommand } from "../commands/mode.js";
@@ -10,6 +13,7 @@ import { runPaletteCommand } from "../commands/palette.js";
 import { runReadinessCommand } from "../commands/readiness.js";
 import { runRevertCommand } from "../commands/revert.js";
 import { runSessionCommand } from "../commands/session.js";
+import { runRepoNavigatorCommand } from "../commands/repo.js";
 import { runDiagnosticsCommand } from "../diagnostics/index.js";
 import { runExtensionCommand } from "../commands/extension.js";
 import { runIndexProviderCommand } from "../commands/index-provider.js";
@@ -60,6 +64,22 @@ export async function runCli(
   }
   if (options.command === "memory") {
     await runMemoryCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "context") {
+    await runContextCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "checks") {
+    await runDevCheckCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "repo") {
+    await runRepoNavigatorCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "git") {
+    await runGitReviewCommand(options, writer, runOptions);
     return;
   }
   if (options.command === "palette") {

@@ -110,6 +110,10 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
       const evidence = result.release.verification.publishDryRunEvidence;
       lines.push(`- publish dry-run evidence: ${evidence.status} (${evidence.path})`);
     }
+    if (result.release.firstPartyPluginPack) {
+      const pack = result.release.firstPartyPluginPack;
+      lines.push(`- first-party plugins: ${pack.status} plugins=${pack.pluginCount} commands=${pack.commandCount} manifests=${pack.manifestIds.join(", ")}`);
+    }
     if ((result.release.verification.missingAcceptanceEvidencePaths?.length ?? 0) > 0) {
       lines.push(`- missing evidence: ${result.release.verification.missingAcceptanceEvidencePaths?.join(", ")}`);
     }
@@ -497,10 +501,28 @@ async function seedDiagnosticRecords(sink: InMemoryObservabilitySink, options: C
       authHeader: `Bearer ${fakeSecret}`,
       plugin: { authMaterial: fakeSecret, path: "C:/Users/dev/private/project" },
       mcp: { authMaterial: fakeSecret },
+      visibleReasoning: {
+        projection: {
+          projectionId: "visible-reasoning:diagnostics",
+          replayFingerprint: "visible:hdiagnostics",
+          summary: { totalRecords: 2, visibleRecords: 2, evidenceLinkCount: 1 },
+          rawProviderReasoning: "hidden chain-of-thought diagnostics payload"
+        },
+        records: [
+          {
+            recordId: "visible-reasoning:diagnostics:1",
+            stepKind: "verification",
+            status: "completed",
+            summary: `Diagnostics inspected DEEPSEEK_API_KEY=${fakeSecret} through redaction policy.`,
+            detail: `Private detail containing ${fakeSecret} must not leave local diagnostics.`,
+            rawProviderReasoning: "raw provider reasoning is excluded"
+          }
+        ]
+      },
       referencePitFixtureIds: [...diagnosticPitIds]
     },
     dataPrivacyClass: "secret",
-    redaction: { class: "secret", fields: ["fields.env", "fields.authHeader", "fields.plugin", "fields.mcp"] }
+    redaction: { class: "secret", fields: ["fields.env", "fields.authHeader", "fields.plugin", "fields.mcp", "fields.visibleReasoning.records.summary", "fields.visibleReasoning.projection.replayFingerprint"] }
   });
 }
 
@@ -567,9 +589,18 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
       packageSurface: result.release.packageSurface,
       verification: result.release.verification,
       supportBundle: result.release.supportBundle,
+      firstPartyPluginPack: result.release.firstPartyPluginPack,
       packageScorecardAdvisory: result.release.packageScorecardAdvisory,
       redaction: result.release.redaction
     });
+    if (result.release.firstPartyPluginPack) {
+      entries.push({
+        schemaVersion: result.schemaVersion,
+        kind: "diagnostics.release.first-party-plugin-pack",
+        firstPartyPluginPack: result.release.firstPartyPluginPack,
+        redaction: result.release.firstPartyPluginPack.redaction
+      });
+    }
     if (result.release.packageScorecardAdvisory) {
       entries.push({
         schemaVersion: result.schemaVersion,

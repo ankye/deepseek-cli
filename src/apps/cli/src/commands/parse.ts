@@ -99,6 +99,47 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       memoryInput: parseMemoryInput(args)
     };
   }
+  if (first === "context") {
+    const sessionId = readFlagValue(args, "--session");
+    return {
+      command: "context",
+      prompt: "",
+      output,
+      live,
+      contextInput: parseContextInput(args),
+      ...(sessionId ? { sessionId: asId<"session">(sessionId) } : {})
+    };
+  }
+  if (first === "checks") {
+    return {
+      command: "checks",
+      prompt: "",
+      output,
+      live,
+      checkAction: parseCheckAction(args[1]),
+      checkInput: parseCheckInput(args)
+    };
+  }
+  if (first === "repo") {
+    const action = parseRepoAction(args[1]);
+    return {
+      command: "repo",
+      prompt: "",
+      output,
+      live,
+      repoAction: action,
+      repoInput: parseRepoInput(args, action)
+    };
+  }
+  if (first === "git") {
+    return {
+      command: "git",
+      prompt: "",
+      output,
+      live,
+      gitInput: parseGitInput(args)
+    };
+  }
   if (first === "diagnostics") {
     const diagnosticsCommand = parseDiagnosticsCommand(args[1]);
     return {
@@ -166,6 +207,10 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek index-provider set <pageindex|zvec|code-index> <enabled|deferred|disabled> [--user] [--output text|json|jsonl]",
     "  deepseek mode [status|agent|workers|verify|plan] [--output text|json|jsonl]",
     "  deepseek memory status|list|candidates|remember|approve|reject|edit|delete|enable|disable|export|explain [args] [--output text|json]",
+    "  deepseek context status|grep|describe|summarize|expand|budget|pin [args] [--session <session-id>] [--output text|json|jsonl]",
+    "  deepseek checks openspec|typecheck|lint|test|boundaries|build-cli [--output text|json|jsonl]",
+    "  deepseek repo files|grep|recall|project-index <query> [--output text|json|jsonl]",
+    "  deepseek git status|diff|review [--output text|json|jsonl]",
     "  deepseek extension list [--output text|json|jsonl]",
     "  deepseek extension plugin install|verify|snapshot|apply-lockfile <file.json> [--output text|json|jsonl]",
     "  deepseek extension skill list|activate [name] [--output text|json|jsonl]",
@@ -183,6 +228,67 @@ export function cliUsageLines(): readonly string[] {
     "  fact-sensitive run/chat turns classify and select bounded local evidence before model dispatch",
     "  one-shot run turns use bounded self-repair for repairable failures and emit redacted repair evidence"
   ];
+}
+
+function parseContextInput(args: readonly string[]): JsonObject {
+  const filtered: string[] = [];
+  for (let index = 1; index < args.length; index += 1) {
+    const value = args[index];
+    if (!value) continue;
+    if (value === "--output" || value === "--session") {
+      index += 1;
+      continue;
+    }
+    filtered.push(value);
+  }
+  return { raw: filtered.join(" ").trim() };
+}
+
+function parseCheckAction(value: string | undefined): NonNullable<CliOptions["checkAction"]> {
+  if (value === "openspec" || value === "lint" || value === "test" || value === "boundaries" || value === "build-cli") return value;
+  return "typecheck";
+}
+
+function parseCheckInput(args: readonly string[]): JsonObject {
+  const action = args[1] && !args[1].startsWith("-") ? args[1] : "typecheck";
+  return {
+    action,
+    args: commandArguments(args, 2, new Set(["--output"]))
+  };
+}
+
+function parseRepoAction(value: string | undefined): NonNullable<CliOptions["repoAction"]> {
+  if (value === "grep" || value === "recall" || value === "project-index" || value === "index") return value === "index" ? "project-index" : value;
+  return "files";
+}
+
+function parseRepoInput(args: readonly string[], action: NonNullable<CliOptions["repoAction"]>): JsonObject {
+  return {
+    action,
+    query: commandArguments(args, 2, new Set(["--output"])).join(" ").trim()
+  };
+}
+
+function parseGitInput(args: readonly string[]): JsonObject {
+  const action = args[1] && !args[1].startsWith("-") ? args[1] : "status";
+  return {
+    action,
+    args: commandArguments(args, 2, new Set(["--output"]))
+  };
+}
+
+function commandArguments(args: readonly string[], start: number, valueFlags: ReadonlySet<string>): readonly string[] {
+  const values: string[] = [];
+  for (let index = start; index < args.length; index += 1) {
+    const value = args[index];
+    if (!value) continue;
+    if (valueFlags.has(value)) {
+      index += 1;
+      continue;
+    }
+    values.push(value);
+  }
+  return values;
 }
 
 function parseModeAction(value: string | undefined): NonNullable<CliOptions["modeAction"]> {

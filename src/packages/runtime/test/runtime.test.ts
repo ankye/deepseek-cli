@@ -80,10 +80,12 @@ describe("headless runtime", () => {
     assert.deepEqual(events.map((event) => event.kind), [
       "agent.loop.started",
       "turn.started",
+      "visible.reasoning.recorded",
       "hooks.invoked",
       "mode.interaction.changed",
       "mode.agent.bound",
       "agent.phase.plan.created",
+      "visible.reasoning.recorded",
       "agent.phase.skipped",
       "agent.phase.skipped",
       "agent.phase.skipped",
@@ -91,17 +93,22 @@ describe("headless runtime", () => {
       "agent.phase.skipped",
       "model.reasoning.effort.mapped",
       "evidence.classified",
+      "visible.reasoning.recorded",
       "context.projection.started",
       "context.memory.collected",
       "context.projection.completed",
+      "visible.reasoning.recorded",
       "hooks.invoked",
       "prompt.assembled",
+      "visible.reasoning.recorded",
       "model.requested",
       "model.delta",
       "usage.updated",
       "model.finished",
       "model.done",
       "hooks.invoked",
+      "visible.reasoning.recorded",
+      "visible.reasoning.projected",
       "turn.completed",
       "agent.loop.completed"
     ]);
@@ -497,7 +504,12 @@ describe("headless runtime", () => {
       profile: defaultDeepSeekProfile
     }, { signal: controller.signal }));
 
-    assert.deepEqual(events.map((event) => event.kind), ["agent.loop.started", "agent.loop.cancelled"]);
+    assert.deepEqual(events.map((event) => event.kind), [
+      "agent.loop.started",
+      "visible.reasoning.recorded",
+      "visible.reasoning.projected",
+      "agent.loop.cancelled"
+    ]);
     const cancelled = events.at(-1);
     assert.equal(cancelled?.data.status, "cancelled");
     assert.equal(cancelled?.data.reason, "user-cancelled");

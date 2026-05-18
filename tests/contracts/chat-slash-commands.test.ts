@@ -4,7 +4,9 @@ import type { RuntimeDependencies, RuntimeKernel, SessionEvent } from "@deepseek
 import { INTERACTION_MODE_COMPATIBILITY, INTERACTION_MODE_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
-import { runCli } from "../../src/apps/cli/src/index.js";
+import { parseCliArgs, runCli } from "../../src/apps/cli/src/index.js";
+import { runChatCommand } from "../../src/apps/cli/src/commands/chat.js";
+import type { CliTerminalCapabilityProfile } from "../../src/apps/cli/src/host/terminal-profile.js";
 
 interface ChatHarness {
   readonly deps: RuntimeDependencies;
@@ -62,6 +64,58 @@ function interactionModeEvent(sessionId: string, sequence: number, nextMode: str
 }
 
 describe("chat slash commands", () => {
+  it("renders basic vi-inspired TUI status and prompt only for text TTY line input", async () => {
+    const harness = await buildHarness();
+    const lines: string[] = [];
+    const inline: string[] = [];
+    const terminalProfile: CliTerminalCapabilityProfile = {
+      rendererProfile: "interactive",
+      inputStrategy: "line",
+      stdinIsTTY: true,
+      stdoutIsTTY: true,
+      isCI: false,
+      platform: "win32",
+      columns: 120,
+      colorDepth: "truecolor",
+      unicode: "unicode",
+      rawInput: true,
+      inlineText: true,
+      reasons: ["renderer:interactive", "input:line"]
+    };
+
+    await runChatCommand(
+      parseCliArgs(["chat"]),
+      async (line) => { lines.push(line); },
+      async (chunk) => { inline.push(chunk); },
+      false,
+      (async function* () {
+        yield "/help\n";
+        yield "hello tui\n";
+        yield "/exit\n";
+      })(),
+      terminalProfile,
+      { createRuntime: async () => ({ deps: harness.deps, kernel: harness.kernel }) }
+    );
+
+    assert.equal(lines.some((line) => line.startsWith("DeepSeek Workbench") && line.includes("focus=transcript")), true);
+    assert.equal(lines.some((line) => line.includes("focus keys — Tab/Shift+Tab move panels")), true);
+    assert.equal(lines.some((line) => line.includes("plugins — native metadata shelf")), true);
+    assert.equal(inline.filter((chunk) => chunk === "deepseek> ").length >= 3, true, `expected prompt redraws, got ${JSON.stringify(inline)}`);
+    assert.equal(harness.modelCallCount, 1);
+  });
+
+  it("keeps scripted and structured chat output prompt-free", async () => {
+    const harness = await buildHarness();
+    const scripted = await runChatLines(harness, ["hello scripted", "/exit"]);
+    assert.equal(scripted.some((line) => line.includes("deepseek> ")), false);
+    assert.equal(scripted.some((line) => line.includes("composition=vi-minimal")), false);
+    assert.equal(scripted.some((line) => line.includes("DeepSeek Workbench")), false);
+
+    const jsonl = await runChatLines(harness, ["/help", "/exit"], "jsonl");
+    assert.equal(jsonl.some((line) => line.includes("deepseek> ")), false);
+    assert.equal(jsonl.every((line) => JSON.parse(line)), true);
+  });
+
   it("/help lists controls and does not call the model", async () => {
     const harness = await buildHarness();
     const lines = await runChatLines(harness, ["/help", "/exit"]);
@@ -187,6 +241,17 @@ describe("chat slash commands", () => {
     assert.equal(lines.some((line) => line.startsWith("plan: agent-phase-plan:")), true);
     assert.equal(lines.some((line) => line.includes("mapped=none")), true);
     assert.equal(lines.some((line) => line.includes("verification_loops=1/1")), true);
+  });
+
+  it("emits visible reasoning records and final projection for a scripted turn", async () => {
+    const harness = await buildHarness();
+    const lines = await runChatLines(harness, ["normal prompt", "/exit"], "jsonl");
+    const records = lines.map((line) => JSON.parse(line) as { kind?: string; data?: { stepKind?: string; summary?: string; records?: readonly unknown[]; replayFingerprint?: string; visibleReasoning?: unknown } });
+
+    assert.equal(harness.modelCallCount, 1);
+    assert.equal(records.some((record) => record.kind === "visible.reasoning.recorded" && record.data?.stepKind === "intent"), true);
+    assert.equal(records.some((record) => record.kind === "visible.reasoning.projected" && typeof record.data?.replayFingerprint === "string"), true);
+    assert.equal(JSON.stringify(records).includes("rawProviderReasoning"), false);
   });
 
   it("unknown slash does not reach the model", async () => {

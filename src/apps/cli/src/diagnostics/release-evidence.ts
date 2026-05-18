@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type {
   DiagnosticsReleaseReadinessEvidence,
+  FirstPartyPluginPackReadinessEvidence,
   JsonObject,
   ReadinessCheck,
   ReleaseLiveEvidenceFileStatus,
@@ -11,17 +12,31 @@ import type {
   SupportBundlePolicyEvidence
 } from "@deepseek/platform-contracts";
 import { DIAGNOSTICS_READINESS_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+import {
+  FIRST_PARTY_PLUGIN_MANIFEST_BOUNDARY_PIT,
+  FIRST_PARTY_PLUGIN_PERMISSION_DIFF_PIT,
+  listFirstPartyDevPluginManifests,
+  snapshotFirstPartyDevPluginPack,
+  validateFirstPartyDevPluginPack
+} from "@deepseek/first-party-dev-plugins";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
+import { VISIBLE_REASONING_PROVIDER_REASONING_PIT, VISIBLE_REASONING_SECRET_REDACTION_PIT } from "@deepseek/platform-contracts";
 
 export const diagnosticsSchemaVersion = DIAGNOSTICS_READINESS_SCHEMA_VERSION;
-export const diagnosticPitIds = ["pit.diagnostic-redaction.support-bundle", "pit.env-snapshot.immutable-startup"] as const;
+export const diagnosticPitIds = [
+  "pit.diagnostic-redaction.support-bundle",
+  "pit.env-snapshot.immutable-startup",
+  VISIBLE_REASONING_SECRET_REDACTION_PIT,
+  VISIBLE_REASONING_PROVIDER_REASONING_PIT
+] as const;
 
 export async function collectReleaseReadinessEvidence(): Promise<DiagnosticsReleaseReadinessEvidence> {
   const packageSurface = await releasePackageSurface();
   const supportBundle = supportBundlePolicyEvidence();
   const verification = await releaseVerificationEvidence(packageSurface);
-  const checks = releaseReadinessChecks(packageSurface, supportBundle, verification);
+  const firstPartyPluginPack = firstPartyPluginPackReadinessEvidence();
+  const checks = releaseReadinessChecks(packageSurface, supportBundle, verification, firstPartyPluginPack);
   const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "pass";
   return {
     schemaVersion: diagnosticsSchemaVersion,
@@ -29,8 +44,9 @@ export async function collectReleaseReadinessEvidence(): Promise<DiagnosticsRele
     packageSurface,
     verification,
     supportBundle,
+    firstPartyPluginPack,
     checks,
-    redaction: { class: "internal", fields: ["packageSurface.buildOutputPath", "verification.acceptanceEvidencePaths"] }
+    redaction: { class: "internal", fields: ["packageSurface.buildOutputPath", "verification.acceptanceEvidencePaths", "firstPartyPluginPack.diagnostics"] }
   };
 }
 
@@ -151,15 +167,19 @@ export function supportBundlePolicyEvidence(): SupportBundlePolicyEvidence {
     localDiagnosticsAvailable: true,
     externalExportAllowed: decision.exportAllowed,
     externalExportReasonCode: decision.reasonCode,
+    visibleReasoningPolicy: "redacted-summary-and-projection-fingerprint-only",
+    visibleReasoningRawProviderReasoningAllowed: false,
+    visibleReasoningExportFields: ["recordId", "stepKind", "status", "certainty", "summary", "evidenceLinkCount", "evidenceFingerprints", "projectionId", "replayFingerprint", "summary"],
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["externalExportReasonCode"] }
+    redaction: { class: "internal", fields: ["externalExportReasonCode", "visibleReasoningExportFields"] }
   };
 }
 
 export function releaseReadinessChecks(
   packageSurface: ReleasePackageSurface,
   supportBundle: SupportBundlePolicyEvidence,
-  verification: ReleaseVerificationEvidence
+  verification: ReleaseVerificationEvidence,
+  firstPartyPluginPack?: FirstPartyPluginPackReadinessEvidence
 ): readonly ReadinessCheck[] {
   return [
     readinessCheck("release.package", "CLI package metadata", packageSurface.packageName === "deepseek-agent-cli" ? "pass" : "fail", `${packageSurface.packageName}@${packageSurface.packageVersion}`, [], { packageName: packageSurface.packageName, packageVersion: packageSurface.packageVersion }),
@@ -170,9 +190,33 @@ export function releaseReadinessChecks(
     readinessCheck("release.generated-hygiene", "Generated bundle hygiene", packageSurface.generatedBundleIgnored ? "pass" : "fail", "Generated CLI dist bundle is treated as ignored local output.", [], { generatedBundlePath: packageSurface.generatedBundlePath }),
     readinessCheck("release.live-evidence", "DeepSeek live release evidence", verification.liveEvidence?.status ?? "fail", liveEvidenceMessage(verification.liveEvidence), liveEvidenceActions(verification.liveEvidence), { evidence: verification.liveEvidence ?? {} }),
     readinessCheck("release.publish-dry-run", "npm publish dry-run", verification.publishDryRunEvidence?.status ?? "fail", verification.publishDryRunEvidence?.message ?? "npm publish dry-run evidence is missing.", publishDryRunActions(verification.publishDryRunEvidence), { evidence: verification.publishDryRunEvidence ?? {} }),
-    readinessCheck("release.support-bundle", "Support bundle policy", supportBundle.localDiagnosticsAvailable && !supportBundle.externalExportAllowed ? "pass" : "warn", `External export policy: ${supportBundle.externalExportReasonCode}.`, [], { externalExportAllowed: supportBundle.externalExportAllowed, referencePitFixtureIds: supportBundle.referencePitFixtureIds }),
+    readinessCheck("release.support-bundle", "Support bundle policy", supportBundle.localDiagnosticsAvailable && !supportBundle.externalExportAllowed && !supportBundle.visibleReasoningRawProviderReasoningAllowed ? "pass" : "warn", `External export policy: ${supportBundle.externalExportReasonCode}; visible reasoning=${supportBundle.visibleReasoningPolicy}.`, [], { externalExportAllowed: supportBundle.externalExportAllowed, visibleReasoningPolicy: supportBundle.visibleReasoningPolicy, referencePitFixtureIds: supportBundle.referencePitFixtureIds }),
+    readinessCheck("release.first-party-dev-plugins", "First-party dev plugin pack", firstPartyPluginPack?.status ?? "fail", firstPartyPluginPack ? `${firstPartyPluginPack.pluginCount} plugin(s), ${firstPartyPluginPack.commandCount} command(s), diagnostics=${firstPartyPluginPack.diagnostics.length}.` : "First-party plugin pack evidence is missing.", firstPartyPluginPack?.status === "pass" ? [] : ["Fix first-party plugin manifest validation before release."], { firstPartyPluginPack: firstPartyPluginPack ?? {} }),
     readinessCheck("release.acceptance", "Acceptance evidence", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? "pass" : "warn", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? `${verification.acceptanceEvidencePaths.length} acceptance evidence files present.` : `Missing acceptance evidence: ${verification.missingAcceptanceEvidencePaths?.join(", ")}.`, (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? [] : ["Refresh tests/acceptance/latest evidence before publishing."], { requiredCommands: verification.requiredCommands, acceptanceEvidencePaths: verification.acceptanceEvidencePaths, missingAcceptanceEvidencePaths: verification.missingAcceptanceEvidencePaths ?? [] })
   ];
+}
+
+function firstPartyPluginPackReadinessEvidence(): FirstPartyPluginPackReadinessEvidence {
+  const manifests = listFirstPartyDevPluginManifests();
+  const validation = validateFirstPartyDevPluginPack(manifests);
+  const snapshot = snapshotFirstPartyDevPluginPack();
+  const status: ReadinessCheck["status"] = validation.ok && snapshot.pluginCount === 4 && snapshot.commandCount === 20 ? "pass" : "fail";
+  return {
+    schemaVersion: diagnosticsSchemaVersion,
+    status,
+    packId: snapshot.packId,
+    packVersion: snapshot.packVersion,
+    pluginCount: snapshot.pluginCount,
+    commandCount: snapshot.commandCount,
+    paletteEntryCount: snapshot.paletteEntryCount,
+    resultListProviderCount: snapshot.resultListProviderCount,
+    keymapCount: snapshot.keymapCount,
+    rendererHintCount: snapshot.rendererHintCount,
+    manifestIds: manifests.map((manifest) => manifest.id),
+    diagnostics: validation.errors as readonly JsonObject[],
+    referencePitFixtureIds: [FIRST_PARTY_PLUGIN_MANIFEST_BOUNDARY_PIT, FIRST_PARTY_PLUGIN_PERMISSION_DIFF_PIT],
+    redaction: { class: "internal", fields: ["diagnostics"] }
+  };
 }
 
 async function collectLiveReleaseEvidence(): Promise<ReleaseLiveEvidenceSummary> {

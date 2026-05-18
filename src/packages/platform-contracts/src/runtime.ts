@@ -20,6 +20,7 @@ import type { HookSystem } from "./hook.js";
 import type { McpGateway } from "./mcp.js";
 import type { ModelGateway, ModelProfile, ModelReasoningOptions } from "./model.js";
 import type { PromptAssembler } from "./prompt-assembly.js";
+import type { VisibleReasoningProjection } from "./visible-reasoning.js";
 import type { SelfRepairConfig, SelfRepairOutcomeSummary } from "./self-repair.js";
 import type { InteractionModeName, InteractionModeState, InteractionModeTransition } from "./interaction-mode.js";
 import type { ToolFeedbackStatus, ToolIntentPreflightService } from "./tool-intent.js";
@@ -103,6 +104,8 @@ export type RuntimeEventKind =
   | "evidence.manifest.created"
   | "evidence.unsupported-claim"
   | "prompt.assembled"
+  | "visible.reasoning.recorded"
+  | "visible.reasoning.projected"
   | "model.requested"
   | "context.projection.started"
   | "context.projection.cache-hit"
@@ -424,6 +427,7 @@ export interface AgentLoopSummary extends JsonObject {
   readonly modelProfile?: ModelProfileId;
   readonly outputContract?: AgentLoopOutputContractVerification;
   readonly selfRepair?: SelfRepairOutcomeSummary;
+  readonly visibleReasoning?: VisibleReasoningProjection;
   readonly diagnostics: readonly RedactedError[];
   readonly redaction: { readonly class: "internal"; readonly fields?: readonly string[] };
 }

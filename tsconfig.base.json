@@ -55,6 +55,9 @@
       "@deepseek/extension-system": [
         "src/packages/extension-system/src/index.ts"
       ],
+      "@deepseek/first-party-dev-plugins": [
+        "src/packages/first-party-dev-plugins/src/index.ts"
+      ],
       "@deepseek/hook-system": [
         "src/packages/hook-system/src/index.ts"
       ],

@@ -21,6 +21,7 @@ import {
   asId
 } from "@deepseek/platform-contracts";
 import { createDeepSeekCredentialAuthServiceFromEnv, deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
+import { listFirstPartyDevPluginManifests, snapshotFirstPartyDevPluginPack } from "@deepseek/first-party-dev-plugins";
 import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
 import { InMemoryPluginManager, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
@@ -104,15 +105,20 @@ function renderExtensionRecord(record: ExtensionManagementRecord, output: CliOpt
 async function extensionListRecord(): Promise<ExtensionManagementRecord> {
   const skills = await (await defaultSkillSystem()).listSummaries();
   const credentialScopes = await credentialScopeDiagnostics(undefined);
+  const firstPartyPlugins = listFirstPartyDevPluginManifests();
+  const firstPartySnapshot = snapshotFirstPartyDevPluginPack();
   const items: ExtensionManagementItem[] = [
+    ...firstPartyPlugins.map((manifest) => pluginItem(manifest)),
     ...skills.map((summary) => skillItem(summary)),
     ...credentialScopes.map(credentialItem),
+    contributionItem("contribution:first-party-dev-plugins", "first-party-dev-plugins", ["commands", "palette", "tui", "context"]),
     contributionItem("contribution:plugin-system", "plugin-system", ["plugin", "lockfile", "permission-diff"]),
     contributionItem("contribution:mcp-gateway", "mcp-gateway", ["mcp", "tools", "resources"])
   ];
   return baseRecord("extension.list", "completed", `listed ${items.length} extension management items`, {
     items,
     credentialScopes,
+    lifecycle: [lifecycle("first-party-dev-plugins.snapshot", "plugin-pack:deepseek.first-party-dev-plugins", "completed", firstPartySnapshot)],
     referencePitFixtureIds: [pitMcpPluginPrecedence, pitContributionBoundary, pitEnvSnapshot, pitDiagnosticRedaction]
   });
 }

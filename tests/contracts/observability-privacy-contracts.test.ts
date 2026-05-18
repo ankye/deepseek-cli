@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { OBSERVABILITY_SCHEMA_VERSION, type DiagnosticBundle, type ObservabilityRecord, type PrivacySettings } from "@deepseek/platform-contracts";
+import { asId, createVisibleReasoningRecord, OBSERVABILITY_SCHEMA_VERSION, projectVisibleReasoning, type DiagnosticBundle, type ObservabilityRecord, type PrivacySettings } from "@deepseek/platform-contracts";
 import { defaultPrivacySettings, InMemoryObservabilitySink } from "@deepseek/observability";
 
 describe("observability privacy contracts", () => {
@@ -53,6 +53,51 @@ describe("observability privacy contracts", () => {
     assert.equal(result.externalExportDecision?.action, "deny-export");
     assert.equal(result.referencePitFixtureIds.includes("pit.diagnostic-redaction.support-bundle"), true);
     assert.equal(rendered.includes("sk-diagnostics-secret-123456"), false);
+    assert.equal(rendered.includes("hidden chain-of-thought diagnostics payload"), false);
+    assert.equal(rendered.includes("raw provider reasoning is excluded"), false);
+    assert.equal(rendered.includes("visible:hdiagnostics"), true);
+  });
+
+  it("keeps visible reasoning diagnostic bundles to redacted summaries and fingerprints", async () => {
+    const sink = new InMemoryObservabilitySink();
+    const trace = {
+      traceId: asId<"trace">("trace-visible-diagnostics"),
+      spanId: asId<"span">("span-visible-diagnostics"),
+      correlationId: asId<"correlation">("correlation-visible-diagnostics")
+    };
+    const record = createVisibleReasoningRecord({
+      sessionId: asId<"session">("session-visible-diagnostics"),
+      turnId: asId<"turn">("turn-visible-diagnostics"),
+      trace,
+      createdAt: new Date(0).toISOString(),
+      actor: "runtime",
+      stepKind: "verification",
+      status: "completed",
+      summary: "Verified DEEPSEEK_API_KEY=ds-visible-secret-123456789 through a support bundle check.",
+      detail: "Long private detail with sk-visible-secret-123456789 and file preview that must stay out of bundles.",
+      sequence: 1,
+      metadata: { rawProviderReasoning: "literal hidden reasoning", filePreview: "private source excerpt" }
+    });
+    const projection = projectVisibleReasoning([record], { renderer: "json", detailLevel: "full" });
+    await sink.emit({
+      kind: "trace",
+      at: new Date(0).toISOString(),
+      name: "visible.reasoning.projected",
+      fields: projection
+    });
+
+    const bundle = await sink.createDiagnosticBundle({ target: "local-bundle", reason: "visible reasoning support", maxRecords: 1 });
+    const serialized = JSON.stringify(bundle);
+
+    assert.equal(serialized.includes("ds-visible-secret-123456789"), false);
+    assert.equal(serialized.includes("sk-visible-secret-123456789"), false);
+    assert.equal(serialized.includes("literal hidden reasoning"), false);
+    assert.equal(serialized.includes("private source excerpt"), false);
+    assert.equal(serialized.includes("replayFingerprint"), true);
+    assert.equal(serialized.includes(projection.replayFingerprint), true);
+    assert.equal(serialized.includes("recordSummaries"), true);
+    assert.equal(serialized.includes("Long private detail"), false);
+    assert.equal(serialized.includes("filePreview"), false);
   });
 });
 

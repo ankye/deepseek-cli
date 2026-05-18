@@ -22,6 +22,8 @@ This index maps each first-framework acceptance gate to a command, test suite, t
 | DeepSeek live doctor smoke | `deepseek doctor --live --output json` -> `latest/live-doctor-smoke.txt` | required for live release rehearsal |
 | Overall delivery capability | `deepseek diagnostics evaluate --full --execute-task all --live --output json` -> `latest/overall-delivery-capability-score.json` | required |
 | CLI mode and agent completion matrix | `deepseek diagnostics evaluate --dry-run --output json`, `src/apps/cli/test/cli.test.ts` -> mode matrix diagnostics | required |
+| Visible reasoning turn audit | `npx tsx --test tests/contracts/visible-reasoning-surface.test.ts tests/contracts/chat-slash-commands.test.ts tests/contracts/chat-tui-framework.test.ts tests/contracts/observability-privacy-contracts.test.ts` -> `latest/contracts.txt` | required |
+| First-party developer plugin pack | `npm run test:contracts` / `tests/contracts/first-party-dev-plugins.test.ts`, `tests/contracts/first-party-dev-workflows.test.ts`, `deepseek diagnostics release --output json` -> plugin manifest and command evidence | required |
 | CLI release diagnostics gate | `deepseek diagnostics release --output json` checks build artifact, acceptance evidence, package surface, and publish dry-run evidence | required |
 | CLI release publish dry-run | `npm publish --dry-run --workspace deepseek-agent-cli --access public` -> `latest/npm-publish-dry-run.txt` | required |
 | CLI release verify decision | `deepseek diagnostics verify --output json` summarizes release blockers, warnings, next action, and publish dry-run readiness | required |

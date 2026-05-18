@@ -55,11 +55,13 @@ import {
 import type { ChatPageIndexPage } from "./pageindex.js";
 import { CliWorkspacePageIndexStore, renderWorkspacePageIndexFailure } from "./pageindex-workspace.js";
 import type { WorkspacePageIndexDiagnostic } from "./pageindex-workspace.js";
+import { handleChatContextSlashCommand } from "./context.js";
 import { readCliLines } from "../input/lines.js";
 import { accumulateChatUsage } from "./chat-usage.js";
 import { applyRevert, parseRevertApplyArgs, parseRevertPreviewArgs, previewRevert, renderRevertApply, renderRevertPreview } from "./revert.js";
-import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint } from "../renderers/runtime-events.js";
+import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint, visibleReasoningProjectionFromEvents } from "../renderers/runtime-events.js";
 import type { ChatHistoryEntry, ChatRevertReviewEntry, ChatSessionState } from "./chat-state.js";
+import { createBasicChatTui } from "./chat-tui.js";
 
 export async function runChatCommand(
   options: CliOptions,
@@ -88,24 +90,33 @@ export async function runChatCommand(
     activeController: undefined,
     pendingExit: false,
     pendingExitTimer: undefined,
-    modeControls: createInitialChatModeControlState(options.sessionId)
+    modeControls: createInitialChatModeControlState(options.sessionId),
+    visibleReasoning: undefined
   };
+  const basicTui = createBasicChatTui(options, terminalProfile, write, writeInline);
   const sigintHandler = makeSigintHandler(state, write, options.output);
   process.on("SIGINT", sigintHandler);
   try {
     const resumed = await hydrateChatSession(options, state, terminalProfile, write);
     if (!resumed) return;
-    if (options.output === "text") {
+    if (basicTui.enabled) {
+      await basicTui.renderStartup(state);
+      await basicTui.renderPrompt();
+    } else if (options.output === "text") {
       await write("DeepSeek chat");
-      await write("Type /help for commands, Ctrl+C to cancel a turn, Ctrl+C twice to exit.");
     }
     for await (const line of readCliLines(input, terminalProfile.inputStrategy)) {
       const prompt = line.trim();
-      if (!prompt) continue;
+      if (!prompt) {
+        await basicTui.renderPrompt();
+        continue;
+      }
       if (state.pendingExit) break;
       if (prompt.startsWith("/")) {
         const outcome = await handleSlashCommand(prompt, options, state, write);
         if (outcome === "exit") break;
+        await basicTui.afterLocalCommand(slashCommandName(prompt), state);
+        await basicTui.renderPrompt();
         continue;
       }
       state.turns += 1;
@@ -132,9 +143,12 @@ export async function runChatCommand(
       await persistWorkspaceChatPageIndex(state);
       accumulateChatUsage(state.usage, events);
       state.modeControls = updateChatModeControlState(state.modeControls, events);
+      state.visibleReasoning = visibleReasoningProjectionFromEvents(events, terminal);
       await renderFinalJsonIfNeeded(options.output, events, write);
       state.activeController = undefined;
       if (state.pendingExit) break;
+      await basicTui.afterTurn(state);
+      await basicTui.renderPrompt();
     }
     if (options.output === "text") {
       await write(`[chat completed] turns=${state.turns}${state.sessionId ? ` session=${state.sessionId}` : ""}`);
@@ -145,6 +159,10 @@ export async function runChatCommand(
     if (state.pendingExitTimer) clearTimeout(state.pendingExitTimer);
     await runtime.kernel.shutdown("cli-chat-completed");
   }
+}
+
+function slashCommandName(prompt: string): string {
+  return prompt.slice(1).trim().split(/\s+/)[0] ?? "";
 }
 
 async function hydrateChatSession(options: CliOptions, state: ChatSessionState, terminalProfile: CliTerminalCapabilityProfile, write: (line: string) => Promise<void>): Promise<boolean> {
@@ -232,6 +250,10 @@ async function handleSlashCommand(prompt: string, options: CliOptions, state: Ch
   }
   if (name === "palette") {
     await handlePaletteSlashCommand(rest, options, state, write);
+    return "continue";
+  }
+  if (name === "context") {
+    await handleChatContextSlashCommand(rest, options, state, (kind, lines) => writeChatLocalLines(kind, lines, options, write));
     return "continue";
   }
   if (name === "keymap") {

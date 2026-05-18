@@ -1,4 +1,4 @@
-import type { AgentLoopOutputMode, AgentLoopSummary, RuntimeDependencies, RuntimeEvent, RuntimeKernel } from "@deepseek/platform-contracts";
+import type { AgentLoopOutputMode, AgentLoopSummary, RuntimeDependencies, RuntimeEvent, RuntimeKernel, VisibleReasoningProjection, VisibleReasoningRecord } from "@deepseek/platform-contracts";
 import type { AgentLoopBudget, AgentPhasePlan, AgentPhasePlanItem, AgentVerifierResult, AgentWorkerLifecycleEvent, AgentWorkerResult } from "@deepseek/platform-contracts";
 import { runAgentLoop } from "@deepseek/runtime";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
@@ -66,6 +66,8 @@ export function renderText(event: RuntimeEvent): string {
   if (event.kind === "agent.worker.result") return renderWorkerResult(event.data as unknown as AgentWorkerResult);
   if (event.kind === "agent.verifier.verdict") return renderVerifierVerdict(event.data as unknown as AgentVerifierResult);
   if (event.kind === "model.reasoning.effort.mapped") return `[model] reasoning requested=${String(event.data.requestedEffort ?? "none")} provider=${String(event.data.providerEffort ?? "none")} supported=${String(event.data.supported ?? true)}`;
+  if (event.kind === "visible.reasoning.recorded") return renderVisibleReasoningText(event.data as unknown as VisibleReasoningRecord);
+  if (event.kind === "visible.reasoning.projected") return renderVisibleReasoningProjectionText(event.data as unknown as VisibleReasoningProjection);
   if (event.kind === "model.tool.intent") return `[tool] ${String(event.data.name ?? "")}`;
   if (event.kind === "model.tool.repaired") return "[tool repaired]";
   if (event.kind === "model.tool.rejected") return `[tool rejected] ${event.error?.message ?? ""}`.trim();
@@ -109,6 +111,16 @@ function renderVerifierVerdict(result: AgentVerifierResult): string {
   return `[verify] verdict=${result.verdict} evidence=${result.evidenceIds.length} commands=${result.commandEvidenceIds.length} unchecked=${result.unverifiedAreas.length}`;
 }
 
+function renderVisibleReasoningText(record: VisibleReasoningRecord): string {
+  const evidence = record.evidence.length > 0 ? ` evidence=${record.evidence.length}` : "";
+  const certainty = record.certainty !== "inferred" ? ` certainty=${record.certainty}` : "";
+  return `[reasoning:${record.stepKind}] ${record.status}${certainty}${evidence} id=${record.recordId} - ${record.summary}`;
+}
+
+function renderVisibleReasoningProjectionText(projection: VisibleReasoningProjection): string {
+  return `[reasoning] records=${projection.summary.visibleRecords}/${projection.summary.totalRecords} evidence=${projection.summary.evidenceLinkCount} assumptions=${projection.summary.assumptionCount} unsupported=${projection.summary.unsupportedCount} fingerprint=${projection.replayFingerprint}`;
+}
+
 function eventDataList(value: unknown): string {
   return Array.isArray(value) ? value.map(String).join(",") || "none" : "none";
 }
@@ -136,6 +148,7 @@ export async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, event
   const terminal = finalAgentLoopEvent(events);
   const fallback = events.at(-1);
   const sessionId = terminal?.sessionId ?? fallback?.sessionId ?? "";
+  const visibleReasoning = visibleReasoningProjectionFromEvents(events, terminal);
   await write(JSON.stringify({
     schemaVersion: "1.0.0",
     status: String(terminal?.data.status ?? (terminal?.kind === "agent.loop.completed" ? "completed" : "failed")),
@@ -144,10 +157,24 @@ export async function renderFinalJsonIfNeeded(output: AgentLoopOutputMode, event
     traceId: String(terminal?.trace.traceId ?? fallback?.trace.traceId ?? ""),
     assistantText: String(terminal?.data.assistantText ?? ""),
     diagnostics: Array.isArray(terminal?.data.diagnostics) ? terminal?.data.diagnostics : [],
+    ...(visibleReasoning ? { visibleReasoning } : {}),
     ...(terminal?.data.selfRepair && typeof terminal.data.selfRepair === "object" ? { selfRepair: terminal.data.selfRepair } : {}),
     resumeCommand: sessionId ? `deepseek session resume ${sessionId}` : "",
     redaction: terminal?.data.redaction ?? { class: "internal" }
   }));
+}
+
+export function visibleReasoningRecordsFromEvents(events: readonly RuntimeEvent[]): readonly VisibleReasoningRecord[] {
+  return events
+    .filter((event) => event.kind === "visible.reasoning.recorded")
+    .map((event) => event.data as unknown as VisibleReasoningRecord);
+}
+
+export function visibleReasoningProjectionFromEvents(events: readonly RuntimeEvent[], terminal?: RuntimeEvent): VisibleReasoningProjection | undefined {
+  const fromTerminal = terminal?.data.visibleReasoning;
+  if (fromTerminal && typeof fromTerminal === "object" && !Array.isArray(fromTerminal)) return fromTerminal as unknown as VisibleReasoningProjection;
+  const projected = [...events].reverse().find((event) => event.kind === "visible.reasoning.projected");
+  return projected ? projected.data as unknown as VisibleReasoningProjection : undefined;
 }
 
 export function finalAgentLoopEvent(events: readonly RuntimeEvent[]): RuntimeEvent | undefined {

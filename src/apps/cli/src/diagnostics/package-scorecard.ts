@@ -64,6 +64,7 @@ const roleAcceptanceEvidenceByRole: Readonly<Record<string, readonly string[]>> 
   "context-engine": ["src/packages/context-engine/src/index.test.ts", "tests/contracts/context-engine-cache.test.ts", "tests/matrix/context-projection-matrix.test.ts"],
   "core-coding-tools": ["src/packages/core-coding-tools/src/index.test.ts", "tests/contracts/core-coding-tools-contracts.test.ts"],
   "credential-auth-management": ["tests/contracts/extension-auth-boundaries.test.ts", "tests/contracts/persistent-config-auth-contracts.test.ts"],
+  "first-party-dev-plugins": ["tests/contracts/first-party-dev-plugins.test.ts", "tests/contracts/first-party-dev-workflows.test.ts"],
   "hook-system": ["src/packages/hook-system/src/index.test.ts", "tests/contracts/hook-system-contracts.test.ts", "tests/integration/hook-system-invocation.test.ts"],
   "index-provider": ["tests/contracts/index-provider-contracts.test.ts", "tests/e2e/local-readiness-cli.test.ts"],
   "mcp-gateway": ["src/packages/mcp-gateway/src/index.test.ts", "tests/contracts/mcp-gateway-contracts.test.ts", "tests/matrix/mcp-gateway-matrix.test.ts"],

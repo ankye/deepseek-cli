@@ -81,4 +81,68 @@ describe("terminal capability profile", () => {
     assert.equal(profiles.find((entry) => entry.name === "redirected-jsonl")?.profile.rendererProfile, "jsonl");
     assert.equal(profiles.find((entry) => entry.name === "no-color-terminal")?.profile.colorDepth, "none");
   });
+
+  it("covers terminal profiles required by TUI and visible reasoning renderers", () => {
+    const narrow = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      facts: { env: { TERM: "xterm-256color" }, platform: "linux", columns: 32, colorDepth: 8, processStdin: process.stdin }
+    });
+    const noColor = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      facts: { env: { NO_COLOR: "1" }, platform: "linux", columns: 100, colorDepth: 24, processStdin: process.stdin }
+    });
+    const nonTty = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: false, stdoutIsTTY: false },
+      input: [],
+      facts: { env: {}, platform: "linux", columns: 80, colorDepth: 1, processStdin: process.stdin }
+    });
+    const json = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "json",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      facts: { env: {}, platform: "linux", columns: 100, colorDepth: 24, processStdin: process.stdin }
+    });
+    const jsonl = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "jsonl",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      facts: { env: {}, platform: "linux", columns: 100, colorDepth: 24, processStdin: process.stdin }
+    });
+    const windowsLike = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      facts: { env: {}, platform: "win32", columns: 100, colorDepth: 4, processStdin: process.stdin }
+    });
+    const unsupportedRawInput = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: [],
+      facts: { env: {}, platform: "linux", columns: 100, colorDepth: 8, processStdin: process.stdin }
+    });
+
+    assert.equal(narrow.rendererProfile, "interactive");
+    assert.equal(narrow.columns, 32);
+    assert.equal(noColor.colorDepth, "none");
+    assert.equal(noColor.reasons.includes("no-color"), true);
+    assert.equal(nonTty.rendererProfile, "plain");
+    assert.equal(nonTty.inputStrategy, "scripted");
+    assert.equal(json.rendererProfile, "json");
+    assert.equal(jsonl.rendererProfile, "jsonl");
+    assert.equal(windowsLike.unicode, "basic");
+    assert.equal(unsupportedRawInput.rawInput, false);
+    assert.equal(unsupportedRawInput.inputStrategy, "scripted");
+  });
 });

@@ -19,7 +19,7 @@ export interface CliTerminalFlags {
   readonly stdoutIsTTY: boolean;
 }
 
-export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode" | "memory";
+export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode" | "memory" | "context" | "checks" | "repo" | "git";
 export type CliPaletteAction = "list" | "keymap" | "action";
 export type CliRevertAction = "preview" | "apply";
 export type CliIndexProviderAction = "status" | "set";
@@ -64,6 +64,12 @@ export interface CliOptions {
   readonly toolProjection?: "none" | "read-only" | "read-write" | "all";
   readonly memoryAction?: "status" | "list" | "candidates" | "remember" | "approve" | "reject" | "edit" | "delete" | "enable" | "disable" | "export" | "explain";
   readonly memoryInput?: JsonObject;
+  readonly contextInput?: JsonObject;
+  readonly checkAction?: "openspec" | "typecheck" | "lint" | "test" | "boundaries" | "build-cli";
+  readonly checkInput?: JsonObject;
+  readonly repoAction?: "files" | "grep" | "recall" | "project-index";
+  readonly repoInput?: JsonObject;
+  readonly gitInput?: JsonObject;
 }
 
 export type CliWrite = (line: string) => void | Promise<void>;

@@ -15,6 +15,7 @@ import {
   SELF_REPAIR_SCHEMA_VERSION,
   SESSION_SCHEMA_VERSION,
   SKILL_SCHEMA_VERSION,
+  VISIBLE_REASONING_SCHEMA_VERSION,
   asId,
   type AgentModeCompletionMatrixEntry,
   type AgentModeSessionSummary,
@@ -28,7 +29,9 @@ import {
   type InteractionModeState,
   type InteractionModeTransition,
   type SelfRepairModelHypothesis,
-  type SelfRepairOutcomeSummary
+  type SelfRepairOutcomeSummary,
+  type VisibleReasoningProjection,
+  type VisibleReasoningRecord
 } from "@deepseek/platform-contracts";
 import { createProjectionRequest, InMemoryContextEngine } from "@deepseek/context-engine";
 import { createHookOutput, InMemoryHookSystem } from "@deepseek/hook-system";
@@ -480,6 +483,66 @@ describe("versioning checks", () => {
     assert.deepEqual(requireSchemaVersion(manifest.claimGroundings[0]), []);
     assert.deepEqual(requireSchemaVersion(manifest.unsupportedClaims[0]), []);
     const missingSchema = { ...manifest } as { schemaVersion?: string };
+    delete missingSchema.schemaVersion;
+    assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
+  });
+
+  it("requires schemaVersion on visible reasoning records and projections", () => {
+    const trace = {
+      traceId: asId<"trace">("trace-visible-version"),
+      spanId: asId<"span">("span-visible-version"),
+      correlationId: asId<"correlation">("corr-visible-version"),
+      sessionId: asId<"session">("session-visible-version")
+    };
+    const record: VisibleReasoningRecord = {
+      schemaVersion: VISIBLE_REASONING_SCHEMA_VERSION,
+      recordId: "visible-reasoning:version",
+      sessionId: asId<"session">("session-visible-version"),
+      turnId: asId<"turn">("turn-visible-version"),
+      trace,
+      createdAt: "1970-01-01T00:00:00.000Z",
+      actor: "runtime",
+      stepKind: "intent",
+      status: "completed",
+      certainty: "inferred",
+      summary: "Visible reasoning version fixture.",
+      evidence: [],
+      order: { sequence: 1 },
+      metadata: {},
+      diagnostics: [],
+      privacyClass: "internal",
+      redaction: { class: "internal", fields: ["summary"] },
+      compatibility: { schemaVersion: VISIBLE_REASONING_SCHEMA_VERSION },
+      pitFixtureIds: []
+    };
+    const projection: VisibleReasoningProjection = {
+      schemaVersion: VISIBLE_REASONING_SCHEMA_VERSION,
+      projectionId: "visible-reasoning:projection:version",
+      renderer: "json",
+      detailLevel: "compact",
+      sessionId: record.sessionId,
+      turnId: asId<"turn">("turn-visible-version"),
+      activeRecordId: record.recordId,
+      records: [record],
+      summary: {
+        totalRecords: 1,
+        visibleRecords: 1,
+        evidenceLinkCount: 0,
+        byKind: { intent: 1 },
+        byStatus: { completed: 1 },
+        byActor: { runtime: 1 },
+        unsupportedCount: 0,
+        assumptionCount: 0,
+        secretRedactionCount: 0
+      },
+      replayFingerprint: "visible:version",
+      redaction: { class: "internal", fields: ["records.summary"] },
+      compatibility: { schemaVersion: VISIBLE_REASONING_SCHEMA_VERSION }
+    };
+
+    assert.deepEqual(requireSchemaVersion(record), []);
+    assert.deepEqual(requireSchemaVersion(projection), []);
+    const missingSchema = { ...projection } as { schemaVersion?: string };
     delete missingSchema.schemaVersion;
     assert.deepEqual(requireSchemaVersion(missingSchema), ["missing schemaVersion"]);
   });

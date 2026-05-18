@@ -333,6 +333,12 @@ export function renderInteractiveControlText(result: InteractiveControlResult): 
     lines.push("  /cost — show accumulated token usage for the current session");
     lines.push("  /model — show the active model profile");
     lines.push("  /mode|/agent|/workers|/verify|/plan — show local mode, agent, worker, verifier, and phase-plan status");
+    lines.push("  tui — DeepSeek Workbench with transcript, command bar, reasoning rail, inspector, activity feed, and plugin shelf");
+    lines.push("  focus keys — Tab/Shift+Tab move panels; / opens command search; r/i/a/p focus reasoning, inspector, activity, plugins");
+    lines.push("  reasoning — visible summaries show intent, evidence, actions, verification, outcome, ids, and fingerprints without raw provider reasoning");
+    lines.push("  plugins — native metadata shelf; declarative command/action/keymap/palette/result-list/render-hint contributions only");
+    lines.push("  first-party plugins — dev-checks, repo-navigator, git-review, context-compactor metadata enabled");
+    lines.push("  /context status|grep|describe|summarize|expand|budget|pin — inspect and compact lossless context");
     lines.push("  /palette — show local command palette entries");
     lines.push("  /palette next|previous|first|last — move local palette result focus");
     lines.push("  /palette back|forward — traverse local palette jump history");
@@ -592,8 +598,11 @@ function supportBundleMetadata(environment: LocalReadinessEnvironment): JsonObje
     localDiagnosticsAvailable: true,
     externalExportAllowed: false,
     externalExportReasonCode: "privacy.external-export-disabled",
+    visibleReasoningPolicy: "redacted-summary-and-projection-fingerprint-only",
+    visibleReasoningRawProviderReasoningAllowed: false,
+    visibleReasoningExportFields: ["recordId", "stepKind", "status", "certainty", "summary", "evidenceLinkCount", "evidenceFingerprints", "projectionId", "replayFingerprint", "summary"],
     referencePitFixtureIds: ["pit.diagnostic-redaction.support-bundle"],
-    redaction: { class: "internal", fields: ["externalExportReasonCode"] }
+    redaction: { class: "internal", fields: ["externalExportReasonCode", "visibleReasoningExportFields"] }
   };
 }
 

@@ -103,7 +103,7 @@ export class InMemoryObservabilitySink implements ObservabilitySink, DiagnosticB
   }
 
   private toRecord(event: ObservabilityEvent): ObservabilityRecord {
-    const redactedFields = redactJson(event.fields);
+    const redactedFields = redactJson(observabilityFields(event));
     const summary = summarizeRedactedJson(redactedFields);
     const declaredPrivacyClass = event.dataPrivacyClass ?? privacyClassFromSummary(summary);
     const redaction = event.redaction ?? redactionFor(declaredPrivacyClass, summary);
@@ -124,6 +124,79 @@ export class InMemoryObservabilitySink implements ObservabilitySink, DiagnosticB
       redactionSummary: summary
     };
   }
+}
+
+function observabilityFields(event: ObservabilityEvent): JsonObject {
+  if (event.name === "visible.reasoning.recorded") return visibleReasoningRecordBundleFields(event.fields);
+  if (event.name === "visible.reasoning.projected") return visibleReasoningProjectionBundleFields(event.fields);
+  return event.fields;
+}
+
+function visibleReasoningRecordBundleFields(fields: JsonObject): JsonObject {
+  const evidence = arrayField(fields.evidence);
+  return {
+    schemaVersion: stringField(fields.schemaVersion),
+    recordId: stringField(fields.recordId),
+    sessionId: stringField(fields.sessionId),
+    turnId: stringField(fields.turnId),
+    trace: traceBundleFields(objectField(fields.trace)),
+    actor: stringField(fields.actor),
+    stepKind: stringField(fields.stepKind),
+    status: stringField(fields.status),
+    certainty: stringField(fields.certainty),
+    summary: stringField(fields.summary),
+    evidenceLinkCount: evidence.length,
+    evidenceFingerprints: evidence.map(evidenceFingerprint).filter((value): value is string => typeof value === "string"),
+    order: objectField(fields.order),
+    privacyClass: stringField(fields.privacyClass),
+    redaction: objectField(fields.redaction),
+    pitFixtureIds: stringArrayField(fields.pitFixtureIds)
+  };
+}
+
+function visibleReasoningProjectionBundleFields(fields: JsonObject): JsonObject {
+  return {
+    schemaVersion: stringField(fields.schemaVersion),
+    projectionId: stringField(fields.projectionId),
+    renderer: stringField(fields.renderer),
+    detailLevel: stringField(fields.detailLevel),
+    sessionId: stringField(fields.sessionId),
+    turnId: stringField(fields.turnId),
+    activeRecordId: stringField(fields.activeRecordId),
+    summary: objectField(fields.summary),
+    replayFingerprint: stringField(fields.replayFingerprint),
+    recordSummaries: arrayField(fields.records).map((record) => objectField(record)).map(visibleReasoningRecordBundleFields),
+    redaction: objectField(fields.redaction)
+  };
+}
+
+function traceBundleFields(trace: JsonObject): JsonObject {
+  return {
+    traceId: stringField(trace.traceId),
+    spanId: stringField(trace.spanId),
+    correlationId: stringField(trace.correlationId)
+  };
+}
+
+function evidenceFingerprint(value: unknown): string | undefined {
+  const link = objectField(value);
+  return stringField(link.fingerprint) ?? `${stringField(link.kind) ?? "evidence"}:${stringField(objectField(link.target).id) ?? "unknown"}`;
+}
+
+function objectField(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
+}
+
+function arrayField(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringArrayField(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 export function redactObservabilityArtifact<T>(value: T): T {

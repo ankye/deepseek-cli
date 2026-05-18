@@ -9,7 +9,7 @@ import type { ApprovalId, ApprovalRequest, JsonObject, ModelGateway, ModelReques
 import { FakePlatformRuntime, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
-import { DurablePermanentMemoryProvider, InMemoryPermanentMemoryStorageAdapter } from "@deepseek/memory-cache-management";
+import { DurablePermanentMemoryProvider, InMemoryLosslessContextManager, InMemoryPermanentMemoryStorageAdapter } from "@deepseek/memory-cache-management";
 import { chatPageIndexPagesFromSnapshot, explainChatPageIndexRecallItem, markStalePageIndexPagesAfterWorkspaceEdits, markStalePageIndexPagesFromWorkspaceWatermark, recordChatPageIndexTurn, renderChatPageIndexRecallExplain, resolveChatPageIndexRecall } from "../src/commands/pageindex.js";
 import { createChatPaletteState } from "../src/commands/palette-state.js";
 import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
@@ -45,6 +45,51 @@ describe("cli host adapter", () => {
       }
 
       assert.equal(isCliEntryPoint(binPath, pathToFileURL(targetPath).href), true);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes package entrypoints launched through linked install paths", async (t) => {
+    const tempDir = await mkdtemp(join(tmpdir(), "deepseek-cli-linked-root-"));
+    try {
+      const realDistDir = join(tempDir, "persist", "bin", "node_modules", "deepseek-agent-cli", "dist");
+      const linkedRoot = join(tempDir, "current");
+      await mkdir(realDistDir, { recursive: true });
+      await writeFile(join(realDistDir, "index.js"), "#!/usr/bin/env node\n");
+
+      try {
+        await symlink(join(tempDir, "persist"), linkedRoot, "junction");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM") {
+          t.skip("directory symlink creation is not available in this environment");
+          return;
+        }
+        throw error;
+      }
+
+      const linkedEntryPath = join(linkedRoot, "bin", "node_modules", "deepseek-agent-cli", "dist", "index.js");
+      const realEntryPath = join(realDistDir, "index.js");
+      assert.equal(isCliEntryPoint(linkedEntryPath, pathToFileURL(realEntryPath).href), true);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes package bin paths linked to workspace dist entrypoints", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "deepseek-cli-workspace-link-"));
+    try {
+      const packageDistDir = join(tempDir, "node_modules", "deepseek-agent-cli", "dist");
+      const workspaceDistDir = join(tempDir, "src", "apps", "cli", "dist");
+      await mkdir(packageDistDir, { recursive: true });
+      await mkdir(workspaceDistDir, { recursive: true });
+
+      const packageEntryPath = join(packageDistDir, "index.js");
+      const workspaceEntryPath = join(workspaceDistDir, "index.js");
+      await writeFile(packageEntryPath, "#!/usr/bin/env node\n");
+      await writeFile(workspaceEntryPath, "#!/usr/bin/env node\n");
+
+      assert.equal(isCliEntryPoint(packageEntryPath, pathToFileURL(workspaceEntryPath).href), true);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -157,6 +202,37 @@ describe("cli host adapter", () => {
       live: false,
       memoryAction: "remember",
       memoryInput: { action: "remember", content: "Use provider-backed memory", scope: "project" }
+    });
+    assert.deepEqual(parseCliArgs(["context", "grep", "database", "--session", "session-context", "--output", "jsonl"]), {
+      command: "context",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      contextInput: { raw: "grep database" },
+      sessionId: asId<"session">("session-context")
+    });
+    assert.deepEqual(parseCliArgs(["checks", "lint", "--output", "jsonl"]), {
+      command: "checks",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      checkAction: "lint",
+      checkInput: { action: "lint", args: [] }
+    });
+    assert.deepEqual(parseCliArgs(["repo", "grep", "database", "--output", "json"]), {
+      command: "repo",
+      prompt: "",
+      output: "json",
+      live: false,
+      repoAction: "grep",
+      repoInput: { action: "grep", query: "database" }
+    });
+    assert.deepEqual(parseCliArgs(["git", "status", "--output", "jsonl"]), {
+      command: "git",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      gitInput: { action: "status", args: [] }
     });
     assert.deepEqual(parseCliArgs(["revert", "preview", "--request", "request-1", "--output", "jsonl"]), {
       command: "revert",
@@ -277,10 +353,44 @@ describe("cli host adapter", () => {
     assert.equal(lines.some((line) => line.includes("deepseek index-provider status")), true);
     assert.equal(lines.some((line) => line.includes("deepseek mode [status|agent|workers|verify|plan]")), true);
     assert.equal(lines.some((line) => line.includes("deepseek memory status|list|candidates")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek context status|grep|describe|summarize|expand|budget|pin")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek checks openspec|typecheck|lint|test|boundaries|build-cli")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek repo files|grep|recall|project-index")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek git status|diff|review")), true);
     assert.equal(lines.some((line) => line.includes("deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate")), true);
     assert.equal(lines.some((line) => line.includes("deepseek chat [--session <session-id>]")), true);
     assert.equal(lines.join("\n").includes("stream-json"), false);
     assert.equal(lines.join("\n").includes(" -p "), false);
+  });
+
+  it("runs context compactor CLI status with structured output", async () => {
+    const deps = { ...createDeterministicRuntimeDependencies(), losslessContext: new InMemoryLosslessContextManager() };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const outputs: string[] = [];
+    await runCli(["context", "status", "--output", "json"], (line: string) => {
+      outputs.push(line);
+    }, [], { stdinIsTTY: true, stdoutIsTTY: true }, {
+      createRuntime: async () => ({ deps, kernel })
+    });
+
+    const result = JSON.parse(outputs[0] ?? "{}") as { readonly kind?: string; readonly action?: string; readonly status?: string };
+    assert.equal(result.kind, "context.compactor");
+    assert.equal(result.action, "status");
+    assert.equal(result.status, "completed");
+  });
+
+  it("handles /context as a local chat command without model dispatch", async () => {
+    const deps = { ...createDeterministicRuntimeDependencies(), losslessContext: new InMemoryLosslessContextManager() };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const outputs: string[] = [];
+    await runCli(["chat", "--output", "text"], (line: string) => {
+      outputs.push(line);
+    }, ["/context status\n/exit\n"], { stdinIsTTY: false, stdoutIsTTY: false }, {
+      createRuntime: async () => ({ deps, kernel })
+    });
+
+    assert.equal(outputs.some((line) => line.includes("context status: completed")), true);
+    assert.equal(outputs.some((line) => line.includes("[chat] Interactive session closing.")), true);
   });
 
   it("runs permanent memory CLI remember and candidate list commands", async () => {
@@ -2384,6 +2494,40 @@ describe("cli host adapter", () => {
     assert.equal(output.includes("DeepSeek mock response"), false);
   });
 
+  it("keeps scripted, non-TTY, JSON, and JSONL chat output free of workbench frames", async () => {
+    const textLines: string[] = [];
+    await runCli(
+      ["chat", "--output", "text"],
+      (line: string) => {
+        textLines.push(line);
+      },
+      ["/help\n/exit\n"],
+      { stdinIsTTY: false, stdoutIsTTY: false }
+    );
+
+    assert.equal(textLines.some((line) => line.startsWith("DeepSeek Workbench")), false);
+    assert.equal(textLines.some((line) => line.includes("deepseek> ")), false);
+    assert.equal(textLines.some((line) => line === "Chat controls:"), true);
+
+    for (const output of ["json", "jsonl"] as const) {
+      const lines: string[] = [];
+      await runCli(
+        ["chat", "--output", output],
+        (line: string) => {
+          lines.push(line);
+        },
+        ["/help\n/exit\n"],
+        { stdinIsTTY: false, stdoutIsTTY: false }
+      );
+      assert.equal(lines.some((line) => line.startsWith("DeepSeek Workbench")), false);
+      assert.equal(lines.some((line) => line.includes("deepseek> ")), false);
+      assert.equal(lines.every((line) => {
+        JSON.parse(line);
+        return true;
+      }), true);
+    }
+  });
+
   it("preserves chat session id across runtime submissions", async () => {
     const deps = createDeterministicRuntimeDependencies();
     await registerRuntimeCoreTools(deps, process.cwd());
@@ -2576,7 +2720,7 @@ describe("cli host adapter", () => {
         createRuntime: async () => ({ deps: reasoningDeps, kernel })
       }
     );
-    const reasoningCount = lines.filter((line) => line.startsWith("[reasoning] ")).length;
+    const reasoningCount = lines.filter((line) => line.startsWith("[reasoning] ") && !line.startsWith("[reasoning] records=")).length;
     assert.equal(reasoningCount, 1, `expected one reasoning prefix, got: ${JSON.stringify(lines)}`);
     const combined = lines.join("\n");
     assert.equal(combined.includes("plan first step."), true, combined);

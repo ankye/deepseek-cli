@@ -13,7 +13,8 @@ import type {
   SessionId,
   ToolFeedbackStatus,
   TraceContext,
-  TurnId
+  TurnId,
+  VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
 import { boundedModelText } from "./model-tooling.js";
 import { defaultAgentLoopLimits } from "./agent-loop.js";
@@ -26,6 +27,7 @@ export interface AgentLoopModeSummaryInput {
   readonly reasoningEffortMapping?: AgentReasoningEffortMapping | undefined;
   readonly outputContract?: AgentLoopOutputContractVerification | undefined;
   readonly selfRepair?: SelfRepairOutcomeSummary | undefined;
+  readonly visibleReasoning?: VisibleReasoningProjection | undefined;
 }
 
 export function referenceContextSummary(request: AgentLoopRequest): JsonObject {
@@ -81,6 +83,7 @@ export function summarizeAgentLoop(
     modelProfile: request.profile.id,
     ...(mode?.outputContract ? { outputContract: mode.outputContract } : {}),
     ...(mode?.selfRepair ? { selfRepair: mode.selfRepair } : {}),
+    ...(mode?.visibleReasoning ? { visibleReasoning: mode.visibleReasoning } : {}),
     diagnostics,
     redaction: { class: "internal", fields: ["assistantText", "diagnostics.details", "selfRepair.classifications.diagnostics", "selfRepair.attempts.diagnostics"] }
   };

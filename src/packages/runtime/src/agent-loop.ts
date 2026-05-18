@@ -29,7 +29,10 @@ import type {
   SelfRepairVerificationSummary,
   SessionId,
   TraceContext,
-  TurnId
+  TurnId,
+  VisibleReasoningProjection,
+  VisibleReasoningRecord,
+  VisibleReasoningStatus
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import { projectAgentLoopContext, projectionEventData } from "./context-projection.js";
@@ -70,6 +73,7 @@ import {
   summarizeModePlan
 } from "./modes/mode-state.js";
 import { runFinalVerification } from "./agent-loop-verification.js";
+import { projectReasoningForOutput, recordVisibleReasoning, recordVisibleReasoningProjection, visibleReasoningEvidence } from "./visible-reasoning.js";
 
 export const defaultAgentLoopLimits: AgentLoopLimits = {
   maxModelIterations: 4,
@@ -118,6 +122,9 @@ export async function* runAgentLoop(
   let reasoningEffortMapping: AgentReasoningEffortMapping | undefined = request.reasoningEffortMapping;
   let evidenceRevisionAttempted = false;
   let losslessUserNodeId: string | undefined;
+  let visibleReasoningSequence = 0;
+  let visibleReasoningRecords: VisibleReasoningRecord[] = [];
+  let visibleReasoningProjection: VisibleReasoningProjection | undefined;
   const signal = control.signal;
 
   const currentRepairOutcome = (): SelfRepairOutcomeSummary => outcomeFromState({
@@ -135,8 +142,40 @@ export async function* runAgentLoop(
     interactionModeTransitions,
     reasoningEffortMapping,
     outputContract: outputContractVerification,
-    selfRepair: currentRepairOutcome()
+    selfRepair: currentRepairOutcome(),
+    visibleReasoning: visibleReasoningProjection ?? (visibleReasoningRecords.length > 0 ? projectReasoningForOutput(visibleReasoningRecords, request.outputMode) : undefined)
   });
+
+  const nextReasoningSequence = (): number => {
+    visibleReasoningSequence += 10;
+    return visibleReasoningSequence;
+  };
+
+  const emitVisibleReasoning = async (input: Omit<import("./visible-reasoning.js").RuntimeVisibleReasoningInput, "sessionId" | "turnId" | "trace" | "sequence" | "agentId">): Promise<RuntimeEvent> => {
+    const { event, record } = await recordVisibleReasoning(deps, {
+      sessionId,
+      turnId,
+      trace,
+      sequence: nextReasoningSequence(),
+      ...(request.agentId ? { agentId: request.agentId } : {}),
+      ...input
+    });
+    visibleReasoningRecords = [...visibleReasoningRecords, record];
+    return event;
+  };
+
+  const emitVisibleReasoningProjection = async (): Promise<RuntimeEvent> => {
+    const { event, projection } = await recordVisibleReasoningProjection(deps, {
+      sessionId,
+      turnId,
+      trace,
+      records: visibleReasoningRecords,
+      outputMode: request.outputMode,
+      ...(request.agentId ? { agentId: request.agentId } : {})
+    });
+    visibleReasoningProjection = projection;
+    return event;
+  };
 
   const emitFailureWithRepair = async function* (
     status: AgentLoopSummary["status"],
@@ -216,6 +255,18 @@ export async function* runAgentLoop(
         yield stopped;
       }
     }
+    const outcomeReasoning = await emitVisibleReasoning({
+      actor: "runtime",
+      stepKind: "outcome",
+      status: visibleStatusForTerminal(status),
+      certainty: "verified",
+      summary: `Agent loop stopped with status=${status} reason=${reason}.`,
+      phase: "outcome",
+      evidence: event ? [visibleReasoningEvidence("trace", { kind: "turn", id: `${event.kind}:${event.createdAt}`, label: event.kind, sessionId, turnId }, event.kind)] : []
+    });
+    yield outcomeReasoning;
+    const projectedReasoning = await emitVisibleReasoningProjection();
+    yield projectedReasoning;
     const summary = summarizeAgentLoop(status, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
     const failed = agentLoopEvent("agent.loop.failed", sessionId, turnId, trace, { ...summary, reason, ...extraData }, request.agentId, error);
     await recordRuntimeAdapterEvent(deps, failed);
@@ -224,6 +275,17 @@ export async function* runAgentLoop(
   };
 
   const emitCancelled = async function* (): AsyncGenerator<RuntimeEvent, void, void> {
+    const outcomeReasoning = await emitVisibleReasoning({
+      actor: "runtime",
+      stepKind: "outcome",
+      status: "blocked",
+      certainty: "verified",
+      summary: "Agent loop was cancelled by the user before completion.",
+      phase: "outcome"
+    });
+    yield outcomeReasoning;
+    const projectedReasoning = await emitVisibleReasoningProjection();
+    yield projectedReasoning;
     const summary = summarizeAgentLoop("cancelled", request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
     const cancelled = agentLoopEvent("agent.loop.cancelled", sessionId, turnId, trace, { ...summary, reason: "user-cancelled" }, request.agentId);
     await recordRuntimeAdapterEvent(deps, cancelled);
@@ -294,6 +356,17 @@ export async function* runAgentLoop(
   }, request.agentId);
   await recordRuntimeAdapterEvent(deps, turnStarted);
   yield turnStarted;
+  const intentReasoning = await emitVisibleReasoning({
+    actor: "runtime",
+    stepKind: "intent",
+    status: "running",
+    summary: `Working on: ${boundedModelText(request.prompt, 180)}`,
+    detail: "Visible reasoning records summarize product-facing decisions and link them to evidence; raw provider/internal reasoning is excluded.",
+    phase: "intent",
+    certainty: "inferred",
+    evidence: [visibleReasoningEvidence("trace", { kind: "turn", id: String(turnId), label: "current turn", sessionId, turnId }, "current turn")]
+  });
+  yield intentReasoning;
   losslessUserNodeId = yield* recordLosslessUserMessage(deps, {
     sessionId,
     turnId,
@@ -342,6 +415,16 @@ export async function* runAgentLoop(
   const planEvent = agentLoopEvent("agent.phase.plan.created", sessionId, turnId, trace, phasePlan, request.agentId);
   await recordRuntimeAdapterEvent(deps, planEvent);
   yield planEvent;
+  const phaseReasoning = await emitVisibleReasoning({
+    actor: "runtime",
+    stepKind: "assumption",
+    status: "completed",
+    summary: `Planned ${phasePlan.agentMode} work with required phases: ${phasePlan.phases.filter((phase) => phase.required).map((phase) => phase.phase).join(",") || "none"}.`,
+    phase: "planning",
+    certainty: "inferred",
+    evidence: [visibleReasoningEvidence("trace", { kind: "tool-evidence", id: phasePlan.planId, label: "agent phase plan", sessionId, turnId }, "agent phase plan", phasePlan.planId)]
+  });
+  yield phaseReasoning;
   for (const skippedPhase of modePlan.skippedPhases) {
     const skipped = agentLoopEvent("agent.phase.skipped", sessionId, turnId, trace, skippedPhase, request.agentId);
     await recordRuntimeAdapterEvent(deps, skipped);
@@ -358,6 +441,18 @@ export async function* runAgentLoop(
   const classified = agentLoopEvent("evidence.classified", sessionId, turnId, trace, evidenceFirst.classification, request.agentId);
   await recordRuntimeAdapterEvent(deps, classified);
   yield classified;
+  const evidenceReasoning = await emitVisibleReasoning({
+    actor: "runtime",
+    stepKind: "context-selection",
+    status: evidenceFirst.classification.evidenceRequired ? "running" : "skipped",
+    summary: evidenceFirst.classification.evidenceRequired
+      ? `Evidence is required for this turn; fact classes=${evidenceFirst.classification.factClasses.join(",") || "none"}.`
+      : "No additional evidence discovery required for this turn.",
+    phase: "evidence",
+    certainty: "verified",
+    evidence: [visibleReasoningEvidence("trace", { kind: "tool-evidence", id: evidenceFirst.classification.classificationId, label: "evidence classification", sessionId, turnId }, "evidence classification", evidenceFirst.classification.classificationId)]
+  });
+  yield evidenceReasoning;
   if (evidenceFirst.plan) {
     const planCreated = agentLoopEvent("evidence.plan.created", sessionId, turnId, trace, evidenceFirst.plan, request.agentId);
     await recordRuntimeAdapterEvent(deps, planCreated);
@@ -383,6 +478,23 @@ export async function* runAgentLoop(
     }, request.agentId);
     await recordRuntimeAdapterEvent(deps, selected);
     yield selected;
+    const selectedReasoning = await emitVisibleReasoning({
+      actor: "runtime",
+      stepKind: "context-selection",
+      status: "completed",
+      summary: `Selected ${evidenceFirst.selectedEvidence.length} evidence items before model dispatch.`,
+      phase: "evidence",
+      certainty: "verified",
+      evidence: evidenceFirst.selectedEvidence.slice(0, 5).map((item) => visibleReasoningEvidence("tool-evidence", {
+        kind: "tool-evidence",
+        id: item.evidenceId,
+        label: item.sourceLabel,
+        sessionId,
+        turnId,
+        metadata: { sourceGroup: item.sourceGroup, fingerprint: item.fingerprint }
+      }, item.sourceLabel, item.fingerprint))
+    });
+    yield selectedReasoning;
   }
 
   const projectionStream = projectAgentLoopContext(deps, request, sessionId, turnId, trace);
@@ -399,6 +511,25 @@ export async function* runAgentLoop(
     projectionStep = await projectionStream.next();
   }
   contextProjection = projectionStep.value?.projection;
+  if (contextProjection) {
+    const contextReasoning = await emitVisibleReasoning({
+      actor: "runtime",
+      stepKind: "context-selection",
+      status: contextProjection.status === "completed" ? "completed" : contextProjection.status === "degraded" ? "warning" : "failed",
+      summary: `Projected ${contextProjection.selectedNodes.length} context nodes and excluded ${contextProjection.excludedNodes.length}; budget=${contextProjection.budget.status}.`,
+      phase: "context",
+      certainty: "verified",
+      evidence: contextProjection.selectedNodes.slice(0, 5).map((node) => visibleReasoningEvidence("context-node", {
+        kind: "tool-evidence",
+        id: String(node.id),
+        label: `${node.kind}:${node.source}`,
+        sessionId,
+        turnId,
+        metadata: { source: node.source, kind: node.kind, fingerprints: node.dependencyFingerprints }
+      }, `${node.kind}:${node.source}`, node.dependencyFingerprints[0]))
+    });
+    yield contextReasoning;
+  }
 
   while (iterations < limits.maxModelIterations) {
     repairContinuationRequested = false;
@@ -454,6 +585,23 @@ export async function* runAgentLoop(
     const promptAssembled = agentLoopEvent("prompt.assembled", sessionId, turnId, trace, promptAssemblyEventPayload(assembly, request), request.agentId);
     await recordRuntimeAdapterEvent(deps, promptAssembled);
     yield promptAssembled;
+    const promptReasoning = await emitVisibleReasoning({
+      actor: "prompt-assembly",
+      stepKind: "prompt-assembly",
+      status: assembly.status === "assembled" ? "completed" : "failed",
+      summary: `Assembled provider-neutral request with ${assembly.budget.includedSectionCount} included sections, ${assembly.budget.excludedSectionCount} excluded sections, and ${assembly.toolPlan.visibleToolCount} visible tools.`,
+      phase: "prompt",
+      certainty: "verified",
+      evidence: [visibleReasoningEvidence("prompt-section", {
+        kind: "tool-evidence",
+        id: assembly.fingerprint,
+        label: "prompt assembly",
+        sessionId,
+        turnId,
+        metadata: { sectionOrderFingerprint: assembly.trace.replay.sectionOrderFingerprint, budgetFingerprint: assembly.trace.replay.budgetFingerprint }
+      }, "prompt assembly", assembly.fingerprint)]
+    });
+    yield promptReasoning;
 
     const modelRequested = agentLoopEvent("model.requested", sessionId, turnId, trace, {
       iteration: iterations,
@@ -588,6 +736,23 @@ export async function* runAgentLoop(
         }, request.agentId);
         await recordRuntimeAdapterEvent(deps, intentEvent);
         yield intentEvent;
+        const toolIntentReasoning = await emitVisibleReasoning({
+          actor: "runtime",
+          stepKind: "tool-intent",
+          status: "running",
+          summary: `Model requested governed tool ${toolName}; preflight will validate capability and policy before execution.`,
+          phase: "tools",
+          certainty: "inferred",
+          evidence: [visibleReasoningEvidence("command-result", {
+            kind: "command",
+            id: toolCallId,
+            label: toolName,
+            sessionId,
+            turnId,
+            metadata: { iteration: iterations, providerToolName }
+          }, toolName, toolCallId)]
+        });
+        yield toolIntentReasoning;
         const persistedReasoning = iterationReasoning;
         if (persistedReasoning.length > 0 && !reasoningPersistedForIteration) {
           reasoningPersistedForIteration = true;
@@ -759,6 +924,23 @@ export async function* runAgentLoop(
         }, request.agentId, terminal?.error);
         await recordRuntimeAdapterEvent(deps, resultEvent);
         yield resultEvent;
+        const toolResultReasoning = await emitVisibleReasoning({
+          actor: "runtime",
+          stepKind: "verification",
+          status: executionFeedback.status === "success" ? "completed" : executionFeedback.status === "denied" || executionFeedback.status === "rejected" ? "blocked" : "warning",
+          summary: `Tool ${toolName} returned ${executionFeedback.status}; result is bounded and linked as evidence.`,
+          phase: "tools",
+          certainty: "verified",
+          evidence: [visibleReasoningEvidence("tool-evidence", {
+            kind: "tool-evidence",
+            id: `tool-result:${toolCallId}`,
+            label: `${toolName} result`,
+            sessionId,
+            turnId,
+            metadata: { toolCallId, terminalKind: terminal?.kind ?? "unknown", status: executionFeedback.status }
+          }, `${toolName} result`, `tool-result:${toolCallId}:${executionFeedback.status}`)]
+        });
+        yield toolResultReasoning;
         yield* recordLosslessToolResult(deps, {
           sessionId,
           turnId,
@@ -841,6 +1023,22 @@ export async function* runAgentLoop(
         return;
       }
     }
+    if (iterationReasoning.length > 0) {
+      const modelSummaryReasoning = await emitVisibleReasoning({
+        actor: "model-summary",
+        stepKind: requestedTool ? "tool-intent" : "outcome",
+        status: "completed",
+        summary: `Model emitted reasoning metadata for iteration ${iterations}; raw provider/internal reasoning remains excluded from visible reasoning records.`,
+        phase: "model",
+        certainty: "inferred",
+        metadata: {
+          iteration: iterations,
+          byteLength: Buffer.byteLength(iterationReasoning, "utf8"),
+          rawProviderReasoningExcluded: true
+        }
+      });
+      yield modelSummaryReasoning;
+    }
     yield* fireHooks("model-call.after", {
       iteration: iterations,
       toolRequested: requestedTool,
@@ -915,6 +1113,35 @@ export async function* runAgentLoop(
       outputContractVerification = verification.outputContract ?? outputContractVerification;
       modeSummary = verification.modeSummary;
       for (const event of verification.events) yield event;
+      if (verification.events.length > 0 || verification.verifierResult || verification.outputContract) {
+        const verificationReasoning = await emitVisibleReasoning({
+          actor: "verifier",
+          stepKind: "verification",
+          status: verification.terminalStatus === "completed" ? "completed" : "failed",
+          summary: `Final verification status=${verification.terminalStatus}; verifier=${verification.verifierResult?.verdict ?? "none"} outputContract=${verification.outputContract?.status ?? "not_applicable"}.`,
+          phase: "verification",
+          certainty: "verified",
+          evidence: [
+            ...(verification.verifierResult ? [visibleReasoningEvidence("check", {
+              kind: "tool-evidence",
+              id: verification.verifierResult.verifierResultId,
+              label: "verifier result",
+              sessionId,
+              turnId,
+              metadata: { verdict: verification.verifierResult.verdict, evidenceIds: verification.verifierResult.evidenceIds }
+            }, "verifier result", verification.verifierResult.verifierResultId)] : []),
+            ...(verification.outputContract ? [visibleReasoningEvidence("diagnostic", {
+              kind: "diagnostic",
+              id: `output-contract:${verification.outputContract.contract.kind}`,
+              label: "output contract",
+              sessionId,
+              turnId,
+              metadata: { status: verification.outputContract.status, kind: verification.outputContract.contract.kind }
+            }, "output contract", `${verification.outputContract.contract.kind}:${verification.outputContract.status}`)] : [])
+          ]
+        });
+        yield verificationReasoning;
+      }
       if (verification.repairRequested || verification.terminalStatus === "failed") {
         const verifierError = finalVerifierFailureError(verification.verifierResult, verification.outputContract);
         diagnostics.push(verifierError);
@@ -929,6 +1156,25 @@ export async function* runAgentLoop(
         }
       }
       const terminalStatus = verification.terminalStatus;
+      const outcomeReasoning = await emitVisibleReasoning({
+        actor: "runtime",
+        stepKind: "outcome",
+        status: terminalStatus === "completed" ? "completed" : "failed",
+        summary: `Completed turn with status=${terminalStatus}; iterations=${iterations}; toolCalls=${toolCalls}.`,
+        phase: "outcome",
+        certainty: "verified",
+        evidence: [visibleReasoningEvidence("trace", {
+          kind: "turn",
+          id: String(turnId),
+          label: "turn outcome",
+          sessionId,
+          turnId,
+          metadata: { iterations, toolCalls, diagnostics: diagnostics.length }
+        }, "turn outcome")]
+      });
+      yield outcomeReasoning;
+      const projectedReasoning = await emitVisibleReasoningProjection();
+      yield projectedReasoning;
       const summary = summarizeAgentLoop(terminalStatus, request, sessionId, turnId, trace, assistantText, iterations, toolCalls, diagnostics, summaryMode());
       yield* recordLosslessAssistantMessage(deps, {
         sessionId,
@@ -1158,4 +1404,10 @@ function lastVerifierEvent(events: readonly RuntimeEvent[]): RuntimeEvent | unde
     if (event?.kind === "agent.verifier.verdict") return event;
   }
   return undefined;
+}
+
+function visibleStatusForTerminal(status: AgentLoopSummary["status"]): VisibleReasoningStatus {
+  if (status === "completed") return "completed";
+  if (status === "cancelled" || status === "rejected") return "blocked";
+  return "failed";
 }

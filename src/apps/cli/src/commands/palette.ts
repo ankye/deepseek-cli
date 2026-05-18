@@ -12,6 +12,7 @@ import type {
 } from "@deepseek/platform-contracts";
 import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import {
+  contributionToCompositionRecord,
   coreKeymapProfile,
   interactiveControlCompositionRecords,
   modeControlCompositionRecords,
@@ -20,6 +21,7 @@ import {
   resolveCliAction,
   viMinimalKeymapProfile
 } from "@deepseek/command-system";
+import { firstPartyPluginCommandContributions } from "@deepseek/first-party-dev-plugins";
 import type { CliOptions } from "../types.js";
 
 const supportedActions = new Set<CliActionKind>([
@@ -57,6 +59,7 @@ export function createCliPaletteProjection(records: readonly CommandCompositionR
 
 function defaultPaletteRecords(): readonly CommandCompositionRecord[] {
   return [
+    ...firstPartyPluginCommandContributions().map(contributionToCompositionRecord),
     ...readinessCompositionRecords(),
     ...interactiveControlCompositionRecords(),
     ...modeControlCompositionRecords()
