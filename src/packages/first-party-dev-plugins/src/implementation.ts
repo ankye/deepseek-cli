@@ -133,7 +133,10 @@ const pluginDefinitions: readonly FirstPartyPluginDefinition[] = [
     ],
     paletteEntries: [{ id: "context", title: "Context Compactor", category: "context", targetKind: "plugin-command" }],
     resultListProviders: [{ id: "context-results", targetKinds: ["lossless-node", "summary-node", "context-budget", "context-pin"] }],
-    keymaps: [{ id: "context.expand", mode: "result-list", key: "x", action: "expand", targetKind: "result-list-item" }],
+    keymaps: [
+      { id: "context.expand", mode: "result-list", key: "x", action: "expand", targetKind: "result-list-item", namespace: "context" },
+      { id: "context.leader", mode: "normal", key: "Space c", sequence: ["Space", "c"], action: "plugin-action", targetKind: "plugin-contribution", namespace: "context", helpText: "Open context plugin actions.", previewText: "Context plugin actions route through shared context commands." }
+    ],
     rendererHints: [{ id: "context.status-line", host: "cli-tui", placement: "status" }],
     reasoningContributions: [{ id: "context.reasoning", stepKind: "context-selection", detailLevel: "full", evidenceKinds: ["context-node", "tool-evidence"] }],
     metadata: { releaseScope: "R1", compactMode: "lossless", automaticPermanentMemoryWrites: false }
@@ -154,7 +157,7 @@ const pluginDefinitions: readonly FirstPartyPluginDefinition[] = [
     ],
     paletteEntries: [{ id: "checks", title: "Dev Checks", category: "checks", targetKind: "plugin-command" }],
     resultListProviders: [{ id: "check-results", targetKinds: ["check-command", "check-diagnostic"] }],
-    keymaps: [],
+    keymaps: [{ id: "dev-checks.leader", mode: "normal", key: "Space v", sequence: ["Space", "v"], action: "plugin-action", targetKind: "plugin-contribution", namespace: "checks", helpText: "Open verification plugin actions.", previewText: "Dev check plugin actions route through checks commands." }],
     rendererHints: [{ id: "checks.summary", host: "cli-tui", placement: "diagnostics" }],
     reasoningContributions: [{ id: "checks.reasoning", stepKind: "verification", detailLevel: "compact", evidenceKinds: ["check", "diagnostic"] }],
     metadata: { releaseScope: "R1", acceptsFreeFormShell: false }
@@ -172,7 +175,7 @@ const pluginDefinitions: readonly FirstPartyPluginDefinition[] = [
     ],
     paletteEntries: [{ id: "git-review", title: "Git Review", category: "git", targetKind: "plugin-command" }],
     resultListProviders: [{ id: "git-review-results", targetKinds: ["git-file", "git-hunk", "git-diagnostic"] }],
-    keymaps: [],
+    keymaps: [{ id: "git.leader", mode: "normal", key: "Space g", sequence: ["Space", "g"], action: "plugin-action", targetKind: "plugin-contribution", namespace: "git", helpText: "Open git review plugin actions.", previewText: "Git review plugin actions are read-only descriptors." }],
     rendererHints: [{ id: "git.review.summary", host: "cli-tui", placement: "status" }],
     reasoningContributions: [{ id: "git.reasoning", stepKind: "verification", detailLevel: "compact", evidenceKinds: ["diff", "diagnostic"] }],
     metadata: { releaseScope: "R1", destructiveOperations: false }
@@ -191,7 +194,10 @@ const pluginDefinitions: readonly FirstPartyPluginDefinition[] = [
     ],
     paletteEntries: [{ id: "repo-navigator", title: "Repo Navigator", category: "repo", targetKind: "plugin-command" }],
     resultListProviders: [{ id: "repo-results", targetKinds: ["workspace-file", "grep-match", "pageindex-turn", "project-index-ref"] }],
-    keymaps: [{ id: "repo.search", mode: "normal", key: "/", action: "search", targetKind: "command" }],
+    keymaps: [
+      { id: "repo.search", mode: "normal", key: "Space f", sequence: ["Space", "f"], action: "search", targetKind: "command", namespace: "repo", helpText: "Open repo search actions.", previewText: "Repo search stays behind command-system descriptors." },
+      { id: "repo.leader", mode: "normal", key: "Space r", sequence: ["Space", "r"], action: "plugin-action", targetKind: "plugin-contribution", namespace: "repo", helpText: "Open repo navigator plugin actions.", previewText: "Repo navigator plugin actions route through read-only search/index contracts." }
+    ],
     rendererHints: [{ id: "repo.result-list", host: "cli-tui", placement: "palette" }],
     reasoningContributions: [{ id: "repo.reasoning", stepKind: "context-selection", detailLevel: "compact", evidenceKinds: ["result-list-item", "context-node"] }],
     metadata: { releaseScope: "R1", usesExistingSearchBoundaries: true }
@@ -395,6 +401,14 @@ function tuiCommandContribution(manifest: PluginManifest, commandDef: FirstParty
     source: "plugin",
     pluginId: manifest.id,
     priority: 50,
+    namespace: commandDef.group,
+    label: commandDef.name,
+    permissions: commandDef.permissions,
+    sideEffects: [commandDef.sideEffect],
+    conflictGroup: `command:${commandDef.aliases[0] ?? commandDef.id}`,
+    helpText: commandDef.description,
+    previewText: `${commandDef.name} -> ${commandDef.commandId}`,
+    governance: { routesThroughContracts: true, directHostAccess: false, ownerSubsystem: commandDef.ownerSubsystem },
     commandName: commandDef.aliases[0] ?? commandDef.id,
     targetKind: "command",
     metadata: { pluginId: manifest.id, commandId: commandDef.commandId, permissions: commandDef.permissions, sideEffect: commandDef.sideEffect }
@@ -410,6 +424,12 @@ function tuiPaletteContribution(manifest: PluginManifest, entry: JsonObject): Cl
     source: "plugin",
     pluginId: manifest.id,
     priority: 50,
+    namespace: stringField(entry.category, "plugins"),
+    label: title,
+    conflictGroup: `palette-entry:${title}`,
+    helpText: `Open ${title} contribution metadata.`,
+    previewText: `Inspect ${title} contribution.`,
+    governance: { routesThroughContracts: true, directHostAccess: false },
     action: "inspect",
     targetKind: "command",
     paletteEntry: {
@@ -429,12 +449,23 @@ function tuiKeymapContribution(manifest: PluginManifest, keymap: JsonObject): Cl
   const key = stringField(keymap.key, id);
   const action = stringField(keymap.action, "inspect") as NonNullable<CliInteractionContribution["action"]>;
   const targetKind = stringField(keymap.targetKind, "command") as NonNullable<CliInteractionContribution["targetKind"]>;
+  const namespace = stringField(keymap.namespace, manifest.name.toLocaleLowerCase("en").replace(/\s+/g, "-"));
   return {
     id: `plugin:${manifest.id}:keymap:${id}`,
     kind: "keymap",
     source: "plugin",
     pluginId: manifest.id,
     priority: 50,
+    namespace,
+    label: stringField(keymap.helpText, id),
+    modeScopes: [mode],
+    keymapScopes: [key],
+    permissions: manifest.permissions,
+    sideEffects: [],
+    conflictGroup: `${mode}:${key}`,
+    helpText: stringField(keymap.helpText, `Plugin keymap ${key}`),
+    previewText: stringField(keymap.previewText, `Plugin key ${key} resolves to ${action}`),
+    governance: { routesThroughContracts: true, directHostAccess: false, keymapOnly: true },
     action,
     targetKind,
     keymap: {
@@ -442,7 +473,12 @@ function tuiKeymapContribution(manifest: PluginManifest, keymap: JsonObject): Cl
       mode,
       key,
       action,
-      targetKind
+      targetKind,
+      ...(Array.isArray(keymap.sequence) ? { sequence: keymap.sequence.filter((value): value is string => typeof value === "string") } : {}),
+      namespace,
+      conflictGroup: `${mode}:${key}`,
+      description: stringField(keymap.helpText, `Plugin keymap ${key}`),
+      preview: stringField(keymap.previewText, `Plugin key ${key} resolves to ${action}`)
     },
     metadata: { pluginId: manifest.id, keymap }
   };
@@ -456,6 +492,12 @@ function tuiMetadataContribution(manifest: PluginManifest, metadata: JsonObject,
     source: "plugin",
     pluginId: manifest.id,
     priority: 50,
+    namespace: stringField(metadata.placement, kind),
+    label: id,
+    conflictGroup: `${kind}:${id}`,
+    helpText: `${kind} ${id}`,
+    previewText: `${kind} ${id}`,
+    governance: { routesThroughContracts: true, directHostAccess: false },
     metadata: { pluginId: manifest.id, ...metadata }
   };
 }

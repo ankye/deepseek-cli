@@ -5,9 +5,14 @@ export type CliInteractionMode =
   | "prompt"
   | "normal"
   | "command"
+  | "search"
   | "approval"
   | "selection"
-  | "result-list";
+  | "result-list"
+  | "transcript"
+  | "reasoning-inspector"
+  | "plugin-inspector"
+  | "activity-feed";
 
 export type CliActionKind =
   | "accept"
@@ -23,6 +28,11 @@ export type CliActionKind =
   | "search"
   | "narrow"
   | "expand"
+  | "scroll"
+  | "focus-panel"
+  | "preview"
+  | "plugin-action"
+  | "cancel"
   | "next"
   | "previous"
   | "first"
@@ -49,6 +59,9 @@ export type CliTargetKind =
   | "task"
   | "approval-request"
   | "extension"
+  | "panel"
+  | "plugin-contribution"
+  | "plugin-command"
   | "result-list"
   | "result-list-item"
   | "tool-evidence";
@@ -203,6 +216,12 @@ export interface CliKeymapEntry extends JsonObject {
   readonly action: CliActionKind;
   readonly targetKind?: CliTargetKind;
   readonly when?: string;
+  readonly sequence?: readonly string[];
+  readonly namespace?: string;
+  readonly inputStrategies?: readonly string[];
+  readonly conflictGroup?: string;
+  readonly description?: string;
+  readonly preview?: string;
 }
 
 export interface CliPaletteEntry extends JsonObject {
@@ -219,6 +238,16 @@ export interface CliInteractionContribution extends JsonObject {
   readonly source: CliContributionSourceKind;
   readonly pluginId?: PluginId;
   readonly priority?: number;
+  readonly namespace?: string;
+  readonly label?: string;
+  readonly modeScopes?: readonly CliInteractionMode[];
+  readonly keymapScopes?: readonly string[];
+  readonly permissions?: readonly string[];
+  readonly sideEffects?: readonly string[];
+  readonly conflictGroup?: string;
+  readonly helpText?: string;
+  readonly previewText?: string;
+  readonly governance?: JsonObject;
   readonly commandName?: string;
   readonly action?: CliActionKind;
   readonly targetKind?: CliTargetKind;

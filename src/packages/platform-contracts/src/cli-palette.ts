@@ -16,10 +16,12 @@ export const CLI_PALETTE_SCHEMA_VERSION = "1.0.0";
 export type CliPaletteDiagnosticCode =
   | "CLI_PALETTE_RECORD_INVALID"
   | "CLI_PALETTE_KEYMAP_CONFLICT"
+  | "CLI_PALETTE_SEQUENCE_INCOMPLETE"
+  | "CLI_PALETTE_SEQUENCE_UNBOUND"
   | "CLI_ACTION_TARGET_NOT_FOUND"
   | "CLI_ACTION_UNSUPPORTED";
 
-export type CliKeymapProfileName = "core" | "vi-minimal";
+export type CliKeymapProfileName = "core" | "vi-minimal" | "vi-professional";
 
 export interface CliPaletteProjectionEntry extends JsonObject {
   readonly schemaVersion: string;

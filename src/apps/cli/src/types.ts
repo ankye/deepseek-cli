@@ -5,6 +5,7 @@ import type {
   ExtensionManagementCommandKind,
   JsonObject,
   CliKeymapProfileName,
+  CliTuiProfile,
   ModelReasoningOptions,
   ReadinessCommandName,
   RuntimeDependencies,
@@ -31,6 +32,7 @@ export interface CliOptions {
   readonly output: AgentLoopOutputMode;
   readonly outputContract?: AgentLoopOutputContract;
   readonly live: boolean;
+  readonly tuiProfile?: CliTuiProfile;
   readonly timeoutMs?: number;
   readonly reasoning?: ModelReasoningOptions;
   readonly readinessCommand?: ReadinessCommandName;

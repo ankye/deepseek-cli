@@ -56,12 +56,14 @@ import type { ChatPageIndexPage } from "./pageindex.js";
 import { CliWorkspacePageIndexStore, renderWorkspacePageIndexFailure } from "./pageindex-workspace.js";
 import type { WorkspacePageIndexDiagnostic } from "./pageindex-workspace.js";
 import { handleChatContextSlashCommand } from "./context.js";
-import { readCliLines } from "../input/lines.js";
+import { readCliChatPrompts } from "../input/chat-input.js";
+import { enterCliRawInputSession } from "../input/raw-keys.js";
 import { accumulateChatUsage } from "./chat-usage.js";
 import { applyRevert, parseRevertApplyArgs, parseRevertPreviewArgs, previewRevert, renderRevertApply, renderRevertPreview } from "./revert.js";
 import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint, visibleReasoningProjectionFromEvents } from "../renderers/runtime-events.js";
 import type { ChatHistoryEntry, ChatRevertReviewEntry, ChatSessionState } from "./chat-state.js";
-import { createBasicChatTui } from "./chat-tui.js";
+import { createBasicChatTui, renderChatTuiFullscreenFrame } from "./chat-tui.js";
+import { dispatchRawInputToTui } from "./chat-raw-input.js";
 
 export async function runChatCommand(
   options: CliOptions,
@@ -94,6 +96,7 @@ export async function runChatCommand(
     visibleReasoning: undefined
   };
   const basicTui = createBasicChatTui(options, terminalProfile, write, writeInline);
+  const rawInputSession = enterCliRawInputSession(input, terminalProfile.inputStrategy === "raw");
   const sigintHandler = makeSigintHandler(state, write, options.output);
   process.on("SIGINT", sigintHandler);
   try {
@@ -105,7 +108,7 @@ export async function runChatCommand(
     } else if (options.output === "text") {
       await write("DeepSeek chat");
     }
-    for await (const line of readCliLines(input, terminalProfile.inputStrategy)) {
+    for await (const line of readCliChatPrompts(input, terminalProfile.inputStrategy, (event) => dispatchRawInputToTui(basicTui, event))) {
       const prompt = line.trim();
       if (!prompt) {
         await basicTui.renderPrompt();
@@ -157,6 +160,12 @@ export async function runChatCommand(
   } finally {
     process.off("SIGINT", sigintHandler);
     if (state.pendingExitTimer) clearTimeout(state.pendingExitTimer);
+    rawInputSession.teardown();
+    if (basicTui.enabled && basicTui.snapshot().viewportProfile === "full-screen") {
+      for (const chunk of renderChatTuiFullscreenFrame({ workbench: basicTui.snapshot().workbench, phase: "teardown" }).chunks) {
+        await writeInline(chunk);
+      }
+    }
     await runtime.kernel.shutdown("cli-chat-completed");
   }
 }
@@ -492,7 +501,8 @@ function isPaletteJumpTraversal(value: string): value is "back" | "forward" {
 }
 
 async function handleKeymapSlashCommand(raw: string, options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
-  const profile = raw.trim() === "core" ? "core" : "vi-minimal";
+  const requested = raw.trim();
+  const profile = requested === "core" || requested === "vi-professional" ? requested : "vi-minimal";
   await writeChatLocalLines(
     "chat.command.keymap",
     renderPaletteKeymapProfile(paletteKeymapProfile({ paletteKeymapProfile: profile }), options.output),

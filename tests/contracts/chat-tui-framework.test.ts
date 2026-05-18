@@ -38,7 +38,7 @@ describe("chat TUI framework", () => {
     const registry = createChatTuiContributionRegistry({ plugin: [pluginConflict, pluginRenderHint] });
 
     assert.equal(registry.summary.conflicts, 1);
-    assert.equal(registry.diagnostics.some((diagnostic) => diagnostic.code === "CHAT_TUI_CONTRIBUTION_CONFLICT" && diagnostic.targetIds.includes("vi.next")), true);
+    assert.equal(registry.diagnostics.some((diagnostic) => diagnostic.code === "CHAT_TUI_CONTRIBUTION_CONFLICT" && diagnostic.targetIds.includes("vi.pro.result.next")), true);
     assert.equal(registry.accepted.some((entry) => entry.id === "plugin.navigation.j"), false);
     assert.equal(registry.accepted.some((entry) => entry.id === "plugin.render.diff"), true);
   });
@@ -58,7 +58,7 @@ describe("chat TUI framework", () => {
     assert.equal(startup.some((line) => line.startsWith("DeepSeek Workbench") && line.includes("focus=transcript")), true);
     assert.equal(startup.some((line) => line.startsWith("Command |") && line.includes("/help")), true);
     assert.equal(startup.every((line) => line.length <= 100), true);
-    assert.equal(status.some((line) => line.startsWith("Plugins |") && line.includes("metadata-only")), true);
+    assert.equal(status.some((line) => line.startsWith("Plugins |") && line.includes("governed-descriptors")), true);
   });
 
   it("records degraded diagnostics when terminal profile cannot host interactive TUI", () => {
@@ -186,7 +186,7 @@ describe("chat TUI framework", () => {
     const registry = createChatTuiContributionRegistry({ plugin: [pluginConflict] });
     const state = createChatTuiState({ enabled: true, terminalProfile: interactiveProfile(), registry });
 
-    assert.equal(state.workbench.pluginShelf.readiness, "metadata-only");
+    assert.equal(state.workbench.pluginShelf.readiness, "governed-descriptors");
     assert.equal(state.workbench.pluginShelf.totalPlugins >= 4, true);
     assert.equal(state.workbench.pluginShelf.conflicts, 1);
     assert.equal(state.workbench.pluginShelf.items.length <= 4, true);

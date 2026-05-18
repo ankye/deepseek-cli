@@ -7,6 +7,7 @@ npm install -g deepseek-agent-cli
 deepseek run "smoke"
 deepseek run "smoke" --output jsonl
 deepseek chat --output jsonl
+deepseek chat --tui full-screen
 deepseek chat --session <session-id> --output jsonl
 deepseek diagnostics bundle --output json
 deepseek diagnostics refresh --dry-run --output json
@@ -23,6 +24,7 @@ deepseek mode plan --output json
 deepseek context status --output json
 deepseek context grep "prior decision" --session <session-id> --output jsonl
 deepseek extension list --output jsonl
+deepseek extension plugin contributions --output jsonl
 deepseek extension plugin install ./plugin.json --output json
 deepseek extension skill activate repo-summary --output json
 deepseek extension auth scopes --output json
@@ -35,7 +37,7 @@ deepseek revert apply --request request-id --output json
 
 This package exposes the first runtime-owned agent loop through thin CLI adapters. Local runs are deterministic by default; live DeepSeek provider behavior is opt-in through `--live` and local credentials.
 
-`deepseek chat` now runs as the DeepSeek Workbench in compatible text terminals: transcript, command bar, reasoning rail, inspector, activity feed, plugin shelf, visible prompt, vi-inspired focus keys, shared slash/key action dispatch, declarative contribution diagnostics, and deterministic fallback for scripted or structured output. Current terminals render bounded text frames over the workbench projection; raw-key/full-screen renderers are future renderer profiles over the same model. Plugin commands/actions/keymaps/palette entries/result lists/render hints are metadata-only until routed through governed execution contracts.
+`deepseek chat` now runs as the DeepSeek Workbench in compatible text terminals: transcript, command bar, reasoning rail, inspector, activity feed, plugin shelf, visible prompt, vi-inspired focus keys, shared slash/key action dispatch, declarative contribution diagnostics, and deterministic fallback for scripted or structured output. The default `auto` profile keeps the bounded line workbench; `--tui full-screen` explicitly promotes safe TTY sessions to raw-key/full-screen rendering with alternate-screen lifecycle records and deterministic fallback. Plugin commands/actions/keymaps/palette entries/result lists/render hints are governed descriptors routed through shared contracts, not plugin-private execution.
 
 Visible reasoning is first-class in chat/run output. Text mode renders compact `[reasoning:*]` records with stable ids, JSON adds a `visibleReasoning` projection, JSONL streams schema-versioned `visible.reasoning.recorded` and `visible.reasoning.projected` events, and the TUI state exposes a reasoning rail with compact/full/debug detail levels, evidence counts, active focus, and inspector targets. These are bounded user-visible summaries, not raw provider reasoning or hidden chain-of-thought.
 

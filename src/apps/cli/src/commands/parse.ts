@@ -1,4 +1,4 @@
-import type { AgentLoopOutputContract, AgentLoopOutputContractKind, AgentLoopOutputMode, CliKeymapProfileName, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, JsonValue, ModelReasoningEffort, ModelReasoningOptions, ModelReasoningProviderEffort, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
+import type { AgentLoopOutputContract, AgentLoopOutputContractKind, AgentLoopOutputMode, CliKeymapProfileName, CliTuiProfile, DiagnosticsCommandName, ExtensionManagementCommandKind, JsonObject, JsonValue, ModelReasoningEffort, ModelReasoningOptions, ModelReasoningProviderEffort, ReadinessCommandName, WorkspaceRevertRequestTarget } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
 import type { CliOptions, CliTerminalFlags } from "../types.js";
 import { defaultTerminalFlags } from "../host/terminal.js";
@@ -14,6 +14,7 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
   const toolProjection = parseToolProjection(args);
   const reasoning = parseReasoningOptions(args);
   const outputContract = parseOutputContract(args);
+  const tuiProfile = parseTuiProfile(args);
   const first = args[0];
   if (!first || first === "help" || first === "--help" || first === "-h") {
     return { command: "help", prompt: "", output, live };
@@ -28,6 +29,7 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       prompt: "",
       output,
       live,
+      ...(tuiProfile ? { tuiProfile } : {}),
       ...(timeoutMs ? { timeoutMs } : {}),
       ...(reasoning ? { reasoning } : {}),
       ...(sessionId ? { sessionId: asId<"session">(sessionId) } : {})
@@ -199,7 +201,7 @@ export function cliUsageLines(): readonly string[] {
     "DeepSeek CLI",
     "Usage:",
     "  deepseek run \"<task>\" [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tool-projection none|read-only|read-write|all] [--no-tools] [--timeout-ms <ms>] [--output-contract json-object|json-file|file|command-plan]",
-    "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--timeout-ms <ms>]",
+    "  deepseek chat [--session <session-id>] [--output text|json|jsonl] [--live] [--thinking off|low|medium|high|xhigh|max] [--tui auto|line|full-screen|off] [--timeout-ms <ms>]",
     "  deepseek session resume <session-id> [--output text|json]",
     "  deepseek session fork <session-id> [--output text|json]",
     "  deepseek mcp test <manifest.json> [--enable-real-mcp] [--call <tool> --input <json>] [--output text|json]",
@@ -213,11 +215,12 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek git status|diff|review [--output text|json|jsonl]",
     "  deepseek extension list [--output text|json|jsonl]",
     "  deepseek extension plugin install|verify|snapshot|apply-lockfile <file.json> [--output text|json|jsonl]",
+    "  deepseek extension plugin contributions [--output text|json|jsonl]",
     "  deepseek extension skill list|activate [name] [--output text|json|jsonl]",
     "  deepseek extension auth scopes [--output text|json|jsonl]",
     "  deepseek extension mcp test <manifest.json> [--enable-real-mcp] [--call <tool> --input <json>] [--output text|json|jsonl]",
     "  deepseek palette list [--output text|json|jsonl]",
-    "  deepseek palette keymap [core|vi-minimal] [--output text|json|jsonl]",
+    "  deepseek palette keymap [core|vi-minimal|vi-professional] [--output text|json|jsonl]",
     "  deepseek palette action <action> <target-id> [--output text|json|jsonl]",
     "  deepseek revert preview --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
     "  deepseek revert apply --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
@@ -358,7 +361,14 @@ function parsePaletteAction(args: readonly string[]): CliOptions["paletteAction"
 }
 
 function parsePaletteKeymapProfile(value: string | undefined): CliKeymapProfileName {
-  return value === "core" ? "core" : "vi-minimal";
+  if (value === "core" || value === "vi-professional") return value;
+  return "vi-minimal";
+}
+
+function parseTuiProfile(args: readonly string[]): CliTuiProfile | undefined {
+  const value = readFlagValue(args, "--tui");
+  if (value === "auto" || value === "line" || value === "full-screen" || value === "off") return value;
+  return undefined;
 }
 
 function parseExtensionCommand(args: readonly string[]): ExtensionManagementCommandKind {
@@ -369,6 +379,7 @@ function parseExtensionCommand(args: readonly string[]): ExtensionManagementComm
     if (action === "verify") return "extension.plugin.verify";
     if (action === "snapshot") return "extension.plugin.snapshot";
     if (action === "apply-lockfile") return "extension.plugin.apply-lockfile";
+    if (action === "contributions") return "extension.plugin.contributions";
   }
   if (domain === "skill") {
     if (action === "activate") return "extension.skill.activate";
@@ -602,6 +613,7 @@ function promptFromArgs(args: readonly string[]): string {
       value === "--output" ||
       value === "--timeout-ms" ||
       value === "--tool-projection" ||
+      value === "--tui" ||
       value === "--thinking" ||
       value === "--reasoning-effort" ||
       value === "--output-contract" ||

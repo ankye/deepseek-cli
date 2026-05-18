@@ -5,45 +5,31 @@ import type {
   CliContributionSourceKind,
   CliInteractionContribution,
   CliInteractionMode,
+  CliKeymapProfileName,
   CliKeymapEntry,
+  CliPluginContributionExplanation,
+  CliRawInputEvent,
   CliTargetRef,
   VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
-import { resolveCliAction, viMinimalKeymapProfile } from "@deepseek/command-system";
+import { explainCliPluginContribution, rawInputEventToKeyName, resolveCliAction, resolveViKeySequence, viMinimalKeymapProfile, viProfessionalKeymapProfile } from "@deepseek/command-system";
 import { firstPartyTuiContributions } from "@deepseek/first-party-dev-plugins";
 import type { CliOptions } from "../types.js";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
 import type { ChatSessionState } from "./chat-state.js";
 import { createCliPaletteProjection, createPaletteCompositionSnapshot } from "./palette.js";
-import {
-  createChatTuiWorkbench,
-  dispatchChatTuiWorkbenchKey
-} from "./chat-tui-workbench.js";
-import { renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
-import type {
-  ChatTuiCommandBarState,
-  ChatTuiFocusState,
-  ChatTuiWorkbench
-} from "./chat-tui-workbench.js";
+import { createChatTuiWorkbench, dispatchChatTuiWorkbenchKey } from "./chat-tui-workbench.js";
+import { renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
+import type { ChatTuiCommandBarState, ChatTuiFocusState, ChatTuiWorkbench } from "./chat-tui-workbench.js";
 
-export { renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
-export type {
-  ChatTuiActivityFeed,
-  ChatTuiCommandBarState,
-  ChatTuiCommandSuggestion,
-  ChatTuiFocusState,
-  ChatTuiInspectorState,
-  ChatTuiPluginShelf,
-  ChatTuiReasoningRail,
-  ChatTuiWorkbench,
-  ChatTuiWorkbenchPanelId
-} from "./chat-tui-workbench.js";
+export { createChatTuiFullscreenLifecycle, renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
+export type { ChatTuiActivityFeed, ChatTuiCommandBarState, ChatTuiCommandSuggestion, ChatTuiFocusState, ChatTuiInspectorState, ChatTuiPluginShelf, ChatTuiReasoningRail, ChatTuiWorkbench, ChatTuiWorkbenchPanelId } from "./chat-tui-workbench.js";
 
 export const CHAT_TUI_FRAMEWORK_ID = "deepseek.production-tui";
 export const CHAT_TUI_FRAMEWORK_VERSION = "1.0.0";
 
-export type ChatTuiViewportProfile = "line" | "disabled";
-export type ChatTuiPluginReadiness = "metadata-only" | "disabled";
+export type ChatTuiViewportProfile = "line" | "full-screen" | "disabled";
+export type ChatTuiPluginReadiness = "governed-descriptors" | "metadata-only" | "disabled";
 export type ChatTuiDiagnosticSeverity = "info" | "warning" | "error";
 
 export interface ChatTuiDiagnostic {
@@ -66,6 +52,8 @@ export interface ChatTuiContributionRegistry {
   readonly accepted: readonly CliInteractionContribution[];
   readonly diagnostics: readonly ChatTuiDiagnostic[];
   readonly summary: ChatTuiContributionSummary;
+  readonly keymapProfile: CliKeymapProfileName;
+  readonly pluginExplanations: readonly CliPluginContributionExplanation[];
 }
 
 export interface ChatTuiReasoningPanel {
@@ -88,8 +76,13 @@ export interface ChatTuiStateSnapshot {
   readonly viewportProfile: ChatTuiViewportProfile;
   readonly rendererProfile: CliTerminalCapabilityProfile["rendererProfile"];
   readonly inputStrategy: CliTerminalCapabilityProfile["inputStrategy"];
-  readonly keymapProfile: "vi-minimal";
+  readonly keymapProfile: CliKeymapProfileName;
   readonly pluginReadiness: ChatTuiPluginReadiness;
+  readonly pluginContributionExplanations: readonly CliPluginContributionExplanation[];
+  readonly keySequence?: {
+    readonly keys: readonly string[];
+    readonly status: "pending" | "resolved" | "unbound" | "cancelled";
+  };
   readonly reasoningPanel: ChatTuiReasoningPanel;
   readonly contributionSummary: ChatTuiContributionSummary;
   readonly diagnostics: readonly ChatTuiDiagnostic[];
@@ -102,12 +95,13 @@ export interface ChatTuiStateSnapshot {
 
 export interface ChatTuiDispatchResult {
   readonly ok: boolean;
-  readonly kind: "action" | "command" | "diagnostic" | "focus";
+  readonly kind: "action" | "command" | "diagnostic" | "focus" | "sequence";
   readonly key: string;
   readonly state: ChatTuiStateSnapshot;
   readonly action?: CliActionKind;
   readonly commandName?: string;
   readonly focusPanel?: ChatTuiFocusState["activePanel"];
+  readonly previewText?: string;
   readonly diagnostics: readonly ChatTuiDiagnostic[];
 }
 
@@ -119,9 +113,11 @@ export interface ChatTui {
   afterLocalCommand(commandName: string, state: ChatSessionState): Promise<void>;
   afterTurn(state: ChatSessionState): Promise<void>;
   dispatchKey(key: string): ChatTuiDispatchResult;
+  dispatchInputEvent(event: CliRawInputEvent): ChatTuiDispatchResult;
 }
 
 export interface ChatTuiContributionInput {
+  readonly keymapProfile?: CliKeymapProfileName;
   readonly core?: readonly CliInteractionContribution[];
   readonly user?: readonly CliInteractionContribution[];
   readonly plugin?: readonly CliInteractionContribution[];
@@ -138,7 +134,10 @@ export function createBasicChatTui(
     enabled,
     terminalProfile,
     write,
-    writeInline
+    writeInline,
+    contributions: {
+      keymapProfile: terminalProfile.rendererProfile === "full-screen" ? "vi-professional" : "vi-minimal"
+    }
   });
   return controller;
 }
@@ -150,7 +149,12 @@ export function createChatTuiController(input: {
   readonly writeInline: (chunk: string) => Promise<void>;
   readonly contributions?: ChatTuiContributionInput;
 }): ChatTui {
-  const registry = createChatTuiContributionRegistry(input.contributions);
+  const registry = createChatTuiContributionRegistry({
+    keymapProfile: input.contributions?.keymapProfile ?? (input.terminalProfile.rendererProfile === "full-screen" ? "vi-professional" : "vi-minimal"),
+    ...(input.contributions?.core ? { core: input.contributions.core } : {}),
+    ...(input.contributions?.user ? { user: input.contributions.user } : {}),
+    ...(input.contributions?.plugin ? { plugin: input.contributions.plugin } : {})
+  });
   let state = createChatTuiState({
     enabled: input.enabled,
     terminalProfile: input.terminalProfile,
@@ -166,10 +170,15 @@ export function createChatTuiController(input: {
     renderStartup: async (chatState) => {
       state = updateChatTuiFromSession(state, chatState, "prompt", true);
       if (!state.enabled) return;
+      if (state.viewportProfile === "full-screen") {
+        for (const chunk of renderChatTuiFullscreenFrame({ workbench: state.workbench, phase: "enter" }).chunks) await input.writeInline(chunk);
+        return;
+      }
       for (const line of renderChatTuiStartup(state)) await input.write(line);
     },
     renderPrompt: async () => {
       if (!state.enabled || !state.promptReady) return;
+      if (state.viewportProfile === "full-screen") return;
       await input.writeInline("deepseek> ");
     },
     afterLocalCommand: async (commandName, chatState) => {
@@ -177,9 +186,17 @@ export function createChatTuiController(input: {
     },
     afterTurn: async (chatState) => {
       state = updateChatTuiFromSession(state, chatState, "prompt", true);
+      if (state.enabled && state.viewportProfile === "full-screen") {
+        for (const chunk of renderChatTuiFullscreenFrame({ workbench: state.workbench, phase: "repaint" }).chunks) await input.writeInline(chunk);
+      }
     },
     dispatchKey: (key) => {
       const result = dispatchChatTuiKey(state, key);
+      state = result.state;
+      return result;
+    },
+    dispatchInputEvent: (event) => {
+      const result = dispatchChatTuiInputEvent(state, event);
       state = result.state;
       return result;
     }
@@ -190,13 +207,14 @@ export function isChatTuiEnabled(options: Pick<CliOptions, "output">, terminalPr
   return options.output === "text" &&
     terminalProfile.stdinIsTTY &&
     terminalProfile.stdoutIsTTY &&
-    terminalProfile.inputStrategy === "line" &&
-    terminalProfile.rendererProfile === "interactive";
+    (terminalProfile.inputStrategy === "line" || terminalProfile.inputStrategy === "raw") &&
+    (terminalProfile.rendererProfile === "interactive" || terminalProfile.rendererProfile === "full-screen");
 }
 
 export function createChatTuiContributionRegistry(input: ChatTuiContributionInput = {}): ChatTuiContributionRegistry {
+  const keymapProfile = input.keymapProfile ?? "vi-professional";
   const contributions = [
-    ...defaultCoreTuiContributions(),
+    ...defaultCoreTuiContributions(keymapProfile),
     ...firstPartyTuiContributions(),
     ...(input.core ?? []),
     ...(input.user ?? []),
@@ -205,6 +223,7 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
   const byConflictKey = new Map<string, CliInteractionContribution>();
   const conflicts: ChatTuiDiagnostic[] = [];
   const malformed: ChatTuiDiagnostic[] = [];
+  const hiddenContributionIds = new Set<string>();
 
   for (const contribution of contributions) {
     malformed.push(...validateContributionShape(contribution));
@@ -216,6 +235,7 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
     }
     const winner = chooseContributionWinner(existing, contribution);
     const loser = winner.id === existing.id ? contribution : existing;
+    hiddenContributionIds.add(loser.id);
     byConflictKey.set(key, winner);
     conflicts.push({
       code: "CHAT_TUI_CONTRIBUTION_CONFLICT",
@@ -227,10 +247,28 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
 
   const accepted = [...byConflictKey.values()].sort(compareContribution);
   const diagnostics = [...conflicts, ...malformed];
+  const acceptedIds = new Set(accepted.map((entry) => entry.id));
+  const diagnosticsById = new Map<string, string[]>();
+  for (const diagnostic of diagnostics) {
+    for (const id of diagnostic.targetIds) {
+      diagnosticsById.set(id, [...(diagnosticsById.get(id) ?? []), diagnostic.message]);
+    }
+  }
+  const pluginExplanations = contributions
+    .filter((contribution) => contribution.source === "plugin")
+    .map((contribution) => explainCliPluginContribution(contribution, {
+      active: acceptedIds.has(contribution.id),
+      hidden: hiddenContributionIds.has(contribution.id),
+      degraded: (diagnosticsById.get(contribution.id) ?? []).length > 0,
+      diagnostics: diagnosticsById.get(contribution.id) ?? []
+    }))
+    .sort((a, b) => a.contributionId.localeCompare(b.contributionId, "en"));
   return {
     accepted,
     diagnostics,
-    summary: summarizeContributions(contributions.length, accepted, diagnostics, conflicts.length)
+    summary: summarizeContributions(contributions.length, accepted, diagnostics, conflicts.length),
+    keymapProfile,
+    pluginExplanations
   };
 }
 
@@ -247,7 +285,7 @@ export function createChatTuiState(input: {
   const registry = input.registry ?? createChatTuiContributionRegistry();
   const composition = input.composition ?? createDefaultTuiComposition(registry.accepted);
   const degraded = input.enabled ? [] : degradedDiagnostics(input.terminalProfile);
-  const pluginReadiness = input.enabled ? "metadata-only" : "disabled";
+  const pluginReadiness = input.enabled ? "governed-descriptors" : "disabled";
   const reasoningPanel = reasoningPanelFromProjection(input.visibleReasoning, input.enabled);
   const base: Omit<ChatTuiStateSnapshot, "workbench"> = {
     frameworkId: CHAT_TUI_FRAMEWORK_ID,
@@ -256,11 +294,12 @@ export function createChatTuiState(input: {
     terminalProfile: input.terminalProfile,
     mode: input.enabled ? composition.mode : "prompt",
     composition,
-    viewportProfile: input.enabled ? "line" : "disabled",
+    viewportProfile: input.enabled ? viewportProfileFor(input.terminalProfile) : "disabled",
     rendererProfile: input.terminalProfile.rendererProfile,
     inputStrategy: input.terminalProfile.inputStrategy,
-    keymapProfile: "vi-minimal",
+    keymapProfile: registry.keymapProfile,
     pluginReadiness,
+    pluginContributionExplanations: registry.pluginExplanations,
     reasoningPanel,
     contributionSummary: registry.summary,
     diagnostics: [...registry.diagnostics, ...degraded],
@@ -314,10 +353,67 @@ export function dispatchChatTuiKey(state: ChatTuiStateSnapshot, key: string): Ch
   return { ok: true, kind: "action", key, state: nextState, action: binding.action, diagnostics: [] };
 }
 
+export function dispatchChatTuiInputEvent(state: ChatTuiStateSnapshot, event: CliRawInputEvent): ChatTuiDispatchResult {
+  const key = rawInputEventToKeyName(event);
+  if (!key) return diagnosticDispatch(state, event.kind, "CHAT_TUI_INPUT_EVENT_IGNORED", `Ignored ${event.kind} input event.`);
+  const pendingKeys = state.keySequence?.status === "pending" ? state.keySequence.keys : [];
+  const resolution = resolveViKeySequence({
+    mode: state.mode,
+    keys: [...pendingKeys, key],
+    profile: state.keymapProfile === "vi-professional" ? viProfessionalKeymapProfile() : viMinimalKeymapProfile()
+  });
+  if (resolution.status === "pending") {
+    const { workbench: previousWorkbench, ...base } = state;
+    const nextState = attachWorkbench(
+      {
+        ...base,
+        keySequence: {
+          keys: resolution.state.keys,
+          status: resolution.status
+        }
+      },
+      previousWorkbench.focus,
+      previousWorkbench.commandBar
+    );
+    return { ok: true, kind: "sequence", key, state: nextState, ...(resolution.previewText ? { previewText: resolution.previewText } : {}), diagnostics: [] };
+  }
+  if (resolution.status === "cancelled") {
+    const next = dispatchChatTuiKey(clearKeySequence(state), "Escape");
+    return { ...next, key };
+  }
+  if (resolution.status === "unbound" || !resolution.action) {
+    const retry = pendingKeys.length > 0 ? resolveViKeySequence({
+      mode: state.mode,
+      keys: [key],
+      profile: state.keymapProfile === "vi-professional" ? viProfessionalKeymapProfile() : viMinimalKeymapProfile()
+    }) : resolution;
+    if (retry.status === "pending") {
+      const { workbench: previousWorkbench, ...base } = state;
+      const nextState = attachWorkbench(
+        {
+          ...base,
+          keySequence: {
+            keys: retry.state.keys,
+            status: retry.status
+          }
+        },
+        previousWorkbench.focus,
+        previousWorkbench.commandBar
+      );
+      return { ok: true, kind: "sequence", key, state: nextState, ...(retry.previewText ? { previewText: retry.previewText } : {}), diagnostics: [] };
+    }
+    if (retry.status === "resolved" && retry.action) {
+      return dispatchResolvedViAction(clearKeySequence(state), key, retry);
+    }
+    return diagnosticDispatch(clearKeySequence(state), key, "CHAT_TUI_KEY_UNBOUND", retry.diagnostic?.message ?? `No key binding for ${key}.`);
+  }
+  return dispatchResolvedViAction(clearKeySequence(state), key, resolution);
+}
+
 export function renderChatTuiStartup(state: ChatTuiStateSnapshot): readonly string[] {
   return [
     ...renderChatTuiWorkbench(state.workbench),
-    "Input | / opens commands | Tab changes panels | Ctrl+C cancels a turn; Ctrl+C twice exits"
+    `Input | keymap=${state.keymapProfile} | / command | Tab panels | Ctrl+C cancel/exit`
   ];
 }
 
@@ -339,6 +435,7 @@ function attachWorkbench(
     contributionSummary: base.contributionSummary,
     diagnostics: base.diagnostics,
     pluginReadiness: base.pluginReadiness,
+    pluginContributionExplanations: base.pluginContributionExplanations,
     reasoningPanel: base.reasoningPanel,
     promptReady: base.promptReady,
     turns: base.turns,
@@ -367,6 +464,81 @@ function focusDispatch(
   return { ok: true, kind: "focus", key, state: nextState, focusPanel: panel, diagnostics: [] };
 }
 
+function dispatchResolvedViAction(
+  state: ChatTuiStateSnapshot,
+  key: string,
+  resolution: ReturnType<typeof resolveViKeySequence>
+): ChatTuiDispatchResult {
+  const action = resolution.action;
+  if (!action) return diagnosticDispatch(state, key, "CHAT_TUI_KEY_UNBOUND", resolution.diagnostic?.message ?? `No action for ${key}.`);
+  if (resolution.commandMode || resolution.action === "search") {
+    return commandDispatch(state, key, resolution.commandMode === "search" ? "search" : resolution.commandMode === "help" ? "help" : "command");
+  }
+  if (action === "cancel") {
+    return dispatchChatTuiKey(state, "Escape");
+  }
+  const target = targetForResolvedAction(state, resolution.targetKind);
+  if (!target) return diagnosticDispatch(state, key, "CHAT_TUI_TARGET_MISSING", `No active target for ${action}.`);
+  const result = resolveCliAction({
+    action,
+    mode: actionMode(action),
+    target,
+    dryRun: true,
+    ...(resolution.count !== undefined ? { count: resolution.count } : {}),
+    arguments: {
+      keySequence: resolution.state.keys,
+      previewText: resolution.previewText ?? ""
+    }
+  }, state.composition);
+  if (!result.ok) {
+    const mappedDiagnostics = result.diagnostics.map(actionDiagnostic);
+    const { workbench: previousWorkbench, ...base } = state;
+    return {
+      ok: false,
+      kind: "diagnostic",
+      key,
+      state: attachWorkbench(
+        { ...base, diagnostics: [...state.diagnostics, ...mappedDiagnostics] },
+        previousWorkbench.focus,
+        previousWorkbench.commandBar
+      ),
+      action,
+      ...(resolution.previewText ? { previewText: resolution.previewText } : {}),
+      diagnostics: mappedDiagnostics
+    };
+  }
+  const { workbench: previousWorkbench, ...base } = state;
+  const nextState = attachWorkbench(
+    { ...base, mode: result.snapshot.mode, composition: result.snapshot, diagnostics: state.diagnostics },
+    previousWorkbench.focus,
+    previousWorkbench.commandBar
+  );
+  return { ok: true, kind: "action", key, state: nextState, action, ...(resolution.previewText ? { previewText: resolution.previewText } : {}), diagnostics: [] };
+}
+
+function clearKeySequence(state: ChatTuiStateSnapshot): ChatTuiStateSnapshot {
+  if (!state.keySequence) return state;
+  const { workbench: previousWorkbench, keySequence: _keySequence, ...base } = state;
+  return attachWorkbench(base, previousWorkbench.focus, previousWorkbench.commandBar);
+}
+
+function targetForResolvedAction(state: ChatTuiStateSnapshot, targetKind: CliTargetRef["kind"] | undefined): CliTargetRef | undefined {
+  if (targetKind === "result-list") return activeResultListTarget(state.composition);
+  if (targetKind === "result-list-item") return activeResultListItemTarget(state.composition);
+  if (targetKind === "panel") return { kind: "panel", id: state.workbench.focus.activePanel, label: state.workbench.focus.activePanel };
+  if (targetKind === "plugin-contribution") {
+    const explanation = state.pluginContributionExplanations.find((entry) => entry.active) ?? state.pluginContributionExplanations[0];
+    return explanation ? {
+      kind: "plugin-contribution",
+      id: explanation.contributionId,
+      label: explanation.label,
+      ...(explanation.pluginId ? { pluginId: explanation.pluginId as NonNullable<CliTargetRef["pluginId"]> } : {})
+    } : undefined;
+  }
+  if (targetKind === "command") return { kind: "command", id: "command-bar", label: "Command bar" };
+  return state.composition.activeTarget;
+}
+
 function modeForFocusedPanel(panel: ChatTuiFocusState["activePanel"], current: CliInteractionMode): CliInteractionMode {
   if (panel === "command-bar") return "command";
   if (panel === "result-list") return "result-list";
@@ -374,8 +546,12 @@ function modeForFocusedPanel(panel: ChatTuiFocusState["activePanel"], current: C
   return current;
 }
 
-function defaultCoreTuiContributions(): readonly CliInteractionContribution[] {
-  return viMinimalKeymapProfile().contributions;
+function defaultCoreTuiContributions(profile: CliKeymapProfileName): readonly CliInteractionContribution[] {
+  return profile === "vi-professional" ? viProfessionalKeymapProfile().contributions : viMinimalKeymapProfile().contributions;
+}
+
+function viewportProfileFor(terminalProfile: CliTerminalCapabilityProfile): ChatTuiViewportProfile {
+  return terminalProfile.rendererProfile === "full-screen" ? "full-screen" : "line";
 }
 
 function createDefaultTuiComposition(contributions: readonly CliInteractionContribution[]): CliCompositionSnapshot {

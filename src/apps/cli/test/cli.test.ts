@@ -116,6 +116,13 @@ describe("cli host adapter", () => {
       live: false,
       sessionId: asId<"session">("session-resume")
     });
+    assert.deepEqual(parseCliArgs(["chat", "--tui", "full-screen", "--output", "text"]), {
+      command: "chat",
+      prompt: "",
+      output: "text",
+      live: false,
+      tuiProfile: "full-screen"
+    });
     assert.deepEqual(parseCliArgs(["run", "json task", "--thinking", "xhigh", "--output", "jsonl"]), {
       command: "run",
       prompt: "json task",

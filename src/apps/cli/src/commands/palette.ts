@@ -19,7 +19,8 @@ import {
   projectCommandPalette,
   readinessCompositionRecords,
   resolveCliAction,
-  viMinimalKeymapProfile
+  viMinimalKeymapProfile,
+  viProfessionalKeymapProfile
 } from "@deepseek/command-system";
 import { firstPartyPluginCommandContributions } from "@deepseek/first-party-dev-plugins";
 import type { CliOptions } from "../types.js";
@@ -36,7 +37,13 @@ const supportedActions = new Set<CliActionKind>([
   "back",
   "forward",
   "add-to-reference-set",
-  "revert"
+  "revert",
+  "scroll",
+  "focus-panel",
+  "preview",
+  "plugin-action",
+  "cancel",
+  "search"
 ]);
 
 export async function runPaletteCommand(options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
@@ -67,7 +74,9 @@ function defaultPaletteRecords(): readonly CommandCompositionRecord[] {
 }
 
 export function paletteKeymapProfile(options: Pick<CliOptions, "paletteKeymapProfile">): CliKeymapProfile {
-  return options.paletteKeymapProfile === "core" ? coreKeymapProfile() : viMinimalKeymapProfile();
+  if (options.paletteKeymapProfile === "core") return coreKeymapProfile();
+  if (options.paletteKeymapProfile === "vi-professional") return viProfessionalKeymapProfile();
+  return viMinimalKeymapProfile();
 }
 
 export function resolvePaletteAction(options: Pick<CliOptions, "paletteActionName" | "paletteTargetId">, projection: CliPaletteProjectionResult): CliActionResolutionResult {

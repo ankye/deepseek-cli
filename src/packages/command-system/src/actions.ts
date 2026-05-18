@@ -39,6 +39,19 @@ export function resolveCliAction(request: CliActionRequest, snapshot: CliComposi
       }
     });
   }
+  if (request.action === "scroll" || request.action === "focus-panel" || request.action === "preview" || request.action === "plugin-action" || request.action === "cancel" || request.action === "search") {
+    return success(request, snapshot, {
+      activeTarget: request.target,
+      commandDescriptor: {
+        kind: request.action === "plugin-action" ? "cli.plugin-action" : `cli.${request.action}`,
+        dryRun: request.dryRun !== false,
+        target: request.target,
+        arguments: request.arguments ?? {},
+        governed: true,
+        modelVisible: false
+      }
+    });
+  }
   if (request.action === "open" || request.action === "inspect" || request.action === "copy" || request.action === "explain") {
     return success(request, snapshot, {
       activeTarget: request.target,

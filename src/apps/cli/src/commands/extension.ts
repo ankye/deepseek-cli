@@ -20,8 +20,9 @@ import {
   SKILL_SCHEMA_VERSION,
   asId
 } from "@deepseek/platform-contracts";
+import { explainCliPluginContribution } from "@deepseek/command-system";
 import { createDeepSeekCredentialAuthServiceFromEnv, deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
-import { listFirstPartyDevPluginManifests, snapshotFirstPartyDevPluginPack } from "@deepseek/first-party-dev-plugins";
+import { firstPartyTuiContributions, listFirstPartyDevPluginManifests, snapshotFirstPartyDevPluginPack } from "@deepseek/first-party-dev-plugins";
 import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
 import { InMemoryPluginManager, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
@@ -47,6 +48,7 @@ export async function createExtensionManagementRecord(options: CliOptions): Prom
     if (command === "extension.plugin.verify") return pluginVerifyRecord(options);
     if (command === "extension.plugin.snapshot") return pluginSnapshotRecord();
     if (command === "extension.plugin.apply-lockfile") return pluginApplyLockfileRecord(options);
+    if (command === "extension.plugin.contributions") return pluginContributionsRecord();
     if (command === "extension.skill.list") return skillListRecord();
     if (command === "extension.skill.activate") return skillActivateRecord(options);
     if (command === "extension.auth.scopes") return authScopesRecord(options);
@@ -170,6 +172,36 @@ async function pluginApplyLockfileRecord(options: CliOptions): Promise<Extension
     authDiffs,
     lifecycle: results.map((result) => lifecycle("plugin.apply-lockfile", `plugin-lock-entry:${result.lockEntry.pluginId}`, "completed", { lockEntry: toJsonObject(result.lockEntry), authDiff: result.authDiff ? toJsonObject(result.authDiff) : undefined })),
     referencePitFixtureIds: [...new Set([...diffs.flatMap(pitIdsForDiff), ...authDiffs.flatMap((diff) => diff.referencePitFixtureIds)])]
+  });
+}
+
+async function pluginContributionsRecord(): Promise<ExtensionManagementRecord> {
+  const explanations = firstPartyTuiContributions().map((contribution) => explainCliPluginContribution(contribution));
+  const items: ExtensionManagementItem[] = explanations.map((entry) => ({
+    targetKind: "plugin-contribution",
+    targetId: `plugin-contribution:${entry.contributionId}`,
+    label: entry.label,
+    status: entry.degraded ? "partial" : entry.hidden ? "skipped" : entry.active ? "enabled" : "disabled",
+    summary: `${entry.kind} namespace=${entry.namespace} active=${entry.active} hidden=${entry.hidden} degraded=${entry.degraded} permissions=${entry.permissions.length} sideEffects=${entry.sideEffects.length}`,
+    provenance: {
+      pluginId: entry.pluginId,
+      namespace: entry.namespace,
+      conflictGroup: entry.conflictGroup,
+      governance: entry.governance,
+      modeScopes: entry.modeScopes,
+      keymapScopes: entry.keymapScopes
+    },
+    permissions: entry.permissions,
+    actionHints: actions("inspect"),
+    redaction: { class: "internal", fields: ["provenance.governance", "permissions"] }
+  }));
+  return baseRecord("extension.plugin.contributions", "completed", `listed ${items.length} plugin TUI contributions`, {
+    items,
+    lifecycle: [lifecycle("plugin.contributions.explain", "plugin-pack:deepseek.first-party-dev-plugins", "completed", {
+      contributionCount: items.length,
+      explanations
+    })],
+    referencePitFixtureIds: [pitContributionBoundary, pitPermissionDiff, pitDiagnosticRedaction]
   });
 }
 

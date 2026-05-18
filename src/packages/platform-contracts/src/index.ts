@@ -21,6 +21,7 @@ export * from "./command.js";
 export * from "./command-composition.js";
 export * from "./cli-composition.js";
 export * from "./cli-palette.js";
+export * from "./cli-tui.js";
 export * from "./skill.js";
 export * from "./hook.js";
 export * from "./mcp.js";

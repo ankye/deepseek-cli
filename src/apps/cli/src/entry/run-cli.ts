@@ -33,6 +33,7 @@ export async function runCli(
     output: options.output,
     terminal,
     input,
+    ...(options.tuiProfile ? { tuiProfile: options.tuiProfile } : {}),
     facts: await terminalHostFactsFromProcess()
   });
   const writer = (line: string) => Promise.resolve(write(line));

@@ -4,10 +4,13 @@ import type {
   CliContributionSourceKind,
   CliInteractionContribution,
   CliInteractionMode,
+  CliPanelScrollState,
+  CliPluginContributionExplanation,
   CliTargetRef,
   VisibleReasoningDetailLevel,
   VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
+import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
 
 export type ChatTuiWorkbenchLayoutKind = "wide" | "balanced" | "compact" | "disabled";
@@ -124,22 +127,27 @@ export interface ChatTuiActivityFeed {
 export interface ChatTuiPluginShelfItem {
   readonly pluginId: string;
   readonly contributionCount: number;
+  readonly activeContributionCount: number;
+  readonly hiddenContributionCount: number;
   readonly commandCount: number;
   readonly paletteEntryCount: number;
   readonly resultListProviderCount: number;
   readonly keymapCount: number;
   readonly renderHintCount: number;
+  readonly permissionPreview: readonly string[];
+  readonly helpText: string;
   readonly status: "ready" | "conflict" | "diagnostic";
 }
 
 export interface ChatTuiPluginShelf {
-  readonly readiness: "metadata-only" | "disabled";
+  readonly readiness: "governed-descriptors" | "metadata-only" | "disabled";
   readonly totalPlugins: number;
   readonly totalContributions: number;
   readonly conflicts: number;
   readonly diagnostics: number;
   readonly byKind: Readonly<Partial<Record<CliContributionKind, number>>>;
   readonly items: readonly ChatTuiPluginShelfItem[];
+  readonly explanations: readonly CliPluginContributionExplanation[];
   readonly overflowCount: number;
 }
 
@@ -159,6 +167,7 @@ export interface ChatTuiWorkbench {
   readonly inspector: ChatTuiInspectorState;
   readonly activityFeed: ChatTuiActivityFeed;
   readonly pluginShelf: ChatTuiPluginShelf;
+  readonly scrollStates: readonly CliPanelScrollState[];
   readonly keyboardHints: readonly ChatTuiKeyboardHint[];
   readonly frameLineBudget: number;
 }
@@ -178,7 +187,8 @@ export interface ChatTuiWorkbenchInput {
     readonly bySource: Readonly<Partial<Record<CliContributionSourceKind, number>>>;
   };
   readonly diagnostics: readonly { readonly code: string; readonly severity: string; readonly targetIds: readonly string[] }[];
-  readonly pluginReadiness: "metadata-only" | "disabled";
+  readonly pluginReadiness: "governed-descriptors" | "metadata-only" | "disabled";
+  readonly pluginContributionExplanations?: readonly CliPluginContributionExplanation[];
   readonly reasoningPanel: {
     readonly enabled: boolean;
     readonly detailLevel: VisibleReasoningDetailLevel;
@@ -235,8 +245,9 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
   const reasoningRail = projectReasoningRail(input.reasoningPanel, input.visibleReasoning, layout);
   const inspector = projectInspector(input.composition, reasoningRail, input.reasoningPanel.inspectorTargets, focus, layout);
   const activityFeed = projectActivityFeed(input, focus, commandBar, reasoningRail, layout);
-  const pluginShelf = projectPluginShelf(input.composition.contributions, input.contributionSummary, input.diagnostics, input.pluginReadiness, layout);
+  const pluginShelf = projectPluginShelf(input.composition.contributions, input.contributionSummary, input.diagnostics, input.pluginReadiness, input.pluginContributionExplanations ?? [], layout);
   const regions = projectRegions(input, layout, focus, commandBar, reasoningRail, inspector, activityFeed, pluginShelf);
+  const scrollStates = projectScrollStates(regions);
   return {
     layout,
     ...(input.terminalProfile.columns ? { columns: input.terminalProfile.columns } : {}),
@@ -247,6 +258,7 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
     inspector,
     activityFeed,
     pluginShelf,
+    scrollStates,
     keyboardHints: keyboardHints(layout),
     frameLineBudget: lineBudgetFor(layout)
   };
@@ -526,7 +538,7 @@ function projectActivityFeed(
       id: "activity:plugins",
       kind: "plugins",
       label: `plugins=${input.pluginReadiness} accepted=${input.contributionSummary.accepted}`,
-      status: input.pluginReadiness === "metadata-only" ? "ready" : "warning",
+      status: input.pluginReadiness === "disabled" ? "warning" : "ready",
       targetPanel: "plugins"
     }
   ];
@@ -542,6 +554,7 @@ function projectPluginShelf(
   summary: ChatTuiWorkbenchInput["contributionSummary"],
   diagnostics: ChatTuiWorkbenchInput["diagnostics"],
   readiness: ChatTuiWorkbenchInput["pluginReadiness"],
+  explanations: readonly CliPluginContributionExplanation[],
   layout: ChatTuiWorkbenchLayoutKind
 ): ChatTuiPluginShelf {
   const byPlugin = new Map<string, CliInteractionContribution[]>();
@@ -552,7 +565,7 @@ function projectPluginShelf(
   }
   const diagnosticTargets = new Set(diagnostics.flatMap((entry) => entry.targetIds));
   const items = [...byPlugin.entries()]
-    .map(([pluginId, pluginContributions]) => pluginShelfItem(pluginId, pluginContributions, diagnosticTargets, summary.conflicts))
+    .map(([pluginId, pluginContributions]) => pluginShelfItem(pluginId, pluginContributions, explanations.filter((entry) => entry.pluginId === pluginId), diagnosticTargets, summary.conflicts))
     .sort((a, b) => b.contributionCount - a.contributionCount || a.pluginId.localeCompare(b.pluginId, "en"));
   const cap = layout === "compact" ? 2 : 4;
   return {
@@ -563,6 +576,7 @@ function projectPluginShelf(
     diagnostics: diagnostics.length,
     byKind: summary.byKind,
     items: items.slice(0, cap),
+    explanations: explanations.slice(0, layout === "compact" ? 4 : 8),
     overflowCount: Math.max(0, items.length - cap)
   };
 }
@@ -587,6 +601,27 @@ function projectRegions(
     region("activity", "Activity", true, 6, 1, `records=${activityFeed.records.length} overflow=${activityFeed.overflowCount}`),
     region("plugins", "Plugins", true, 7, 1, `readiness=${pluginShelf.readiness} plugins=${pluginShelf.totalPlugins} conflicts=${pluginShelf.conflicts} focus=${focus.activePanel}`)
   ];
+}
+
+function projectScrollStates(regions: readonly ChatTuiWorkbenchRegion[]): readonly CliPanelScrollState[] {
+  return regions
+    .filter((regionItem) => regionItem.visible)
+    .map((regionItem) => ({
+      schemaVersion: CLI_PALETTE_SCHEMA_VERSION,
+      panelId: regionItem.id,
+      offset: 0,
+      visibleRows: Math.max(1, regionItem.lineBudget),
+      totalRows: Math.max(regionItem.lineBudget, estimatedRegionRows(regionItem)),
+      redaction: { class: "public" as const }
+    }));
+}
+
+function estimatedRegionRows(regionItem: ChatTuiWorkbenchRegion): number {
+  if (regionItem.id === "transcript") return 64;
+  if (regionItem.id === "result-list") return 32;
+  if (regionItem.id === "reasoning" || regionItem.id === "inspector") return 16;
+  if (regionItem.id === "activity" || regionItem.id === "plugins") return 12;
+  return regionItem.lineBudget;
 }
 
 function updateWorkbenchFocus(
@@ -685,17 +720,25 @@ function readableContributionTitle(contribution: CliInteractionContribution): st
 function pluginShelfItem(
   pluginId: string,
   contributions: readonly CliInteractionContribution[],
+  explanations: readonly CliPluginContributionExplanation[],
   diagnosticTargets: ReadonlySet<string>,
   conflictCount: number
 ): ChatTuiPluginShelfItem {
+  const permissionPreview = [...new Set(explanations.flatMap((entry) => entry.permissions))].slice(0, 4);
+  const hiddenContributionCount = explanations.filter((entry) => entry.hidden).length;
+  const activeContributionCount = explanations.filter((entry) => entry.active).length || contributions.length - hiddenContributionCount;
   return {
     pluginId,
     contributionCount: contributions.length,
+    activeContributionCount,
+    hiddenContributionCount,
     commandCount: countKind(contributions, "command"),
     paletteEntryCount: countKind(contributions, "palette-entry"),
     resultListProviderCount: countKind(contributions, "result-list-provider"),
     keymapCount: countKind(contributions, "keymap"),
     renderHintCount: countKind(contributions, "render-hint"),
+    permissionPreview,
+    helpText: explanations[0]?.helpText ?? "Plugin contribution metadata routes through governed descriptors.",
     status: contributions.some((entry) => diagnosticTargets.has(entry.id)) ? "diagnostic" : conflictCount > 0 ? "conflict" : "ready"
   };
 }

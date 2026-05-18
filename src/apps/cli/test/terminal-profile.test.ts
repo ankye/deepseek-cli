@@ -56,6 +56,41 @@ describe("terminal capability profile", () => {
     assert.equal(profile.inlineText, true);
   });
 
+  it("promotes explicit full-screen TUI only when raw TTY dimensions are safe", () => {
+    const fullScreen = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      tuiProfile: "full-screen",
+      facts: { env: { TERM: "xterm-256color" }, platform: "linux", columns: 120, colorDepth: 8, processStdin: process.stdin }
+    });
+    const narrow = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "text",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      tuiProfile: "full-screen",
+      facts: { env: { TERM: "xterm-256color" }, platform: "linux", columns: 40, colorDepth: 8, processStdin: process.stdin }
+    });
+    const json = createTerminalCapabilityProfile({
+      command: "chat",
+      output: "json",
+      terminal: { stdinIsTTY: true, stdoutIsTTY: true },
+      input: process.stdin,
+      tuiProfile: "full-screen",
+      facts: { env: {}, platform: "linux", columns: 120, colorDepth: 24, processStdin: process.stdin }
+    });
+
+    assert.equal(fullScreen.rendererProfile, "full-screen");
+    assert.equal(fullScreen.inputStrategy, "raw");
+    assert.equal(fullScreen.reasons.includes("tui:full-screen"), true);
+    assert.equal(narrow.rendererProfile, "interactive");
+    assert.equal(narrow.inputStrategy, "line");
+    assert.equal(json.rendererProfile, "json");
+    assert.equal(json.inputStrategy, "line");
+  });
+
   it("keeps deterministic fixtures for common platform profiles", () => {
     const profiles = terminalProfileFixtures.map((fixture) => ({
       name: fixture.name,

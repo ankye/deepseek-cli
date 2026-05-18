@@ -63,9 +63,9 @@ Visible reasoning is the user-facing explanation layer for that workflow. It rec
 
 可见推理是该 workflow 的用户可见解释层。它以简洁摘要记录 intent、assumptions、context selection、tool intent、edit decisions、verification、risk 与 outcome，并带有 TUI inspector 可导航的 ids 与 evidence links。它不是 raw provider reasoning 或 hidden chain-of-thought；records 与 diagnostic bundles 只保留脱敏摘要、evidence counts/fingerprints 与 projection replay fingerprints。
 
-The chat TUI is now designed as a DeepSeek Workbench: transcript, command bar, reasoning rail, inspector, activity feed, plugin shelf, and vi-inspired focus keys share one deterministic projection. Current terminals render it as bounded text frames; future fullscreen/raw renderers consume the same model.
+The chat TUI is now designed as a DeepSeek Workbench: transcript, command bar, reasoning rail, inspector, activity feed, plugin shelf, and vi-inspired focus keys share one deterministic projection. The default `auto` profile renders bounded line frames, while explicit `--tui full-screen` promotes safe raw TTY sessions to an alternate-screen renderer over the same model.
 
-Chat TUI 现在按 DeepSeek Workbench 设计：transcript、command bar、reasoning rail、inspector、activity feed、plugin shelf 与 vi-inspired focus keys 共用同一套确定性 projection。当前终端渲染为有界 text frames；未来 fullscreen/raw renderer 复用同一模型。
+Chat TUI 现在按 DeepSeek Workbench 设计：transcript、command bar、reasoning rail、inspector、activity feed、plugin shelf 与 vi-inspired focus keys 共用同一套确定性 projection。默认 `auto` profile 渲染有界 line frames；显式 `--tui full-screen` 会在安全 raw TTY session 中提升为 alternate-screen renderer，并复用同一模型。
 
 ---
 
@@ -233,7 +233,7 @@ Packages are organized by layer, top to bottom mirrors the data flow:
 | Area / 领域 | Status |
 | :--- | :--- |
 | ⚙️ Runtime kernel & protocol | ✅ Foundation implemented, hardening continues |
-| 🖥️ CLI host | 🟡 Headless + DeepSeek Workbench line TUI with command bar, reasoning rail, inspector, activity feed, and plugin shelf; raw/full-screen renderers planned |
+| 🖥️ CLI host | 🟡 Headless + DeepSeek Workbench line TUI with command bar, reasoning rail, inspector, activity feed, and plugin shelf; explicit raw/full-screen renderer profile behind deterministic terminal fallback |
 | 💻 VSCode host | 🟡 Skeleton exists; stays as protocol consumer |
 | 🤖 DeepSeek provider | ✅ OpenAI-compatible gateway with deterministic tests |
 | 🧠 Prompt assembly | ✅ Provider-neutral, deterministic, replayable section pipeline |
@@ -245,9 +245,9 @@ Packages are organized by layer, top to bottom mirrors the data flow:
 | 🧩 Extensibility | 🟡 Built-in first-party dev plugin metadata pack active; third-party execution/marketplace deferred |
 | 🧪 Quality system | ✅ Typecheck, lint, boundary checks, deterministic test layers |
 
-First-party release plugins are bundled as trusted manifest metadata: `@deepseek/plugin-dev-checks`, `@deepseek/plugin-repo-navigator`, `@deepseek/plugin-git-review`, and `@deepseek/plugin-context-compactor`. They project into help, palette, TUI summaries, and extension diagnostics without plugin-private execution. The context compactor exposes `deepseek context ...` and `/context ...` for lossless context status, grep, describe, summarize, expand, budget, and pin workflows.
+First-party release plugins are bundled as trusted governed descriptors: `@deepseek/plugin-dev-checks`, `@deepseek/plugin-repo-navigator`, `@deepseek/plugin-git-review`, and `@deepseek/plugin-context-compactor`. They project into help, palette, TUI summaries, plugin contribution explanations, and extension diagnostics without plugin-private execution. The context compactor exposes `deepseek context ...` and `/context ...` for lossless context status, grep, describe, summarize, expand, budget, and pin workflows.
 
-一方发布插件以可信 manifest metadata 形式内置：`@deepseek/plugin-dev-checks`、`@deepseek/plugin-repo-navigator`、`@deepseek/plugin-git-review` 与 `@deepseek/plugin-context-compactor`。它们会投影到 help、palette、TUI summaries 与 extension diagnostics，但不会执行 plugin-private code。Context compactor 通过 `deepseek context ...` 与 `/context ...` 提供无损上下文 status、grep、describe、summarize、expand、budget 与 pin workflows。
+一方发布插件以可信 governed descriptors 形式内置：`@deepseek/plugin-dev-checks`、`@deepseek/plugin-repo-navigator`、`@deepseek/plugin-git-review` 与 `@deepseek/plugin-context-compactor`。它们会投影到 help、palette、TUI summaries、plugin contribution explanations 与 extension diagnostics，但不会执行 plugin-private code。Context compactor 通过 `deepseek context ...` 与 `/context ...` 提供无损上下文 status、grep、describe、summarize、expand、budget 与 pin workflows。
 
 ---
 

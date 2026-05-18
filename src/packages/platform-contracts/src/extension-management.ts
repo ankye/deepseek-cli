@@ -11,6 +11,7 @@ export type ExtensionManagementCommandKind =
   | "extension.plugin.verify"
   | "extension.plugin.snapshot"
   | "extension.plugin.apply-lockfile"
+  | "extension.plugin.contributions"
   | "extension.skill.list"
   | "extension.skill.activate"
   | "extension.auth.scopes"
@@ -19,6 +20,7 @@ export type ExtensionManagementCommandKind =
 export type ExtensionManagementTargetKind =
   | "extension"
   | "plugin"
+  | "plugin-contribution"
   | "plugin-lock-entry"
   | "skill"
   | "mcp-server"
