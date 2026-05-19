@@ -10,6 +10,7 @@ import {
   renderChatTuiStartup,
   renderChatTuiStatus
 } from "../../src/apps/cli/src/commands/chat-tui.js";
+import { createChatTuiWorkbench } from "../../src/apps/cli/src/commands/chat-tui-workbench.js";
 import type { CliTerminalCapabilityProfile } from "../../src/apps/cli/src/host/terminal-profile.js";
 
 describe("chat TUI framework", () => {
@@ -123,6 +124,127 @@ describe("chat TUI framework", () => {
     assert.equal(suggestions.some((entry) => entry.kind === "reasoning-view"), true);
     assert.equal(state.workbench.commandBar.overflowCount > 0, true);
     assert.equal(state.workbench.commandBar.suggestions.length <= 8, true);
+  });
+
+  it("surfaces navigation slash commands through command bar search", () => {
+    const state = createChatTuiState({ enabled: true, terminalProfile: interactiveProfile() });
+    const base = {
+      enabled: state.enabled,
+      frameworkId: state.frameworkId,
+      mode: state.mode,
+      terminalProfile: state.terminalProfile,
+      composition: state.composition,
+      contributionSummary: state.contributionSummary,
+      diagnostics: state.diagnostics,
+      pluginReadiness: state.pluginReadiness,
+      pluginContributionExplanations: state.pluginContributionExplanations,
+      pluginExecutions: state.pluginExecutions,
+      reasoningPanel: state.reasoningPanel,
+      promptReady: state.promptReady,
+      turns: state.turns
+    };
+    const fileWorkbench = createChatTuiWorkbench({
+      ...base,
+      commandBar: { open: true, mode: "slash", query: "file" }
+    });
+    const jumpWorkbench = createChatTuiWorkbench({
+      ...base,
+      commandBar: { open: true, mode: "slash", query: "jump" }
+    });
+
+    assert.equal(fileWorkbench.commandBar.suggestions.some((entry) => entry.kind === "navigation" && entry.title === "/file list <query>"), true);
+    assert.equal(fileWorkbench.commandBar.suggestions.some((entry) => entry.kind === "navigation" && entry.title === "/file preview <path|query>"), true);
+    assert.equal(jumpWorkbench.commandBar.suggestions.some((entry) => entry.kind === "navigation" && entry.title === "/jump file <query>"), true);
+    assert.equal(jumpWorkbench.commandBar.suggestions.some((entry) => entry.kind === "navigation" && entry.title === "/jump text <query>"), true);
+    assert.equal(jumpWorkbench.commandBar.suggestions.some((entry) => entry.kind === "navigation" && entry.title === "/jump symbol <query>"), true);
+    assert.equal(state.workbench.commandBar.suggestions.length <= 8, true);
+  });
+
+  it("surfaces first-party plugin slash aliases with owner route placeholders", () => {
+    const state = createChatTuiState({ enabled: true, terminalProfile: interactiveProfile() });
+    const base = {
+      enabled: state.enabled,
+      frameworkId: state.frameworkId,
+      mode: state.mode,
+      terminalProfile: state.terminalProfile,
+      composition: state.composition,
+      contributionSummary: state.contributionSummary,
+      diagnostics: state.diagnostics,
+      pluginReadiness: state.pluginReadiness,
+      pluginContributionExplanations: state.pluginContributionExplanations,
+      pluginExecutions: state.pluginExecutions,
+      reasoningPanel: state.reasoningPanel,
+      promptReady: state.promptReady,
+      turns: state.turns
+    };
+    const repoWorkbench = createChatTuiWorkbench({
+      ...base,
+      commandBar: { open: true, mode: "slash", query: "repo" }
+    });
+    const checksWorkbench = createChatTuiWorkbench({
+      ...base,
+      commandBar: { open: true, mode: "slash", query: "checks lint" }
+    });
+
+    assert.equal(repoWorkbench.commandBar.suggestions.some((entry) => entry.kind === "plugin-action" && entry.title === "/repo files <query>" && entry.commandName === "/repo files"), true);
+    assert.equal(repoWorkbench.commandBar.suggestions.some((entry) => entry.kind === "plugin-action" && entry.title === "/repo grep <query>" && entry.commandName === "/repo grep"), true);
+    assert.equal(checksWorkbench.commandBar.suggestions.some((entry) => entry.kind === "plugin-action" && entry.title === "/checks lint" && entry.commandName === "/checks lint"), true);
+  });
+
+  it("edits, navigates, accepts, and rejects command bar suggestions locally", () => {
+    const opened = dispatchChatTuiKey(createChatTuiState({ enabled: true, terminalProfile: interactiveProfile() }), "/");
+    const typed = ["f", "i", "l", "e"].reduce((current, key) => dispatchChatTuiKey(current.state, key), opened);
+    const backspaced = dispatchChatTuiKey(typed.state, "Backspace");
+    const restored = dispatchChatTuiKey(backspaced.state, "e");
+    const next = dispatchChatTuiKey(restored.state, "ArrowDown");
+    const previous = dispatchChatTuiKey(next.state, "ArrowUp");
+    const tabbed = dispatchChatTuiKey(previous.state, "Tab");
+    const shifted = dispatchChatTuiKey(tabbed.state, "Shift+Tab");
+    const accepted = dispatchChatTuiKey(shifted.state, "Enter");
+    const empty = ["z", "z", "z"].reduce((current, key) => dispatchChatTuiKey(current.state, key), opened);
+    const rejected = dispatchChatTuiKey(empty.state, "Enter");
+
+    assert.equal(typed.state.workbench.commandBar.query, "file");
+    assert.equal(backspaced.state.workbench.commandBar.query, "fil");
+    assert.equal(restored.state.workbench.commandBar.activeSuggestionId, "navigation.file.list");
+    assert.equal(next.state.workbench.commandBar.activeSuggestionId, "navigation.file.preview");
+    assert.equal(previous.state.workbench.commandBar.activeSuggestionId, "navigation.file.list");
+    assert.equal(tabbed.state.workbench.commandBar.activeSuggestionId, "navigation.file.preview");
+    assert.equal(shifted.state.workbench.commandBar.activeSuggestionId, "navigation.file.list");
+    assert.equal(accepted.kind, "command");
+    assert.equal(accepted.commandName, "/file list");
+    assert.equal(accepted.commandSuggestionId, "navigation.file.list");
+    assert.equal(accepted.previewText, "/file list <query>");
+    assert.equal(accepted.state.workbench.commandBar.acceptedCommandName, "/file list");
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.kind, "diagnostic");
+    assert.equal(rejected.diagnostics[0]?.code, "CHAT_TUI_COMMAND_BAR_EMPTY");
+    assert.equal(rejected.state.workbench.commandBar.open, true);
+  });
+
+  it("accepts plugin command bar suggestions as governed descriptors", () => {
+    const registry = createChatTuiContributionRegistry({
+      plugin: [{
+        id: "plugin.command.repo-grep",
+        kind: "command",
+        source: "plugin",
+        pluginId: asId<"plugin">("@deepseek/plugin-test"),
+        commandName: "zzplugin.command",
+        targetKind: "file",
+        priority: 90
+      }]
+    });
+    const opened = dispatchChatTuiKey(createChatTuiState({ enabled: true, terminalProfile: interactiveProfile(), registry }), "/");
+    const searched = ["z", "z", "p", "l", "u", "g", "i", "n"].reduce((current, key) => dispatchChatTuiKey(current.state, key), opened);
+    const accepted = dispatchChatTuiKey(searched.state, "Enter");
+
+    assert.equal(searched.state.workbench.commandBar.suggestions.some((entry) => entry.id === "contribution:plugin.command.repo-grep" && entry.kind === "plugin-action"), true);
+    assert.equal(accepted.kind, "command");
+    assert.equal(accepted.commandName, "zzplugin.command");
+    assert.equal(accepted.commandSuggestionId, "contribution:plugin.command.repo-grep");
+    assert.equal(accepted.commandSource, "plugin");
+    assert.equal(accepted.pluginId, "@deepseek/plugin-test");
+    assert.equal(accepted.previewText, "zzplugin.command");
   });
 
   it("projects visible reasoning into a compact rail and inspector evidence targets", () => {

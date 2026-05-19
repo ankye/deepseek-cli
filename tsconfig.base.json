@@ -58,6 +58,9 @@
       "@deepseek/first-party-dev-plugins": [
         "src/packages/first-party-dev-plugins/src/index.ts"
       ],
+      "@deepseek/builtin-plugins": [
+        "src/plugins/builtin/src/index.ts"
+      ],
       "@deepseek/hook-system": [
         "src/packages/hook-system/src/index.ts"
       ],
@@ -84,6 +87,9 @@
       ],
       "@deepseek/platform-contracts": [
         "src/packages/platform-contracts/src/index.ts"
+      ],
+      "@deepseek/plugin-api": [
+        "src/packages/plugin-api/src/index.ts"
       ],
       "@deepseek/plugin-system": [
         "src/packages/plugin-system/src/index.ts"

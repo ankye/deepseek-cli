@@ -11,7 +11,9 @@ export const packages = [
   "core-coding-tools",
   "context-engine",
   "memory-cache-management",
+  "plugin-api",
   "first-party-dev-plugins",
+  "plugin-system",
   "capability-registry",
   "command-system",
   "skill-system",
@@ -31,6 +33,8 @@ export const packages = [
   "testing-regression"
 ];
 
+export const plugins = ["builtin"];
+
 export const apps = ["cli", "vscode-extension"];
 
 export const packageDependencies = {
@@ -44,12 +48,15 @@ export const packageDependencies = {
   "context-engine": ["platform-contracts", "policy-sandbox", "memory-cache-management", "code-intelligence"],
   "credential-auth-management": ["platform-contracts"],
   "core-coding-tools": ["platform-contracts", "capability-registry", "workspace-state-management", "policy-sandbox"],
-  "first-party-dev-plugins": ["platform-contracts"],
+  "first-party-dev-plugins": ["platform-contracts", "builtin"],
+  builtin: ["platform-contracts", "plugin-api", "plugin-system"],
   "hook-system": ["platform-contracts"],
   "index-provider": ["platform-contracts"],
   "mcp-gateway": ["platform-contracts"],
   "memory-cache-management": ["platform-contracts"],
   "model-gateway": ["platform-contracts"],
+  "plugin-api": ["platform-contracts"],
+  "plugin-system": ["platform-contracts"],
   "tool-intent-preflight": ["platform-contracts"],
   "observability": ["platform-contracts"],
   "platform-abstraction": ["platform-contracts"],

@@ -13,16 +13,21 @@ import type {
   VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
 import { explainCliPluginContribution, rawInputEventToKeyName, resolveCliAction, resolveViKeySequence, viMinimalKeymapProfile, viProfessionalKeymapProfile } from "@deepseek/command-system";
-import { firstPartyTuiContributions } from "@deepseek/first-party-dev-plugins";
 import type { CliOptions } from "../types.js";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
+import { firstPartyTuiContributionsWithOwnerRoutes } from "../plugins/builtin-owner-routes.js";
+import type { PluginWorkbenchExecutionRecord } from "../plugins/plugin-workbench-execution.js";
 import type { ChatSessionState } from "./chat-state.js";
+import { commandBarAcceptanceDispatch, workbenchDiagnosticDispatch } from "./chat-tui-command-bar-dispatch.js";
+import { boundedPluginExecutions } from "./chat-tui-plugin-execution.js";
+import { reasoningPanelFromProjection, type ChatTuiReasoningPanel } from "./chat-tui-reasoning-panel.js";
 import { createCliPaletteProjection, createPaletteCompositionSnapshot } from "./palette.js";
 import { createChatTuiWorkbench, dispatchChatTuiWorkbenchKey } from "./chat-tui-workbench.js";
 import { renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
 import type { ChatTuiCommandBarState, ChatTuiFocusState, ChatTuiWorkbench } from "./chat-tui-workbench.js";
 
 export { createChatTuiFullscreenLifecycle, renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
+export { attachPluginWorkbenchExecutionToChatTuiState, executeChatTuiPluginRoute } from "./chat-tui-plugin-execution.js";
 export type { ChatTuiActivityFeed, ChatTuiCommandBarState, ChatTuiCommandSuggestion, ChatTuiFocusState, ChatTuiInspectorState, ChatTuiPluginShelf, ChatTuiReasoningRail, ChatTuiWorkbench, ChatTuiWorkbenchPanelId } from "./chat-tui-workbench.js";
 
 export const CHAT_TUI_FRAMEWORK_ID = "deepseek.production-tui";
@@ -56,16 +61,6 @@ export interface ChatTuiContributionRegistry {
   readonly pluginExplanations: readonly CliPluginContributionExplanation[];
 }
 
-export interface ChatTuiReasoningPanel {
-  readonly enabled: boolean;
-  readonly detailLevel: "compact" | "full" | "debug";
-  readonly recordCount: number;
-  readonly evidenceLinkCount: number;
-  readonly activeRecordId?: string;
-  readonly inspectorTargets: readonly CliTargetRef[];
-  readonly statusText: string;
-}
-
 export interface ChatTuiStateSnapshot {
   readonly frameworkId: string;
   readonly version: string;
@@ -89,6 +84,7 @@ export interface ChatTuiStateSnapshot {
   readonly promptReady: boolean;
   readonly turns: number;
   readonly workbench: ChatTuiWorkbench;
+  readonly pluginExecutions: readonly PluginWorkbenchExecutionRecord[];
   readonly visibleReasoning?: VisibleReasoningProjection;
   readonly sessionId?: string;
 }
@@ -100,6 +96,9 @@ export interface ChatTuiDispatchResult {
   readonly state: ChatTuiStateSnapshot;
   readonly action?: CliActionKind;
   readonly commandName?: string;
+  readonly commandSuggestionId?: string;
+  readonly commandSource?: string;
+  readonly pluginId?: string;
   readonly focusPanel?: ChatTuiFocusState["activePanel"];
   readonly previewText?: string;
   readonly diagnostics: readonly ChatTuiDiagnostic[];
@@ -215,7 +214,7 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
   const keymapProfile = input.keymapProfile ?? "vi-professional";
   const contributions = [
     ...defaultCoreTuiContributions(keymapProfile),
-    ...firstPartyTuiContributions(),
+    ...firstPartyTuiContributionsWithOwnerRoutes(),
     ...(input.core ?? []),
     ...(input.user ?? []),
     ...(input.plugin ?? [])
@@ -285,6 +284,7 @@ export function createChatTuiState(input: {
   readonly composition?: CliCompositionSnapshot;
   readonly promptReady?: boolean;
   readonly turns?: number;
+  readonly pluginExecutions?: readonly PluginWorkbenchExecutionRecord[];
   readonly sessionId?: string;
   readonly visibleReasoning?: VisibleReasoningProjection;
 }): ChatTuiStateSnapshot {
@@ -311,6 +311,7 @@ export function createChatTuiState(input: {
     diagnostics: [...registry.diagnostics, ...degraded],
     promptReady: input.promptReady ?? input.enabled,
     turns: input.turns ?? 0,
+    pluginExecutions: boundedPluginExecutions(input.pluginExecutions ?? []),
     ...(input.visibleReasoning ? { visibleReasoning: input.visibleReasoning } : {}),
     ...(input.sessionId ? { sessionId: input.sessionId } : {})
   };
@@ -320,7 +321,11 @@ export function createChatTuiState(input: {
 export function dispatchChatTuiKey(state: ChatTuiStateSnapshot, key: string): ChatTuiDispatchResult {
   if (!state.enabled) return diagnosticDispatch(state, key, "CHAT_TUI_DISABLED", "TUI key dispatch is disabled for this terminal profile.");
   const focus = dispatchChatTuiWorkbenchKey(state.workbench, key);
-  if (focus.handled) return focusDispatch(state, key, focus.workbench, focus.activePanel);
+  if (focus.handled) {
+    if (focus.commandBarAccepted) return commandBarAcceptanceDispatch({ state, key, workbench: focus.workbench, acceptance: focus.commandBarAccepted, attachWorkbench });
+    if (focus.diagnostic) return workbenchDiagnosticDispatch({ state, key, workbench: focus.workbench, diagnostic: focus.diagnostic, attachWorkbench });
+    return focusDispatch(state, key, focus.workbench, focus.activePanel);
+  }
   const binding = findKeyBinding(state, key);
   if (!binding) return diagnosticDispatch(state, key, "CHAT_TUI_KEY_UNBOUND", `No key binding for ${key} in ${state.mode} mode.`);
   if (binding.targetKind === "command") {
@@ -362,6 +367,9 @@ export function dispatchChatTuiKey(state: ChatTuiStateSnapshot, key: string): Ch
 export function dispatchChatTuiInputEvent(state: ChatTuiStateSnapshot, event: CliRawInputEvent): ChatTuiDispatchResult {
   const key = rawInputEventToKeyName(event);
   if (!key) return diagnosticDispatch(state, event.kind, "CHAT_TUI_INPUT_EVENT_IGNORED", `Ignored ${event.kind} input event.`);
+  if (state.workbench.focus.activePanel === "command-bar" && state.workbench.commandBar.open) {
+    return dispatchChatTuiKey(state, key);
+  }
   const pendingKeys = state.keySequence?.status === "pending" ? state.keySequence.keys : [];
   const resolution = resolveViKeySequence({
     mode: state.mode,
@@ -430,7 +438,7 @@ export function renderChatTuiStatus(state: ChatTuiStateSnapshot): readonly strin
 function attachWorkbench(
   base: Omit<ChatTuiStateSnapshot, "workbench">,
   focus?: ChatTuiFocusState,
-  commandBar?: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId">>
+  commandBar?: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId" | "acceptedSuggestionId" | "acceptedCommandName" | "acceptedPreviewText">>
 ): ChatTuiStateSnapshot {
   const workbench = createChatTuiWorkbench({
     enabled: base.enabled,
@@ -442,6 +450,7 @@ function attachWorkbench(
     diagnostics: base.diagnostics,
     pluginReadiness: base.pluginReadiness,
     pluginContributionExplanations: base.pluginContributionExplanations,
+    pluginExecutions: base.pluginExecutions,
     reasoningPanel: base.reasoningPanel,
     promptReady: base.promptReady,
     turns: base.turns,
@@ -592,34 +601,12 @@ function updateChatTuiFromSession(
     composition: { ...composition, mode },
     promptReady,
     turns: chatState.turns,
+    pluginExecutions: current.pluginExecutions,
     reasoningPanel: reasoningPanelFromProjection(chatState.visibleReasoning, current.enabled),
     ...(chatState.visibleReasoning ? { visibleReasoning: chatState.visibleReasoning } : {}),
     ...(chatState.sessionId ? { sessionId: chatState.sessionId } : {})
   };
   return attachWorkbench(nextBase, previousWorkbench.focus, previousWorkbench.commandBar);
-}
-
-function reasoningPanelFromProjection(projection: VisibleReasoningProjection | undefined, enabled: boolean): ChatTuiReasoningPanel {
-  if (!enabled || !projection) {
-    return {
-      enabled: false,
-      detailLevel: "compact",
-      recordCount: 0,
-      evidenceLinkCount: 0,
-      inspectorTargets: [],
-      statusText: "reasoning=unavailable"
-    };
-  }
-  const activeRecord = projection.records.find((record) => record.recordId === projection.activeRecordId) ?? projection.records.at(-1);
-  return {
-    enabled: true,
-    detailLevel: projection.detailLevel,
-    recordCount: projection.summary.visibleRecords,
-    evidenceLinkCount: projection.summary.evidenceLinkCount,
-    ...(activeRecord ? { activeRecordId: activeRecord.recordId } : {}),
-    inspectorTargets: activeRecord?.evidence.map((link) => link.target) ?? [],
-    statusText: `reasoning=${projection.summary.visibleRecords} evidence=${projection.summary.evidenceLinkCount} assumptions=${projection.summary.assumptionCount}`
-  };
 }
 
 function mergeContributions(
@@ -633,6 +620,7 @@ function mergeContributions(
 }
 
 function modeAfterLocalCommand(commandName: string, chatState: ChatSessionState): CliInteractionMode {
+  if (commandName === "file" || commandName === "jump" || commandName === "repo" || commandName === "git" || commandName === "checks") return chatState.palette?.snapshot.mode === "result-list" ? "result-list" : "prompt";
   if (commandName === "palette" || chatState.palette?.snapshot.mode === "result-list") return "result-list";
   if (commandName === "approval") return "approval";
   if (commandName === "history" || commandName === "revert") return "selection";

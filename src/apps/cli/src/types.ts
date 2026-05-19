@@ -20,7 +20,7 @@ export interface CliTerminalFlags {
   readonly stdoutIsTTY: boolean;
 }
 
-export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode" | "memory" | "context" | "checks" | "repo" | "git";
+export type CliCommand = "run" | "chat" | "readiness" | "diagnostics" | "extension" | "palette" | "revert" | "tools-smoke" | "help" | "session" | "mcp" | "index-provider" | "mode" | "memory" | "context" | "checks" | "file" | "repo" | "git" | "jump";
 export type CliPaletteAction = "list" | "keymap" | "action";
 export type CliRevertAction = "preview" | "apply";
 export type CliIndexProviderAction = "status" | "set";
@@ -69,9 +69,13 @@ export interface CliOptions {
   readonly contextInput?: JsonObject;
   readonly checkAction?: "openspec" | "typecheck" | "lint" | "test" | "boundaries" | "build-cli";
   readonly checkInput?: JsonObject;
+  readonly fileAction?: "list" | "preview" | "references";
+  readonly fileInput?: JsonObject;
   readonly repoAction?: "files" | "grep" | "recall" | "project-index";
   readonly repoInput?: JsonObject;
   readonly gitInput?: JsonObject;
+  readonly jumpAction?: "file" | "text" | "symbol";
+  readonly jumpInput?: JsonObject;
 }
 
 export type CliWrite = (line: string) => void | Promise<void>;

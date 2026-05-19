@@ -10,6 +10,8 @@ function containingWorkspaceName(filePath) {
   const parts = pathParts(filePath);
   const packagesIndex = parts.indexOf("packages");
   if (packagesIndex >= 0) return { kind: "packages", name: parts[packagesIndex + 1] };
+  const pluginsIndex = parts.indexOf("plugins");
+  if (pluginsIndex >= 0) return { kind: "plugins", name: parts[pluginsIndex + 1] };
   const appsIndex = parts.indexOf("apps");
   if (appsIndex >= 0) return { kind: "apps", name: parts[appsIndex + 1] };
   return undefined;

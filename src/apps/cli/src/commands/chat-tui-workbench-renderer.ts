@@ -168,7 +168,7 @@ function pluginLines(shelf: ChatTuiPluginShelf): readonly string[] {
   return [
     `${shelf.readiness} plugins=${shelf.totalPlugins} contributions=${shelf.totalContributions}`,
     `conflicts=${shelf.conflicts} diagnostics=${shelf.diagnostics}`,
-    ...shelf.items.map((item) => `${item.status} ${item.pluginId} ${item.activeContributionCount}/${item.contributionCount}`),
+    ...shelf.items.map((item) => `${item.status} ${item.pluginId} ${item.activeContributionCount}/${item.contributionCount}${item.lastExecutionStatus ? ` last=${item.lastExecutionStatus}` : ""}`),
     ...(shelf.overflowCount > 0 ? [`+${shelf.overflowCount} more plugins`] : [])
   ];
 }
@@ -259,7 +259,7 @@ function activityText(feed: ChatTuiActivityFeed): string {
 }
 
 function pluginShelfText(shelf: ChatTuiPluginShelf): string {
-  const top = shelf.items.map((item) => `${item.pluginId}=${item.activeContributionCount}/${item.contributionCount} perms=${item.permissionPreview.length}`).join(", ");
+  const top = shelf.items.map((item) => `${item.pluginId}=${item.activeContributionCount}/${item.contributionCount} perms=${item.permissionPreview.length} results=${item.resultListCount}${item.lastExecutionStatus ? ` last=${item.lastExecutionStatus}` : ""}`).join(", ");
   return `${shelf.readiness} plugins=${shelf.totalPlugins} contributions=${shelf.totalContributions} explanations=${shelf.explanations.length} conflicts=${shelf.conflicts} diagnostics=${shelf.diagnostics}${top ? ` top=${top}` : ""}${shelf.overflowCount > 0 ? ` (+${shelf.overflowCount})` : ""}`;
 }
 

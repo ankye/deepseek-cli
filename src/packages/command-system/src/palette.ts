@@ -72,7 +72,9 @@ function paletteEntry(record: CommandCompositionRecord, order: number): CliPalet
       sideEffect: record.sideEffect,
       permissions: [...record.permissions],
       source: record.source,
-      referencePitFixtureIds: [...record.referencePitFixtureIds]
+      referencePitFixtureIds: [...record.referencePitFixtureIds],
+      ...(record.metadata ? { recordMetadata: record.metadata } : {}),
+      ...(record.projection.metadata ? { projectionMetadata: record.projection.metadata } : {})
     }
   };
   return {
@@ -98,7 +100,9 @@ function paletteEntry(record: CommandCompositionRecord, order: number): CliPalet
       ownerSubsystem: record.ownerSubsystem,
       targetKind: record.target.kind,
       compatibility: record.compatibility,
-      provenance: record.provenance
+      provenance: record.provenance,
+      ...(record.metadata ? { recordMetadata: record.metadata } : {}),
+      ...(record.projection.metadata ? { projectionMetadata: record.projection.metadata } : {})
     }
   };
 }

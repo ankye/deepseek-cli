@@ -200,7 +200,7 @@ function firstPartyPluginPackReadinessEvidence(): FirstPartyPluginPackReadinessE
   const manifests = listFirstPartyDevPluginManifests();
   const validation = validateFirstPartyDevPluginPack(manifests);
   const snapshot = snapshotFirstPartyDevPluginPack();
-  const status: ReadinessCheck["status"] = validation.ok && snapshot.pluginCount === 4 && snapshot.commandCount === 20 ? "pass" : "fail";
+  const status: ReadinessCheck["status"] = validation.ok && snapshot.pluginCount === 6 && snapshot.commandCount === 26 ? "pass" : "fail";
   return {
     schemaVersion: diagnosticsSchemaVersion,
     status,

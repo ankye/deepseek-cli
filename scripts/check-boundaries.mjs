@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { runArchitectureLint } from "./lint-framework/index.mjs";
-import { packages } from "./workspace-packages.mjs";
+import { packages, plugins } from "./workspace-packages.mjs";
 
 const result = await runArchitectureLint();
 
@@ -9,4 +9,4 @@ if (result.failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`dependency boundaries passed for ${packages.length} packages from ${relative(process.cwd(), "src")} (${result.ruleCount} rules)`);
+console.log(`dependency boundaries passed for ${packages.length + plugins.length} workspaces from ${relative(process.cwd(), "src")} (${result.ruleCount} rules)`);

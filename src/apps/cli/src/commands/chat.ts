@@ -1,11 +1,12 @@
 import type { AgentLoopTerminalStatus, RuntimeEvent } from "@deepseek/platform-contracts";
-import { invokeInteractiveCommand, isInteractiveControlResult, renderInteractiveControlText } from "@deepseek/command-system";
-import type { InteractiveControlResult } from "@deepseek/command-system";
 import { defaultDeepSeekProfile } from "@deepseek/model-gateway";
 import type { CliInputStream, CliOptions, CliRunOptions } from "../types.js";
 import { createCliAgentRuntime } from "../host/runtime.js";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
-import { createInitialChatModeControlState, isChatModeControlCommand, modeControlRequestedTransition, renderChatModeControl, renderChatCostStatus, renderChatModelStatus, restoreChatModeControlState, updateChatModeControlState } from "./chat-mode-controls.js";
+import { createInitialChatModeControlState, restoreChatModeControlState, updateChatModeControlState } from "./chat-mode-controls.js";
+import { writeChatLocalLines, writeLocalFailure } from "./chat-local-output.js";
+import { handleChatFileSlashCommand, handleChatJumpSlashCommand } from "./chat-navigation-slash.js";
+import { createChatSlashRouter, slashCommandName } from "./chat-slash-router.js";
 import { renderApprovalActionText, runLocalApprovalAction } from "./approval.js";
 import {
   createCliPaletteProjection,
@@ -96,6 +97,16 @@ export async function runChatCommand(
     visibleReasoning: undefined
   };
   const basicTui = createBasicChatTui(options, terminalProfile, write, writeInline);
+  const slashRouter = createChatSlashRouter({
+    approval: handleApprovalSlashCommand,
+    palette: handlePaletteSlashCommand,
+    file: handleChatFileSlashCommand,
+    jump: handleChatJumpSlashCommand,
+    context: (raw, cliOptions, chatState, localWrite) => handleChatContextSlashCommand(raw, cliOptions, chatState, (kind, lines) => writeChatLocalLines(kind, lines, cliOptions, localWrite)),
+    keymap: handleKeymapSlashCommand,
+    revert: handleRevertSlashCommand,
+    history: handleHistorySlashCommand
+  });
   const rawInputSession = enterCliRawInputSession(input, terminalProfile.inputStrategy === "raw");
   const sigintHandler = makeSigintHandler(state, write, options.output);
   process.on("SIGINT", sigintHandler);
@@ -108,7 +119,7 @@ export async function runChatCommand(
     } else if (options.output === "text") {
       await write("DeepSeek chat");
     }
-    for await (const line of readCliChatPrompts(input, terminalProfile.inputStrategy, (event) => dispatchRawInputToTui(basicTui, event))) {
+    for await (const line of readCliChatPrompts(input, terminalProfile.inputStrategy, (event, context) => dispatchRawInputToTui(basicTui, event, context))) {
       const prompt = line.trim();
       if (!prompt) {
         await basicTui.renderPrompt();
@@ -116,7 +127,7 @@ export async function runChatCommand(
       }
       if (state.pendingExit) break;
       if (prompt.startsWith("/")) {
-        const outcome = await handleSlashCommand(prompt, options, state, write);
+        const outcome = await slashRouter.handle(prompt, options, state, write);
         if (outcome === "exit") break;
         await basicTui.afterLocalCommand(slashCommandName(prompt), state);
         await basicTui.renderPrompt();
@@ -168,10 +179,6 @@ export async function runChatCommand(
     }
     await runtime.kernel.shutdown("cli-chat-completed");
   }
-}
-
-function slashCommandName(prompt: string): string {
-  return prompt.slice(1).trim().split(/\s+/)[0] ?? "";
 }
 
 async function hydrateChatSession(options: CliOptions, state: ChatSessionState, terminalProfile: CliTerminalCapabilityProfile, write: (line: string) => Promise<void>): Promise<boolean> {
@@ -247,79 +254,6 @@ function makeSigintHandler(state: ChatSessionState, write: (line: string) => Pro
     }
     state.pendingExit = true;
   };
-}
-
-async function handleSlashCommand(prompt: string, options: CliOptions, state: ChatSessionState, write: (line: string) => Promise<void>): Promise<"continue" | "exit"> {
-  const raw = prompt.slice(1).trim();
-  const name = raw.split(/\s+/)[0] ?? "";
-  const rest = raw.slice(name.length).trim();
-  if (name === "approval") {
-    await handleApprovalSlashCommand(rest, options, state, write);
-    return "continue";
-  }
-  if (name === "palette") {
-    await handlePaletteSlashCommand(rest, options, state, write);
-    return "continue";
-  }
-  if (name === "context") {
-    await handleChatContextSlashCommand(rest, options, state, (kind, lines) => writeChatLocalLines(kind, lines, options, write));
-    return "continue";
-  }
-  if (name === "keymap") {
-    await handleKeymapSlashCommand(rest, options, write);
-    return "continue";
-  }
-  if (name === "revert") {
-    await handleRevertSlashCommand(rest, options, state, write);
-    return "continue";
-  }
-  if (name === "history") {
-    await handleHistorySlashCommand(rest, options, state, write);
-    return "continue";
-  }
-  if (isChatModeControlCommand(name)) {
-    const requestedTransition = modeControlRequestedTransition(name, rest);
-    await writeChatLocalLines(
-      `chat.command.${name}`,
-      renderChatModeControl(name, state.modeControls, options.output, {
-        ...(requestedTransition ? { requestedTransition } : {})
-      }),
-      options,
-      write
-    );
-    return "continue";
-  }
-  if (name === "cost" || name === "model") {
-    if (name === "cost") {
-      await writeChatLocalLines("chat.command.cost", renderChatCostStatus(state.usage, options.output), options, write);
-    } else {
-      await writeChatLocalLines("chat.command.model", renderChatModelStatus(state.modeControls, options.output), options, write);
-    }
-    return "continue";
-  }
-  const result = await invokeInteractiveCommand(name);
-  if (!result.ok || !isInteractiveControlResult(result.value)) {
-    if (options.output === "text") await write(`[chat] unknown command /${name}`);
-    else if (options.output === "json" || options.output === "jsonl") await write(JSON.stringify({ kind: "chat.command.unknown", command: name }));
-    return "continue";
-  }
-  const control: InteractiveControlResult = result.value;
-  if (control.action === "cancel") {
-    if (state.activeController) {
-      state.activeController.abort();
-      state.activeController = undefined;
-      if (options.output === "text") await write("[chat] cancelling active turn");
-    } else if (options.output === "text") {
-      await write("[chat] nothing to cancel");
-    }
-    return "continue";
-  }
-  if (options.output === "text") {
-    for (const line of renderInteractiveControlText(control)) await write(line);
-  } else if (options.output === "json") {
-    await write(JSON.stringify({ kind: "chat.command.result", control }));
-  }
-  return control.terminal ? "exit" : "continue";
 }
 
 async function handleApprovalSlashCommand(raw: string, options: CliOptions, state: ChatSessionState, write: (line: string) => Promise<void>): Promise<void> {
@@ -589,16 +523,6 @@ async function handleHistorySlashCommand(raw: string, options: CliOptions, state
   await writeLocalFailure("history", "CLI_HISTORY_COMMAND_INVALID", options, write);
 }
 
-async function writeChatLocalLines(kind: string, lines: readonly string[], options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
-  for (const line of lines) {
-    if (options.output === "jsonl") {
-      await write(JSON.stringify({ kind, record: JSON.parse(line) as unknown }));
-    } else {
-      await write(line);
-    }
-  }
-}
-
 async function readWorkspacePageIndexForRecall(state: ChatSessionState, options: CliOptions, write: (line: string) => Promise<void>): Promise<readonly ChatPageIndexPage[] | undefined> {
   if (!state.workspaceDeps) {
     await writeLocalFailure("palette", "CLI_PAGEINDEX_WORKSPACE_PLATFORM_UNAVAILABLE", options, write);
@@ -636,14 +560,6 @@ function pageIndexPagesForRecall(state: ChatSessionState, pages: readonly ChatPa
 
 function workspaceCheckpointWatermark(state: ChatSessionState): number {
   return state.workspaceDeps?.workspaceState.checkpoints().length ?? 0;
-}
-
-async function writeLocalFailure(command: string, code: string, options: CliOptions, write: (line: string) => Promise<void>): Promise<void> {
-  if (options.output === "text") {
-    await write(`[chat] ${command} command invalid`);
-    return;
-  }
-  await write(JSON.stringify({ kind: "chat.command.local-failure", command, code }));
 }
 
 function approvalAction(value: string | undefined): "inspect" | "accept" | "deny" | "cancel" | undefined {

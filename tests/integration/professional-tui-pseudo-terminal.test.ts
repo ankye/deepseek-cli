@@ -42,6 +42,22 @@ describe("professional TUI pseudo-terminal interaction", () => {
     assert.equal(JSON.stringify(trace).includes("modelVisible"), false);
   });
 
+  it("selects command bar suggestions through raw key chunks without executing them", async () => {
+    const trace = await drivePseudoTerminal(normalState(), ["/", "f", "i", "l", "e", "\x1b[B", "\r"]);
+    const accepted = trace.at(-1);
+
+    assert.equal(trace[0]?.kind, "command");
+    assert.equal(trace[0]?.commandName, "search");
+    assert.equal(trace[4]?.commandBarQuery, "file");
+    assert.equal(trace[5]?.activeSuggestionId, "navigation.file.preview");
+    assert.equal(accepted?.kind, "command");
+    assert.equal(accepted?.commandName, "/file preview");
+    assert.equal(accepted?.commandSuggestionId, "navigation.file.preview");
+    assert.equal(accepted?.previewText, "/file preview <path|query>");
+    assert.deepEqual(accepted?.diagnosticCodes, []);
+    assert.equal(JSON.stringify(trace).includes("modelVisible"), false);
+  });
+
   it("executes leader plugin actions through governed local descriptors", async () => {
     const trace = await drivePseudoTerminal(normalState(), [" ", "p"]);
 
@@ -79,13 +95,18 @@ async function drivePseudoTerminal(initial: ChatTuiStateSnapshot, chunks: readon
     const result = dispatchChatTuiInputEvent(state, event);
     state = result.state;
     const activeTarget = result.state.composition.activeTarget;
+    const commandBarActive = result.state.workbench.focus.activePanel === "command-bar" && result.state.workbench.commandBar.open;
     trace.push({
       key: result.key,
       kind: result.kind,
       ...(result.kind === "command" ? { commandName: result.commandName } : {}),
+      ...(result.commandSuggestionId ? { commandSuggestionId: result.commandSuggestionId } : {}),
       ...(result.action ? { action: result.action } : {}),
+      ...(result.previewText ? { previewText: result.previewText } : {}),
       mode: result.state.mode,
       commandBarMode: result.state.workbench.commandBar.mode,
+      commandBarQuery: result.state.workbench.commandBar.query,
+      ...(commandBarActive && result.state.workbench.commandBar.activeSuggestionId ? { activeSuggestionId: result.state.workbench.commandBar.activeSuggestionId } : {}),
       ...(activeTarget ? { activeTargetKind: activeTarget.kind, activeTargetId: activeTarget.id } : {}),
       diagnosticCodes: result.diagnostics.map((diagnostic) => diagnostic.code)
     });
@@ -97,9 +118,13 @@ interface DispatchTrace {
   readonly key: string;
   readonly kind: string;
   readonly commandName?: string;
+  readonly commandSuggestionId?: string;
   readonly action?: string;
+  readonly previewText?: string;
   readonly mode: string;
   readonly commandBarMode: string;
+  readonly commandBarQuery: string;
+  readonly activeSuggestionId?: string;
   readonly activeTargetKind?: string;
   readonly activeTargetId?: string;
   readonly diagnosticCodes: readonly string[];

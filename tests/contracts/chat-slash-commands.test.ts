@@ -6,6 +6,7 @@ import { createDefaultRuntimeKernel, registerRuntimeCoreTools } from "@deepseek/
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { parseCliArgs, runCli } from "../../src/apps/cli/src/index.js";
 import { runChatCommand } from "../../src/apps/cli/src/commands/chat.js";
+import { resolveInjectedChatPluginSlashCommand } from "../../src/apps/cli/src/commands/chat-builtin-plugin-slash.js";
 import type { CliTerminalCapabilityProfile } from "../../src/apps/cli/src/host/terminal-profile.js";
 
 interface ChatHarness {
@@ -125,6 +126,8 @@ describe("chat slash commands", () => {
     assert.equal(lines.some((line) => line.startsWith("  /cost")), true);
     assert.equal(lines.some((line) => line.startsWith("  /model")), true);
     assert.equal(lines.some((line) => line.includes("/mode|/agent|/workers|/verify|/plan")), true);
+    assert.equal(lines.some((line) => line.includes("/file list|preview|refs <query>")), true);
+    assert.equal(lines.some((line) => line.includes("/jump file|text|symbol <query>")), true);
   });
 
   it("/clear renders ANSI clear sequence without invoking runtime", async () => {
@@ -267,6 +270,53 @@ describe("chat slash commands", () => {
     assert.equal(harness.modelCallCount, 0);
     const records = lines.map((line) => JSON.parse(line) as { kind?: string; command?: string });
     assert.equal(records.some((record) => record.kind === "chat.command.unknown" && record.command === "does-not-exist"), true);
+  });
+
+  it("matches injected plugin slash aliases through longest owner route aliases", () => {
+    const files = resolveInjectedChatPluginSlashCommand("repo files src");
+    const incomplete = resolveInjectedChatPluginSlashCommand("repo");
+    const gitStatus = resolveInjectedChatPluginSlashCommand("git status");
+
+    assert.equal(files?.route.commandId, "repo.navigator.files");
+    assert.equal(files?.alias, "/repo files");
+    assert.deepEqual(files?.args, ["src"]);
+    assert.equal(gitStatus?.route.commandId, "git.review.status");
+    assert.deepEqual(gitStatus?.args, []);
+    assert.equal(incomplete, undefined);
+  });
+
+  it("routes first-party plugin slash aliases locally without model dispatch", async () => {
+    const harness = await buildHarness();
+    const root = process.cwd().replace(/\\/g, "/");
+    await harness.deps.platform.writeFile(`${root}/src/plugin-alias.ts`, "export const pluginAliasNeedle = true;\n");
+    const lines = await runChatLines(harness, [
+      "/repo files plugin-alias",
+      "/palette state",
+      "/git status",
+      "/checks openspec",
+      "/repo files",
+      "/exit"
+    ], "jsonl");
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        result?: { action?: string; status?: string; itemCount?: number };
+        mode?: string;
+        resultListId?: string;
+        item?: { target?: { kind?: string; path?: string } };
+        diagnostic?: { code?: string };
+      };
+    });
+
+    assert.equal(harness.modelCallCount, 0);
+    assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.summary" && record.record.result?.action === "files" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.item" && record.record.item?.target?.path?.includes("src/plugin-alias.ts")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:repo.files"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.git" && record.record?.kind === "git.review.summary" && record.record.result?.action === "status" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.checks" && record.record?.kind === "dev.check.summary" && record.record.result?.action === "openspec" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.diagnostic" && record.record.diagnostic?.code === "REPO_NAVIGATOR_QUERY_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested" || record.kind === "agent.loop.started"), false);
   });
 
   it("/cancel with no active turn prints no-op notice", async () => {

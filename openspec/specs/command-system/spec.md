@@ -429,3 +429,88 @@ command system 必须将一方 developer checks 暴露为预声明 governed comm
 - **THEN** the resolved command descriptor uses a known command id and fixed arguments for a supported check such as OpenSpec validation, typecheck, lint, tests, boundary checks, or CLI build
 - **AND** user-provided free-form shell fragments are rejected with typed diagnostics
 - **中文** 当用户调用 `@deepseek/plugin-dev-checks` 贡献的 dev-check command 时，解析出的 command descriptor 必须使用已知 command id 与固定 arguments，覆盖 OpenSpec validation、typecheck、lint、tests、boundary checks 或 CLI build 等受支持检查；用户提供的 free-form shell fragments 必须以 typed diagnostics 拒绝。
+
+### Requirement: Plugin execution stays host-owned
+The command system SHALL provide inert plugin action descriptors for preview and inspection, while real plugin execution remains host-owned.
+
+Command system 必须为 preview 与 inspection 提供惰性的 plugin action descriptors，而真实 plugin execution 必须保持 host-owned。
+
+#### Scenario: Plugin action descriptor does not execute route
+- **WHEN** a plugin action descriptor is created by command-system
+- **THEN** it contains permissions, side effects, governance metadata, and dry-run status but does not execute owner routes
+- **中文** 当 command-system 创建 plugin action descriptor 时，它必须包含 permissions、side effects、governance metadata 与 dry-run status，但不得执行 owner routes。
+
+#### Scenario: Host execution record proves dispatch boundary
+- **WHEN** an interactive plugin action is actually executed
+- **THEN** the resulting execution record identifies the host-owned owner route and not a command-system private callback
+- **中文** 当 interactive plugin action 实际执行时，产生的 execution record 必须标识 host-owned owner route，而不是 command-system private callback。
+
+### Requirement: Plugin Commands Dispatch Through Owner Routes / 插件命令通过 Owner Route 调度
+The command system and CLI host SHALL dispatch built-in plugin commands through declared owner routes rather than plugin-private execution callbacks.
+
+command system 与 CLI host 必须通过声明的 owner routes 调度 built-in plugin commands，而不是通过 plugin-private execution callbacks。
+
+#### Scenario: Owner route dispatch is explicit / Owner Route 调度显式
+- **WHEN** a built-in plugin commandId is executed from CLI, palette, or TUI
+- **THEN** the host resolves a route descriptor containing owner subsystem, status, dispatch availability, permissions, side effects, and diagnostics before execution
+- **中文** 当 built-in plugin commandId 从 CLI、palette 或 TUI 执行时，host 必须先解析 route descriptor，包含 owner subsystem、status、dispatch availability、permissions、side effects 与 diagnostics。
+
+#### Scenario: Private handler is never used / 不使用私有 Handler
+- **WHEN** a built-in plugin route is implemented
+- **THEN** execution calls the owning host adapter or owner subsystem and never reads handler/callback/execute fields from plugin metadata
+- **中文** 当 built-in plugin route 已实现时，执行必须调用 owning host adapter 或 owner subsystem，绝不从 plugin metadata 读取 handler/callback/execute 字段。
+
+### Requirement: Navigation plugin CLI command projection
+The CLI command system SHALL parse, dispatch, and document file manager and jump navigator plugin commands as structured local commands.
+
+CLI command system 必须将 file manager 与 jump navigator plugin commands 作为结构化 local commands 进行 parse、dispatch 与 document。
+
+#### Scenario: Help lists executable navigation commands
+- **WHEN** a user runs `deepseek help`
+- **THEN** help output lists `deepseek file list|preview|refs` and `deepseek jump file|text|symbol` only when those commands are parseable and dispatchable through CLI host adapters
+- **中文** 当用户运行 `deepseek help` 时，help output 必须列出 `deepseek file list|preview|refs` 与 `deepseek jump file|text|symbol`，且仅在这些 commands 可 parse 并可通过 CLI host adapters dispatch 时列出。
+
+#### Scenario: Parser produces typed navigation options
+- **WHEN** CLI args begin with `file` or `jump`
+- **THEN** `parseCliArgs` returns typed `CliOptions` carrying command-specific action and input fields rather than falling back to generic help or agent run mode
+- **中文** 当 CLI args 以 `file` 或 `jump` 开头时，`parseCliArgs` 必须返回带 command-specific action 与 input fields 的 typed `CliOptions`，而不是回退到 generic help 或 agent run mode。
+
+#### Scenario: Navigation command output mode parity
+- **WHEN** a file or jump CLI command is invoked with `--output text`, `--output json`, or `--output jsonl`
+- **THEN** the selected renderer emits deterministic structured output with redaction metadata and no terminal-only private state
+- **中文** 当 file 或 jump CLI command 使用 `--output text`、`--output json` 或 `--output jsonl` 调用时，所选 renderer 必须输出带 redaction metadata 的确定性结构化结果，且不得包含 terminal-only private state。
+
+### Requirement: Navigation slash commands are structured local commands
+The command system and CLI chat host SHALL treat `/file` and `/jump` as structured local commands backed by first-party plugin command adapters.
+
+Command system 与 CLI chat host 必须将 `/file` 与 `/jump` 作为由一方 plugin command adapters 支撑的结构化 local commands。
+
+#### Scenario: Navigation slash commands are not prompts
+- **WHEN** a chat input line begins with `/file` or `/jump`
+- **THEN** the chat host dispatches a local structured command and SHALL NOT submit the line as a model prompt
+- **中文** 当 chat input line 以 `/file` 或 `/jump` 开头时，chat host 必须分发本地结构化命令，且不得将该行作为模型 prompt 提交。
+
+#### Scenario: Navigation slash output preserves renderer parity
+- **WHEN** chat runs a navigation slash command under `--output text`, `--output json`, or `--output jsonl`
+- **THEN** it uses the same file/jump renderers as the top-level CLI commands, with JSONL wrapped in `chat.command.file` or `chat.command.jump` envelopes
+- **中文** 当 chat 在 `--output text`、`--output json` 或 `--output jsonl` 下运行 navigation slash command 时，必须使用与顶层 CLI commands 相同的 file/jump renderers，并将 JSONL 包装在 `chat.command.file` 或 `chat.command.jump` envelopes 中。
+
+#### Scenario: Navigation slash command failures remain local
+- **WHEN** a navigation slash command has missing or invalid user input
+- **THEN** the command returns typed local failure records or typed plugin diagnostics with no model request
+- **中文** 当 navigation slash command 缺少或包含无效 user input 时，命令必须返回 typed local failure records 或 typed plugin diagnostics，且不得产生 model request。
+
+### Requirement: Navigation slash commands are discoverable in chat help
+The command system SHALL include `/file` and `/jump` local navigation workflows in chat help output.
+
+Command system 必须在 chat help output 中包含 `/file` 与 `/jump` local navigation workflows。
+
+#### Scenario: Chat help lists file and jump workflows
+- **WHEN** a user invokes `/help` in chat
+- **THEN** the text help lists `/file list|preview|refs <query>` and `/jump file|text|symbol <query>` as local workflows
+- **中文** 当用户在 chat 中调用 `/help` 时，text help 必须将 `/file list|preview|refs <query>` 与 `/jump file|text|symbol <query>` 列为 local workflows。
+
+#### Scenario: Help remains local
+- **WHEN** `/help` lists navigation slash commands
+- **THEN** the chat host SHALL NOT submit help discovery text or navigation slash documentation to the model
+- **中文** 当 `/help` 列出 navigation slash commands 时，chat host 不得将 help discovery 文本或 navigation slash documentation 提交给模型。

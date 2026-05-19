@@ -23,13 +23,15 @@ describe("first-party dev plugins", () => {
     assert.deepEqual(manifests.map((manifest) => manifest.id), [
       "@deepseek/plugin-context-compactor",
       "@deepseek/plugin-dev-checks",
+      "@deepseek/plugin-file-manager",
       "@deepseek/plugin-git-review",
+      "@deepseek/plugin-jump-navigator",
       "@deepseek/plugin-repo-navigator"
     ]);
-    assert.equal(snapshot.pluginCount, 4);
-    assert.equal(snapshot.commandCount, 20);
-    assert.equal(snapshot.paletteEntryCount, 4);
-    assert.equal(snapshot.reasoningContributionCount, 4);
+    assert.equal(snapshot.pluginCount, 6);
+    assert.equal(snapshot.commandCount, 26);
+    assert.equal(snapshot.paletteEntryCount, 6);
+    assert.equal(snapshot.reasoningContributionCount, 6);
     assert.equal(manifests.every((manifest) => manifest.source === "built-in"), true);
     assert.equal(manifests.every((manifest) => manifest.integrity.startsWith("sha256:")), true);
     assert.equal(manifests.some((manifest) => manifest.permissions.includes("context:lcm:write")), true);
@@ -43,7 +45,7 @@ describe("first-party dev plugins", () => {
     const checkCommands = records.filter((record) => record.source.pluginId === "@deepseek/plugin-dev-checks");
 
     assert.equal(projection.ok, true);
-    assert.equal(records.length, 20);
+    assert.equal(records.length, 26);
     assert.equal(checkCommands.length, 6);
     assert.equal(checkCommands.every((record) => record.metadata?.builtIn === true), true);
     assert.equal(checkCommands.every((record) => record.metadata?.commandId !== "shell"), true);
@@ -56,6 +58,8 @@ describe("first-party dev plugins", () => {
     const tuiRegistry = createChatTuiContributionRegistry();
 
     assert.equal(palette.entries.some((entry) => entry.source.pluginId === "@deepseek/plugin-context-compactor"), true);
+    assert.equal(palette.entries.some((entry) => entry.source.pluginId === "@deepseek/plugin-file-manager"), true);
+    assert.equal(palette.entries.some((entry) => entry.source.pluginId === "@deepseek/plugin-jump-navigator"), true);
     assert.equal(palette.entries.some((entry) => entry.entry.title === "Context: Status"), true);
     assert.equal(tuiRegistry.summary.bySource.plugin > 0, true);
     assert.equal(tuiRegistry.summary.conflicts, 0);
@@ -74,7 +78,7 @@ describe("first-party dev plugins", () => {
     });
     const validation = validateFirstPartyPluginReasoningContributions(records);
 
-    assert.equal(records.length, 4);
+    assert.equal(records.length, 6);
     assert.equal(validation.ok, true);
     assert.equal(records.every((record) => record.actor === "plugin"), true);
     assert.equal(records.some((record) => record.stepKind === "verification"), true);

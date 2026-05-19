@@ -3,8 +3,32 @@ import type { HookId, SessionId } from "./ids.js";
 import type { TrustStatus } from "./capability.js";
 
 export const HOOK_SCHEMA_VERSION = "1.0.0";
+export const PLUGIN_LIFECYCLE_HOOK_DEFAULT_TIMEOUT_MS = 2_000;
+export const PLUGIN_LIFECYCLE_HOOK_POINTS = [
+  "plugin.discovery.before",
+  "plugin.discovery.after",
+  "plugin.validation.before",
+  "plugin.validation.after",
+  "plugin.install.before",
+  "plugin.install.after",
+  "plugin.enable.before",
+  "plugin.enable.after",
+  "plugin.activation.before",
+  "plugin.activation.after",
+  "plugin.update.before",
+  "plugin.update.after",
+  "plugin.rollback.before",
+  "plugin.rollback.after",
+  "plugin.disable.before",
+  "plugin.disable.after",
+  "plugin.uninstall.before",
+  "plugin.uninstall.after",
+  "plugin.health.before",
+  "plugin.health.after"
+] as const;
 
 export type HookSourceKind = "built-in" | "user" | "workspace" | "extension" | "plugin" | "catalog";
+export type PluginLifecycleHookPoint = (typeof PLUGIN_LIFECYCLE_HOOK_POINTS)[number];
 export type HookLifecyclePoint =
   | "user-input.before"
   | "user-input.after"
@@ -22,20 +46,84 @@ export type HookLifecyclePoint =
   | "session.after"
   | "plugin-lifecycle.before"
   | "plugin-lifecycle.after"
+  | PluginLifecycleHookPoint
   | "host-render.before"
   | "host-render.after"
   | string;
 export type HookIsolationMode = "in-process-observe-only" | "sandboxed" | "external";
 export type HookFailurePolicy = "continue" | "block" | "disable" | "rollback-requested";
-export type HookOutputKind = "observation" | "context" | "policy-suggestion" | "workflow-suggestion" | "capability-request" | "host-render-hint";
+export type PluginLifecycleHookOutputKind =
+  | "observation"
+  | "diagnostic"
+  | "policy-suggestion"
+  | "activation-suggestion"
+  | "health-suggestion"
+  | "config-suggestion"
+  | "governed-capability-request";
+export type HookOutputKind =
+  | PluginLifecycleHookOutputKind
+  | "context"
+  | "workflow-suggestion"
+  | "capability-request"
+  | "host-render-hint";
 export type HookInvocationStatus = "completed" | "blocked" | "rollback-requested" | "failed" | "skipped" | "rejected";
 export type HookExecutionStatus = "completed" | "failed" | "timed-out" | "skipped" | "disabled" | "inert";
+
+export interface PluginLifecycleHookPointDescriptor extends JsonObject {
+  readonly point: PluginLifecycleHookPoint;
+  readonly inputSchema: JsonObject;
+  readonly outputSchema: JsonObject;
+  readonly allowedOutputKinds: readonly PluginLifecycleHookOutputKind[];
+  readonly defaultTimeoutMs: number;
+  readonly defaultFailurePolicy: HookFailurePolicy;
+  readonly defaultOrdering: HookOrdering;
+  readonly blockingAllowed: boolean;
+  readonly requiresPolicy: boolean;
+}
 
 export interface HookOrdering extends JsonObject {
   readonly priority: number;
   readonly after?: readonly string[];
   readonly before?: readonly string[];
 }
+
+export const PLUGIN_LIFECYCLE_HOOK_POINT_CATALOG: readonly PluginLifecycleHookPointDescriptor[] =
+  PLUGIN_LIFECYCLE_HOOK_POINTS.map((point) => ({
+    point,
+    inputSchema: {
+      type: "object",
+      required: ["pluginId", "lifecycleState", "trigger"]
+    },
+    outputSchema: {
+      type: "object",
+      allowedOutputKinds: [
+        "observation",
+        "diagnostic",
+        "policy-suggestion",
+        "activation-suggestion",
+        "health-suggestion",
+        "config-suggestion",
+        "governed-capability-request"
+      ]
+    },
+    allowedOutputKinds: [
+      "observation",
+      "diagnostic",
+      "policy-suggestion",
+      "activation-suggestion",
+      "health-suggestion",
+      "config-suggestion",
+      "governed-capability-request"
+    ],
+    defaultTimeoutMs: PLUGIN_LIFECYCLE_HOOK_DEFAULT_TIMEOUT_MS,
+    defaultFailurePolicy: point.endsWith(".before") ? "block" : "continue",
+    defaultOrdering: { priority: 0 },
+    blockingAllowed:
+      point.endsWith(".before") &&
+      !point.startsWith("plugin.discovery.") &&
+      !point.startsWith("plugin.validation."),
+    requiresPolicy: point.endsWith(".before")
+  }));
 
 export interface HookManifest extends JsonObject {
   readonly schemaVersion?: string;

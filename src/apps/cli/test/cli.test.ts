@@ -226,6 +226,22 @@ describe("cli host adapter", () => {
       checkAction: "lint",
       checkInput: { action: "lint", args: [] }
     });
+    assert.deepEqual(parseCliArgs(["file", "preview", "src/index.ts", "--output", "json"]), {
+      command: "file",
+      prompt: "",
+      output: "json",
+      live: false,
+      fileAction: "preview",
+      fileInput: { action: "preview", query: "src/index.ts" }
+    });
+    assert.deepEqual(parseCliArgs(["file", "refs", ".ts", "--output", "jsonl"]), {
+      command: "file",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      fileAction: "references",
+      fileInput: { action: "references", query: ".ts" }
+    });
     assert.deepEqual(parseCliArgs(["repo", "grep", "database", "--output", "json"]), {
       command: "repo",
       prompt: "",
@@ -240,6 +256,22 @@ describe("cli host adapter", () => {
       output: "jsonl",
       live: false,
       gitInput: { action: "status", args: [] }
+    });
+    assert.deepEqual(parseCliArgs(["jump", "text", "needle", "--output", "json"]), {
+      command: "jump",
+      prompt: "",
+      output: "json",
+      live: false,
+      jumpAction: "text",
+      jumpInput: { action: "text", query: "needle" }
+    });
+    assert.deepEqual(parseCliArgs(["jump", "symbol", "run", "--output", "jsonl"]), {
+      command: "jump",
+      prompt: "",
+      output: "jsonl",
+      live: false,
+      jumpAction: "symbol",
+      jumpInput: { action: "symbol", query: "run" }
     });
     assert.deepEqual(parseCliArgs(["revert", "preview", "--request", "request-1", "--output", "jsonl"]), {
       command: "revert",
@@ -362,8 +394,10 @@ describe("cli host adapter", () => {
     assert.equal(lines.some((line) => line.includes("deepseek memory status|list|candidates")), true);
     assert.equal(lines.some((line) => line.includes("deepseek context status|grep|describe|summarize|expand|budget|pin")), true);
     assert.equal(lines.some((line) => line.includes("deepseek checks openspec|typecheck|lint|test|boundaries|build-cli")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek file list|preview|refs")), true);
     assert.equal(lines.some((line) => line.includes("deepseek repo files|grep|recall|project-index")), true);
     assert.equal(lines.some((line) => line.includes("deepseek git status|diff|review")), true);
+    assert.equal(lines.some((line) => line.includes("deepseek jump file|text|symbol")), true);
     assert.equal(lines.some((line) => line.includes("deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate")), true);
     assert.equal(lines.some((line) => line.includes("deepseek chat [--session <session-id>]")), true);
     assert.equal(lines.join("\n").includes("stream-json"), false);
@@ -384,6 +418,112 @@ describe("cli host adapter", () => {
     assert.equal(result.kind, "context.compactor");
     assert.equal(result.action, "status");
     assert.equal(result.status, "completed");
+  });
+
+  it("runs file manager CLI commands with text, JSON, and JSONL output", async () => {
+    const root = process.cwd().replace(/\\/g, "/");
+    const textLines = await runWithSeededWorkspace(["file", "list", "src", "--output", "text"]);
+    const jsonLines = await runWithSeededWorkspace(["file", "preview", `${root}/src/index.ts`, "--output", "json"]);
+    const jsonlLines = await runWithSeededWorkspace(["file", "refs", ".md", "--output", "jsonl"]);
+    const missingLines = await runWithSeededWorkspace(["file", "preview", "--output", "json"]);
+    const preview = JSON.parse(jsonLines[0] ?? "{}") as { readonly kind?: string; readonly action?: string; readonly status?: string; readonly resultList?: { readonly id?: string }; readonly referenceTargets?: readonly { readonly path?: string }[] };
+    const jsonlRecords = jsonlLines.map((line) => JSON.parse(line) as { readonly kind?: string; readonly result?: { readonly action?: string; readonly status?: string; readonly itemCount?: number }; readonly item?: { readonly target?: { readonly kind?: string; readonly path?: string } } });
+    const missing = JSON.parse(missingLines[0] ?? "{}") as { readonly status?: string; readonly diagnostics?: readonly { readonly code?: string }[] };
+
+    assert.equal(textLines[0]?.startsWith("file list: completed"), true);
+    assert.equal(textLines.some((line) => line.includes("src/index.ts")), true);
+    assert.equal(preview.kind, "file.manager");
+    assert.equal(preview.action, "preview");
+    assert.equal(preview.status, "completed");
+    assert.equal(preview.resultList?.id, "result-list:file-manager.preview");
+    assert.equal(preview.referenceTargets?.[0]?.path, `${root}/src/index.ts`);
+    assert.equal(jsonlRecords[0]?.kind, "file.manager.summary");
+    assert.equal(jsonlRecords[0]?.result?.action, "references");
+    assert.equal(jsonlRecords.some((record) => record.kind === "file.manager.item" && record.item?.target?.kind === "file"), true);
+    assert.equal(missing.status, "failed");
+    assert.equal(missing.diagnostics?.[0]?.code, "FILE_MANAGER_QUERY_REQUIRED");
+    assert.equal([...textLines, ...jsonLines, ...jsonlLines, ...missingLines].join("\n").includes("agent.loop.started"), false);
+  });
+
+  it("runs jump navigator CLI commands with text, JSON, JSONL, and deferred symbol output", async () => {
+    const textLines = await runWithSeededWorkspace(["jump", "file", "src", "--output", "text"]);
+    const jsonLines = await runWithSeededWorkspace(["jump", "text", "needle", "--output", "json"]);
+    const jsonlLines = await runWithSeededWorkspace(["jump", "symbol", "needle", "--output", "jsonl"]);
+    const missingLines = await runWithSeededWorkspace(["jump", "text", "--output", "json"]);
+    const text = JSON.parse(jsonLines[0] ?? "{}") as { readonly kind?: string; readonly action?: string; readonly status?: string; readonly resultList?: { readonly id?: string; readonly items?: readonly unknown[] }; readonly activeTarget?: { readonly kind?: string } };
+    const symbolRecords = jsonlLines.map((line) => JSON.parse(line) as { readonly kind?: string; readonly result?: { readonly status?: string }; readonly diagnostic?: { readonly code?: string } });
+    const missing = JSON.parse(missingLines[0] ?? "{}") as { readonly status?: string; readonly diagnostics?: readonly { readonly code?: string }[] };
+
+    assert.equal(textLines[0]?.startsWith("jump file: completed"), true);
+    assert.equal(textLines.some((line) => line.includes("src/index.ts")), true);
+    assert.equal(text.kind, "jump.navigator");
+    assert.equal(text.action, "text");
+    assert.equal(text.status, "completed");
+    assert.equal(text.resultList?.id, "result-list:jump.text");
+    assert.equal(text.resultList?.items?.length, 2);
+    assert.equal(text.activeTarget?.kind, "file");
+    assert.equal(symbolRecords[0]?.kind, "jump.navigator.summary");
+    assert.equal(symbolRecords[0]?.result?.status, "deferred");
+    assert.equal(symbolRecords.some((record) => record.kind === "jump.navigator.diagnostic" && record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), true);
+    assert.equal(missing.status, "failed");
+    assert.equal(missing.diagnostics?.[0]?.code, "JUMP_NAVIGATOR_QUERY_REQUIRED");
+    assert.equal([...textLines, ...jsonLines, ...jsonlLines, ...missingLines].join("\n").includes("agent.loop.started"), false);
+  });
+
+  it("runs /file as a local chat navigation command and projects result lists", async () => {
+    const lines = await runWithSeededWorkspace(["chat", "--output", "jsonl"], [
+      "/file list src\n/palette state\n/palette refs add current\n/palette refs list\n/file refs .md\n/file preview src/index.ts\n/file preview\n/exit\n"
+    ]);
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        result?: { action?: string; status?: string; itemCount?: number };
+        diagnostic?: { code?: string };
+        mode?: string;
+        resultListId?: string;
+        item?: { target?: { kind?: string; path?: string } };
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.summary" && record.record.result?.action === "list" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.item" && record.record.item?.target?.path?.includes("src/index.ts")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:file-manager.list"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.target?.path?.includes("src/index.ts")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.summary" && record.record.result?.action === "references" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.item" && record.record.item?.target?.path?.includes("docs/guide.md")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.summary" && record.record.result?.action === "preview" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.file" && record.record?.kind === "file.manager.diagnostic" && record.record.diagnostic?.code === "FILE_MANAGER_QUERY_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested" || record.kind === "agent.loop.started"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
+  });
+
+  it("runs /jump as a local chat navigation command and keeps symbol jump deferred", async () => {
+    const lines = await runWithSeededWorkspace(["chat", "--output", "jsonl"], [
+      "/jump text needle\n/palette state\n/palette refs replace current\n/palette refs list\n/jump symbol needle\n/palette state\n/jump text\n/exit\n"
+    ]);
+    const records = lines.map((line) => JSON.parse(line) as {
+      kind?: string;
+      record?: {
+        kind?: string;
+        result?: { action?: string; status?: string; itemCount?: number };
+        diagnostic?: { code?: string };
+        mode?: string;
+        resultListId?: string;
+        item?: { target?: { kind?: string; path?: string } };
+      };
+    });
+
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.summary" && record.record.result?.action === "text" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.item" && record.record.item?.target?.kind === "file"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:jump.text"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.target?.kind === "file"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.summary" && record.record.result?.action === "symbol" && record.record.result.status === "deferred"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.diagnostic" && record.record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), true);
+    assert.equal(records.filter((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state").at(-1)?.record?.resultListId, "result-list:jump.symbol");
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.diagnostic" && record.record.diagnostic?.code === "JUMP_NAVIGATOR_QUERY_REQUIRED"), true);
+    assert.equal(records.some((record) => record.kind === "model.requested" || record.kind === "agent.loop.started"), false);
+    assert.equal(lines.join("\n").includes("\u001b["), false);
   });
 
   it("handles /context as a local chat command without model dispatch", async () => {
@@ -2482,6 +2622,8 @@ describe("cli host adapter", () => {
     );
     const output = lines.join("\n");
 
+    assert.equal(output.includes("/file list|preview|refs <query>"), true);
+    assert.equal(output.includes("/jump file|text|symbol <query>"), true);
     assert.equal(output.includes("/palette"), true);
     assert.equal(output.includes("/palette next|previous|first|last"), true);
     assert.equal(output.includes("/palette back|forward"), true);
@@ -4335,6 +4477,21 @@ function hashTextForTest(value: string): string {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
+}
+
+async function runWithSeededWorkspace(args: readonly string[], input: readonly string[] = []): Promise<readonly string[]> {
+  const root = process.cwd().replace(/\\/g, "/");
+  const deps = createDeterministicRuntimeDependencies();
+  await deps.platform.writeFile(`${root}/src/index.ts`, "export const needle = true;\n");
+  await deps.platform.writeFile(`${root}/docs/guide.md`, "needle docs\n");
+  const kernel = await createDefaultRuntimeKernel(deps);
+  const lines: string[] = [];
+  await runCli(args, (line: string) => {
+    lines.push(line);
+  }, input, { stdinIsTTY: false, stdoutIsTTY: false }, {
+    createRuntime: async () => ({ deps, kernel })
+  });
+  return lines;
 }
 
 function isJsonObject(value: unknown): value is JsonObject {

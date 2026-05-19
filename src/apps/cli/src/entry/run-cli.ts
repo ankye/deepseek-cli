@@ -4,7 +4,9 @@ import { runChatCommand } from "../commands/chat.js";
 import { runCoreToolsSmoke } from "../commands/tools-smoke.js";
 import { runContextCommand } from "../commands/context.js";
 import { runDevCheckCommand } from "../commands/dev-check.js";
+import { runFileManagerCommand } from "../commands/file-manager.js";
 import { runGitReviewCommand } from "../commands/git-review.js";
+import { runJumpNavigatorCommand } from "../commands/jump-navigator.js";
 import { runMcpCommand } from "../commands/mcp.js";
 import { runMemoryCommand } from "../commands/memory.js";
 import { runModeCommand } from "../commands/mode.js";
@@ -75,12 +77,20 @@ export async function runCli(
     await runDevCheckCommand(options, writer, runOptions);
     return;
   }
+  if (options.command === "file") {
+    await runFileManagerCommand(options, writer, runOptions);
+    return;
+  }
   if (options.command === "repo") {
     await runRepoNavigatorCommand(options, writer, runOptions);
     return;
   }
   if (options.command === "git") {
     await runGitReviewCommand(options, writer, runOptions);
+    return;
+  }
+  if (options.command === "jump") {
+    await runJumpNavigatorCommand(options, writer, runOptions);
     return;
   }
   if (options.command === "palette") {

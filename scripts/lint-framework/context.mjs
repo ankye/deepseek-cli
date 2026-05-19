@@ -32,6 +32,7 @@ export class LintBaseContext {
   workspaceKind() {
     const parts = pathParts(this.file);
     if (parts.includes("packages")) return "package";
+    if (parts.includes("plugins")) return "package";
     if (parts.includes("apps")) return "app";
     return undefined;
   }
@@ -40,6 +41,8 @@ export class LintBaseContext {
     const parts = pathParts(this.file);
     const packagesIndex = parts.indexOf("packages");
     if (packagesIndex >= 0) return parts[packagesIndex + 1];
+    const pluginsIndex = parts.indexOf("plugins");
+    if (pluginsIndex >= 0) return parts[pluginsIndex + 1];
     const appsIndex = parts.indexOf("apps");
     if (appsIndex >= 0) return parts[appsIndex + 1];
     return undefined;

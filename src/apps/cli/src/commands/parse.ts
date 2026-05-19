@@ -122,6 +122,17 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       checkInput: parseCheckInput(args)
     };
   }
+  if (first === "file") {
+    const action = parseFileAction(args[1]);
+    return {
+      command: "file",
+      prompt: "",
+      output,
+      live,
+      fileAction: action,
+      fileInput: parseFileInput(args, action)
+    };
+  }
   if (first === "repo") {
     const action = parseRepoAction(args[1]);
     return {
@@ -140,6 +151,17 @@ export function parseCliArgs(args: readonly string[], _terminal: CliTerminalFlag
       output,
       live,
       gitInput: parseGitInput(args)
+    };
+  }
+  if (first === "jump") {
+    const action = parseJumpAction(args[1]);
+    return {
+      command: "jump",
+      prompt: "",
+      output,
+      live,
+      jumpAction: action,
+      jumpInput: parseJumpInput(args, action)
     };
   }
   if (first === "diagnostics") {
@@ -211,8 +233,10 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek memory status|list|candidates|remember|approve|reject|edit|delete|enable|disable|export|explain [args] [--output text|json]",
     "  deepseek context status|grep|describe|summarize|expand|budget|pin [args] [--session <session-id>] [--output text|json|jsonl]",
     "  deepseek checks openspec|typecheck|lint|test|boundaries|build-cli [--output text|json|jsonl]",
+    "  deepseek file list|preview|refs <query> [--output text|json|jsonl]",
     "  deepseek repo files|grep|recall|project-index <query> [--output text|json|jsonl]",
     "  deepseek git status|diff|review [--output text|json|jsonl]",
+    "  deepseek jump file|text|symbol <query> [--output text|json|jsonl]",
     "  deepseek extension list [--output text|json|jsonl]",
     "  deepseek extension plugin install|verify|snapshot|apply-lockfile <file.json> [--output text|json|jsonl]",
     "  deepseek extension plugin contributions [--output text|json|jsonl]",
@@ -260,6 +284,19 @@ function parseCheckInput(args: readonly string[]): JsonObject {
   };
 }
 
+function parseFileAction(value: string | undefined): NonNullable<CliOptions["fileAction"]> {
+  if (value === "preview") return "preview";
+  if (value === "refs" || value === "references") return "references";
+  return "list";
+}
+
+function parseFileInput(args: readonly string[], action: NonNullable<CliOptions["fileAction"]>): JsonObject {
+  return {
+    action,
+    query: commandArguments(args, 2, new Set(["--output"])).join(" ").trim()
+  };
+}
+
 function parseRepoAction(value: string | undefined): NonNullable<CliOptions["repoAction"]> {
   if (value === "grep" || value === "recall" || value === "project-index" || value === "index") return value === "index" ? "project-index" : value;
   return "files";
@@ -277,6 +314,18 @@ function parseGitInput(args: readonly string[]): JsonObject {
   return {
     action,
     args: commandArguments(args, 2, new Set(["--output"]))
+  };
+}
+
+function parseJumpAction(value: string | undefined): NonNullable<CliOptions["jumpAction"]> {
+  if (value === "text" || value === "symbol") return value;
+  return "file";
+}
+
+function parseJumpInput(args: readonly string[], action: NonNullable<CliOptions["jumpAction"]>): JsonObject {
+  return {
+    action,
+    query: commandArguments(args, 2, new Set(["--output"])).join(" ").trim()
   };
 }
 

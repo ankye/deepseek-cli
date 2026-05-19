@@ -1,7 +1,8 @@
-import { appDependencies, apps, packageDependencies, packages } from "../workspace-packages.mjs";
+import { appDependencies, apps, packageDependencies, packages, plugins } from "../workspace-packages.mjs";
 
 function packageNameForWorkspace(workspaceName) {
   if (workspaceName === "cli") return "deepseek-agent-cli";
+  if (workspaceName === "builtin") return "@deepseek/builtin-plugins";
   return `@deepseek/${workspaceName}`;
 }
 
@@ -32,9 +33,9 @@ export const lintConventions = {
     "vscode"
   ]),
   packageImportPrefix: "@deepseek/",
-  workspacePackages: new Set(packages),
+  workspacePackages: new Set([...packages, ...plugins]),
   workspaceApps: new Set(apps),
-  workspacePackageNames: new Map([...packages, ...apps].map((workspaceName) => [workspaceName, packageNameForWorkspace(workspaceName)])),
+  workspacePackageNames: new Map([...packages, ...plugins, ...apps].map((workspaceName) => [workspaceName, packageNameForWorkspace(workspaceName)])),
   packageDependencyPolicy: dependencyPolicyFrom(packageDependencies),
   appDependencyPolicy: dependencyPolicyFrom(appDependencies),
   publishableApps: new Map([

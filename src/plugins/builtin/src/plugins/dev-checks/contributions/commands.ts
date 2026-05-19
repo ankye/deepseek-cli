@@ -1,0 +1,11 @@
+import { command } from "@deepseek/plugin-api";
+import { emptyInputSchema, outputSchema } from "../../../shared/schemas.js";
+
+export const commands = [
+  command({ id: "dev-checks.openspec", name: "Checks: OpenSpec Validate", aliases: ["/checks openspec"], description: "Run strict OpenSpec validation for the active change.", ownerSubsystem: "command-system", commandId: "checks.openspec.validate", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 10, inputSchema: emptyInputSchema, outputSchema }),
+  command({ id: "dev-checks.typecheck", name: "Checks: Typecheck", aliases: ["/checks typecheck"], description: "Run TypeScript type checking.", ownerSubsystem: "command-system", commandId: "checks.typecheck", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 20, inputSchema: emptyInputSchema, outputSchema }),
+  command({ id: "dev-checks.lint", name: "Checks: Lint", aliases: ["/checks lint"], description: "Run architecture and source lint checks.", ownerSubsystem: "command-system", commandId: "checks.lint", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 30, inputSchema: emptyInputSchema, outputSchema }),
+  command({ id: "dev-checks.test", name: "Checks: Test", aliases: ["/checks test"], description: "Run the repository test suite.", ownerSubsystem: "command-system", commandId: "checks.test", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 40, inputSchema: emptyInputSchema, outputSchema }),
+  command({ id: "dev-checks.boundaries", name: "Checks: Boundaries", aliases: ["/checks boundaries"], description: "Run package boundary checks.", ownerSubsystem: "command-system", commandId: "checks.boundaries", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 50, inputSchema: emptyInputSchema, outputSchema }),
+  command({ id: "dev-checks.build-cli", name: "Checks: Build CLI", aliases: ["/checks build-cli"], description: "Build the publishable CLI package.", ownerSubsystem: "command-system", commandId: "checks.build-cli", sideEffect: "process", permissions: ["process:predeclared", "workspace:read"], group: "checks", order: 60, inputSchema: emptyInputSchema, outputSchema })
+] as const;

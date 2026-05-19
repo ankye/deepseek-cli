@@ -2,7 +2,6 @@ import type {
   CliCompositionSnapshot,
   CliContributionKind,
   CliContributionSourceKind,
-  CliInteractionContribution,
   CliInteractionMode,
   CliPanelScrollState,
   CliPluginContributionExplanation,
@@ -12,6 +11,10 @@ import type {
 } from "@deepseek/platform-contracts";
 import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
+import type { PluginWorkbenchExecutionRecord } from "../plugins/plugin-workbench-execution.js";
+import { dispatchCommandBarKey, isCommandBarActive } from "./chat-tui-workbench-command-bar.js";
+import { projectPluginExecutionActivities, projectPluginShelf } from "./chat-tui-workbench-plugins.js";
+import { commandSuggestions } from "./chat-tui-workbench-suggestions.js";
 
 export type ChatTuiWorkbenchLayoutKind = "wide" | "balanced" | "compact" | "disabled";
 export type ChatTuiWorkbenchPanelId =
@@ -28,12 +31,13 @@ export type ChatTuiCommandSuggestionKind =
   | "control"
   | "palette"
   | "context"
+  | "navigation"
   | "reference"
   | "history"
   | "reasoning-view"
   | "plugin-action";
 export type ChatTuiActivityStatus = "ready" | "running" | "warning" | "blocked";
-export type ChatTuiActivityKind = "turns" | "diagnostics" | "reasoning" | "focus" | "command-bar" | "plugins";
+export type ChatTuiActivityKind = "turns" | "diagnostics" | "reasoning" | "focus" | "command-bar" | "plugins" | "plugin-execution";
 
 export interface ChatTuiWorkbenchRegion {
   readonly id: ChatTuiWorkbenchPanelId;
@@ -62,12 +66,24 @@ export interface ChatTuiCommandSuggestion {
   readonly rank: number;
 }
 
+export interface ChatTuiCommandBarAcceptance {
+  readonly suggestionId: string;
+  readonly commandName: string;
+  readonly previewText: string;
+  readonly query: string;
+  readonly source: ChatTuiCommandSuggestion["source"];
+  readonly pluginId?: string;
+}
+
 export interface ChatTuiCommandBarState {
   readonly open: boolean;
   readonly mode: ChatTuiCommandBarMode;
   readonly query: string;
   readonly placeholder: string;
   readonly activeSuggestionId?: string;
+  readonly acceptedSuggestionId?: string;
+  readonly acceptedCommandName?: string;
+  readonly acceptedPreviewText?: string;
   readonly suggestions: readonly ChatTuiCommandSuggestion[];
   readonly totalSuggestionCount: number;
   readonly overflowCount: number;
@@ -137,6 +153,10 @@ export interface ChatTuiPluginShelfItem {
   readonly permissionPreview: readonly string[];
   readonly helpText: string;
   readonly status: "ready" | "conflict" | "diagnostic";
+  readonly lastExecutionStatus?: string;
+  readonly lastExecutionCommandId?: string;
+  readonly lastExecutionRecordId?: string;
+  readonly resultListCount: number;
 }
 
 export interface ChatTuiPluginShelf {
@@ -167,6 +187,7 @@ export interface ChatTuiWorkbench {
   readonly inspector: ChatTuiInspectorState;
   readonly activityFeed: ChatTuiActivityFeed;
   readonly pluginShelf: ChatTuiPluginShelf;
+  readonly pluginExecutions: readonly PluginWorkbenchExecutionRecord[];
   readonly scrollStates: readonly CliPanelScrollState[];
   readonly keyboardHints: readonly ChatTuiKeyboardHint[];
   readonly frameLineBudget: number;
@@ -189,6 +210,7 @@ export interface ChatTuiWorkbenchInput {
   readonly diagnostics: readonly { readonly code: string; readonly severity: string; readonly targetIds: readonly string[] }[];
   readonly pluginReadiness: "governed-descriptors" | "metadata-only" | "disabled";
   readonly pluginContributionExplanations?: readonly CliPluginContributionExplanation[];
+  readonly pluginExecutions?: readonly PluginWorkbenchExecutionRecord[];
   readonly reasoningPanel: {
     readonly enabled: boolean;
     readonly detailLevel: VisibleReasoningDetailLevel;
@@ -211,22 +233,18 @@ export interface ChatTuiWorkbenchKeyDispatch {
   readonly workbench: ChatTuiWorkbench;
   readonly activePanel?: ChatTuiWorkbenchPanelId;
   readonly commandBarOpened?: boolean;
+  readonly commandBarAccepted?: ChatTuiCommandBarAcceptance;
+  readonly diagnostic?: {
+    readonly code: string;
+    readonly message: string;
+    readonly targetIds: readonly string[];
+  };
 }
 
-const CORE_COMMANDS: readonly ChatTuiCommandSuggestion[] = [
-  suggestion("control.help", "/help", "control", "builtin", 0, "/help"),
-  suggestion("control.palette", "/palette", "palette", "builtin", 1, "/palette"),
-  suggestion("control.context", "/context status", "context", "builtin", 2, "/context status"),
-  suggestion("control.refs", "/palette refs list", "reference", "builtin", 3, "/palette refs list"),
-  suggestion("view.reasoning", "Reasoning: focus rail", "reasoning-view", "builtin", 4, "reasoning.focus"),
-  suggestion("view.inspector", "Inspector: active evidence", "reasoning-view", "builtin", 5, "inspector.focus"),
-  suggestion("control.history", "/history", "history", "builtin", 6, "/history"),
-  suggestion("control.revert", "/revert preview current", "history", "builtin", 7, "/revert preview current"),
-  suggestion("control.mode", "/mode status", "control", "builtin", 8, "/mode status"),
-  suggestion("control.model", "/model", "control", "builtin", 9, "/model"),
-  suggestion("control.cost", "/cost", "control", "builtin", 10, "/cost"),
-  suggestion("control.cancel", "/cancel", "control", "builtin", 11, "/cancel")
-];
+export type ChatTuiCommandBarUpdate = Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId" | "acceptedSuggestionId" | "acceptedCommandName" | "acceptedPreviewText">> & {
+  readonly clearAccepted?: boolean;
+  readonly resetActiveSuggestion?: boolean;
+};
 
 const PANEL_ORDER: readonly ChatTuiWorkbenchPanelId[] = [
   "transcript",
@@ -245,7 +263,7 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
   const reasoningRail = projectReasoningRail(input.reasoningPanel, input.visibleReasoning, layout);
   const inspector = projectInspector(input.composition, reasoningRail, input.reasoningPanel.inspectorTargets, focus, layout);
   const activityFeed = projectActivityFeed(input, focus, commandBar, reasoningRail, layout);
-  const pluginShelf = projectPluginShelf(input.composition.contributions, input.contributionSummary, input.diagnostics, input.pluginReadiness, input.pluginContributionExplanations ?? [], layout);
+  const pluginShelf = projectPluginShelf(input.composition.contributions, input.contributionSummary, input.diagnostics, input.pluginReadiness, input.pluginContributionExplanations ?? [], input.pluginExecutions ?? [], layout);
   const regions = projectRegions(input, layout, focus, commandBar, reasoningRail, inspector, activityFeed, pluginShelf);
   const scrollStates = projectScrollStates(regions);
   return {
@@ -258,6 +276,7 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
     inspector,
     activityFeed,
     pluginShelf,
+    pluginExecutions: input.pluginExecutions ?? [],
     scrollStates,
     keyboardHints: keyboardHints(layout),
     frameLineBudget: lineBudgetFor(layout)
@@ -266,6 +285,10 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
 
 export function dispatchChatTuiWorkbenchKey(workbench: ChatTuiWorkbench, key: string): ChatTuiWorkbenchKeyDispatch {
   if (workbench.layout === "disabled") return { handled: false, workbench };
+  if (isCommandBarActive(workbench)) {
+    const commandBarResult = dispatchCommandBarKey(workbench, key, updateWorkbenchFocus);
+    if (commandBarResult) return commandBarResult;
+  }
   if (key === "/") {
     return {
       handled: true,
@@ -345,7 +368,7 @@ function projectCommandBar(
   composition: CliCompositionSnapshot,
   layout: ChatTuiWorkbenchLayoutKind,
   focus: ChatTuiFocusState,
-  state: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId">> | undefined
+  state: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId" | "acceptedSuggestionId" | "acceptedCommandName" | "acceptedPreviewText">> | undefined
 ): ChatTuiCommandBarState {
   const open = state?.open ?? focus.activePanel === "command-bar";
   const mode = state?.mode ?? (open ? "slash" : "closed");
@@ -353,66 +376,22 @@ function projectCommandBar(
   const all = commandSuggestions(composition, query);
   const cap = layout === "compact" ? 5 : 8;
   const suggestions = all.slice(0, cap);
+  const activeSuggestionId = state?.activeSuggestionId && suggestions.some((entry) => entry.id === state.activeSuggestionId)
+    ? state.activeSuggestionId
+    : suggestions[0]?.id;
   return {
     open,
     mode,
     query,
     placeholder: mode === "search" ? "Search commands, context, history, references, reasoning, plugins" : "Type / for commands or Tab to move panels",
-    ...(state?.activeSuggestionId ? { activeSuggestionId: state.activeSuggestionId } : suggestions[0] ? { activeSuggestionId: suggestions[0].id } : {}),
+    ...(activeSuggestionId ? { activeSuggestionId } : {}),
+    ...(state?.acceptedSuggestionId ? { acceptedSuggestionId: state.acceptedSuggestionId } : {}),
+    ...(state?.acceptedCommandName ? { acceptedCommandName: state.acceptedCommandName } : {}),
+    ...(state?.acceptedPreviewText ? { acceptedPreviewText: state.acceptedPreviewText } : {}),
     suggestions,
     totalSuggestionCount: all.length,
     overflowCount: Math.max(0, all.length - suggestions.length)
   };
-}
-
-function commandSuggestions(composition: CliCompositionSnapshot, query: string): readonly ChatTuiCommandSuggestion[] {
-  const pluginSuggestions = composition.contributions.flatMap((contribution) => contributionSuggestion(contribution));
-  const normalizedQuery = query.trim().toLocaleLowerCase("en");
-  return [...CORE_COMMANDS, ...pluginSuggestions]
-    .filter((entry) => normalizedQuery.length === 0 || `${entry.title} ${entry.commandName ?? ""} ${entry.kind}`.toLocaleLowerCase("en").includes(normalizedQuery))
-    .sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title, "en") || a.id.localeCompare(b.id, "en"));
-}
-
-function contributionSuggestion(contribution: CliInteractionContribution): readonly ChatTuiCommandSuggestion[] {
-  const sourceRank = contribution.source === "core" ? 100 : contribution.source === "user" ? 200 : 300;
-  if (contribution.kind === "command") {
-    const commandName = contribution.commandName ?? contribution.id;
-    return [suggestion(
-      `contribution:${contribution.id}`,
-      commandName,
-      contribution.source === "plugin" ? "plugin-action" : "control",
-      contribution.source,
-      sourceRank + (100 - (contribution.priority ?? 0)),
-      commandName,
-      contribution.targetKind,
-      contribution.pluginId
-    )];
-  }
-  if (contribution.kind === "palette-entry" && contribution.paletteEntry) {
-    return [suggestion(
-      `palette:${contribution.id}`,
-      contribution.paletteEntry.title,
-      contribution.source === "plugin" ? "plugin-action" : "palette",
-      contribution.source,
-      sourceRank + 25,
-      contribution.commandName,
-      contribution.paletteEntry.targetKind,
-      contribution.pluginId
-    )];
-  }
-  if (contribution.kind === "result-list-provider" || contribution.kind === "render-hint") {
-    return [suggestion(
-      `metadata:${contribution.id}`,
-      readableContributionTitle(contribution),
-      contribution.source === "plugin" ? "plugin-action" : "palette",
-      contribution.source,
-      sourceRank + 75,
-      contribution.commandName,
-      contribution.targetKind,
-      contribution.pluginId
-    )];
-  }
-  return [];
 }
 
 function projectReasoningRail(
@@ -498,7 +477,9 @@ function projectActivityFeed(
   rail: ChatTuiReasoningRail,
   layout: ChatTuiWorkbenchLayoutKind
 ): ChatTuiActivityFeed {
+  const pluginExecutionRecords = projectPluginExecutionActivities(input.pluginExecutions ?? [], layout);
   const records: ChatTuiActivityRecord[] = [
+    ...pluginExecutionRecords,
     {
       id: "activity:turns",
       kind: "turns",
@@ -549,38 +530,6 @@ function projectActivityFeed(
   };
 }
 
-function projectPluginShelf(
-  contributions: readonly CliInteractionContribution[],
-  summary: ChatTuiWorkbenchInput["contributionSummary"],
-  diagnostics: ChatTuiWorkbenchInput["diagnostics"],
-  readiness: ChatTuiWorkbenchInput["pluginReadiness"],
-  explanations: readonly CliPluginContributionExplanation[],
-  layout: ChatTuiWorkbenchLayoutKind
-): ChatTuiPluginShelf {
-  const byPlugin = new Map<string, CliInteractionContribution[]>();
-  for (const contribution of contributions) {
-    if (contribution.source !== "plugin") continue;
-    const pluginId = contribution.pluginId ?? pluginIdFromContributionId(contribution.id);
-    byPlugin.set(pluginId, [...(byPlugin.get(pluginId) ?? []), contribution]);
-  }
-  const diagnosticTargets = new Set(diagnostics.flatMap((entry) => entry.targetIds));
-  const items = [...byPlugin.entries()]
-    .map(([pluginId, pluginContributions]) => pluginShelfItem(pluginId, pluginContributions, explanations.filter((entry) => entry.pluginId === pluginId), diagnosticTargets, summary.conflicts))
-    .sort((a, b) => b.contributionCount - a.contributionCount || a.pluginId.localeCompare(b.pluginId, "en"));
-  const cap = layout === "compact" ? 2 : 4;
-  return {
-    readiness,
-    totalPlugins: items.length,
-    totalContributions: contributions.filter((entry) => entry.source === "plugin").length,
-    conflicts: summary.conflicts,
-    diagnostics: diagnostics.length,
-    byKind: summary.byKind,
-    items: items.slice(0, cap),
-    explanations: explanations.slice(0, layout === "compact" ? 4 : 8),
-    overflowCount: Math.max(0, items.length - cap)
-  };
-}
-
 function projectRegions(
   input: ChatTuiWorkbenchInput,
   layout: ChatTuiWorkbenchLayoutKind,
@@ -627,7 +576,7 @@ function estimatedRegionRows(regionItem: ChatTuiWorkbenchRegion): number {
 function updateWorkbenchFocus(
   workbench: ChatTuiWorkbench,
   activePanel: ChatTuiWorkbenchPanelId,
-  commandBar?: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query">>
+  commandBar?: ChatTuiCommandBarUpdate
 ): ChatTuiWorkbench {
   const previousPanel = workbench.focus.activePanel === activePanel ? workbench.focus.previousPanel : workbench.focus.activePanel;
   const nextFocus: ChatTuiFocusState = {
@@ -636,11 +585,34 @@ function updateWorkbenchFocus(
     history: boundedHistory(workbench.focus.history, activePanel),
     reason: activePanel === "command-bar" ? "command" : "keyboard"
   };
-  const nextCommandBar = {
-    ...workbench.commandBar,
+  const {
+    activeSuggestionId: _activeSuggestionId,
+    acceptedSuggestionId: _acceptedSuggestionId,
+    acceptedCommandName: _acceptedCommandName,
+    acceptedPreviewText: _acceptedPreviewText,
+    ...commandBarBase
+  } = workbench.commandBar;
+  const nextActiveSuggestionId = commandBar?.resetActiveSuggestion
+    ? undefined
+    : commandBar?.activeSuggestionId ?? workbench.commandBar.activeSuggestionId;
+  const nextAcceptedSuggestionId = commandBar?.clearAccepted
+    ? undefined
+    : commandBar?.acceptedSuggestionId ?? workbench.commandBar.acceptedSuggestionId;
+  const nextAcceptedCommandName = commandBar?.clearAccepted
+    ? undefined
+    : commandBar?.acceptedCommandName ?? workbench.commandBar.acceptedCommandName;
+  const nextAcceptedPreviewText = commandBar?.clearAccepted
+    ? undefined
+    : commandBar?.acceptedPreviewText ?? workbench.commandBar.acceptedPreviewText;
+  const nextCommandBar: ChatTuiCommandBarState = {
+    ...commandBarBase,
     open: commandBar?.open ?? (activePanel === "command-bar" ? true : workbench.commandBar.open),
     mode: commandBar?.mode ?? (activePanel === "command-bar" ? workbench.commandBar.mode === "closed" ? "slash" : workbench.commandBar.mode : workbench.commandBar.mode),
-    query: commandBar?.query ?? workbench.commandBar.query
+    query: commandBar?.query ?? workbench.commandBar.query,
+    ...(nextActiveSuggestionId ? { activeSuggestionId: nextActiveSuggestionId } : {}),
+    ...(nextAcceptedSuggestionId ? { acceptedSuggestionId: nextAcceptedSuggestionId } : {}),
+    ...(nextAcceptedCommandName ? { acceptedCommandName: nextAcceptedCommandName } : {}),
+    ...(nextAcceptedPreviewText ? { acceptedPreviewText: nextAcceptedPreviewText } : {})
   };
   if (activePanel !== "command-bar" && commandBar?.open === undefined) {
     return { ...workbench, focus: nextFocus };
@@ -710,66 +682,4 @@ function region(
 function boundedHistory(history: readonly ChatTuiWorkbenchPanelId[], activePanel: ChatTuiWorkbenchPanelId): readonly ChatTuiWorkbenchPanelId[] {
   const next = history.at(-1) === activePanel ? [...history] : [...history, activePanel];
   return next.slice(-8);
-}
-
-function readableContributionTitle(contribution: CliInteractionContribution): string {
-  const placement = typeof contribution.metadata?.placement === "string" ? contribution.metadata.placement : contribution.kind;
-  return `${contribution.pluginId ?? contribution.source}: ${placement}`;
-}
-
-function pluginShelfItem(
-  pluginId: string,
-  contributions: readonly CliInteractionContribution[],
-  explanations: readonly CliPluginContributionExplanation[],
-  diagnosticTargets: ReadonlySet<string>,
-  conflictCount: number
-): ChatTuiPluginShelfItem {
-  const permissionPreview = [...new Set(explanations.flatMap((entry) => entry.permissions))].slice(0, 4);
-  const hiddenContributionCount = explanations.filter((entry) => entry.hidden).length;
-  const activeContributionCount = explanations.filter((entry) => entry.active).length || contributions.length - hiddenContributionCount;
-  return {
-    pluginId,
-    contributionCount: contributions.length,
-    activeContributionCount,
-    hiddenContributionCount,
-    commandCount: countKind(contributions, "command"),
-    paletteEntryCount: countKind(contributions, "palette-entry"),
-    resultListProviderCount: countKind(contributions, "result-list-provider"),
-    keymapCount: countKind(contributions, "keymap"),
-    renderHintCount: countKind(contributions, "render-hint"),
-    permissionPreview,
-    helpText: explanations[0]?.helpText ?? "Plugin contribution metadata routes through governed descriptors.",
-    status: contributions.some((entry) => diagnosticTargets.has(entry.id)) ? "diagnostic" : conflictCount > 0 ? "conflict" : "ready"
-  };
-}
-
-function pluginIdFromContributionId(id: string): string {
-  const match = /^plugin:([^:]+):/.exec(id);
-  return match?.[1] ?? "plugin:unknown";
-}
-
-function countKind(contributions: readonly CliInteractionContribution[], kind: CliContributionKind): number {
-  return contributions.filter((entry) => entry.kind === kind).length;
-}
-
-function suggestion(
-  id: string,
-  title: string,
-  kind: ChatTuiCommandSuggestionKind,
-  source: ChatTuiCommandSuggestion["source"],
-  rank: number,
-  commandName?: string,
-  targetKind?: string,
-  pluginId?: string
-): ChatTuiCommandSuggestion {
-  return {
-    id,
-    title,
-    kind,
-    source,
-    ...(commandName ? { commandName } : {}),
-    ...(targetKind ? { targetKind } : {}),
-    ...(pluginId ? { pluginId } : {}),
-    rank
-  };
 }

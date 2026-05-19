@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import type { ProcessResult, ProcessRunOptions } from "@deepseek/platform-contracts";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { resolveDevCheck } from "../../src/apps/cli/src/commands/dev-check.js";
+import { resolveFileManager } from "../../src/apps/cli/src/commands/file-manager.js";
 import { resolveGitReview } from "../../src/apps/cli/src/commands/git-review.js";
+import { resolveJumpNavigator } from "../../src/apps/cli/src/commands/jump-navigator.js";
 import { resolveRepoNavigator } from "../../src/apps/cli/src/commands/repo.js";
 
 describe("first-party developer workflow command adapters", () => {
@@ -47,6 +49,49 @@ describe("first-party developer workflow command adapters", () => {
     assert.equal(grep.status, "completed");
     assert.equal(grep.resultList?.items.length, 2);
     assert.equal(grep.referenceTargets.length, 2);
+  });
+
+  it("returns file manager list, preview, and reference targets through read-only workspace boundaries", async () => {
+    const platform = new RecordingPlatform();
+    await platform.writeFile("/workspace/src/index.ts", "export const needle = true;\n");
+    await platform.writeFile("/workspace/docs/guide.md", "needle docs\n");
+
+    const list = await resolveFileManager(platform, "/workspace", "list", "src");
+    const preview = await resolveFileManager(platform, "/workspace", "preview", "/workspace/src/index.ts");
+    const references = await resolveFileManager(platform, "/workspace", "references", ".md");
+
+    assert.equal(list.status, "completed");
+    assert.equal(list.resultList?.id, "result-list:file-manager.list");
+    assert.equal(list.resultList?.items[0]?.target.kind, "file");
+    assert.equal(preview.status, "completed");
+    assert.equal(preview.data.path, "/workspace/src/index.ts");
+    assert.equal(preview.resultList?.id, "result-list:file-manager.preview");
+    assert.equal(preview.referenceTargets[0]?.path, "/workspace/src/index.ts");
+    assert.equal(references.status, "completed");
+    assert.equal(references.referenceItems.length, 1);
+    assert.equal(references.referenceTargets[0]?.path, "/workspace/docs/guide.md");
+  });
+
+  it("returns jump navigator file/text result lists while symbol jump remains deferred", async () => {
+    const platform = new RecordingPlatform();
+    await platform.writeFile("/workspace/src/index.ts", "export const needle = true;\n");
+    await platform.writeFile("/workspace/docs/guide.md", "needle docs\n");
+
+    const file = await resolveJumpNavigator(platform, "/workspace", "file", "src");
+    const text = await resolveJumpNavigator(platform, "/workspace", "text", "needle");
+    const symbol = await resolveJumpNavigator(platform, "/workspace", "symbol", "needle");
+
+    assert.equal(file.status, "completed");
+    assert.equal(file.resultList?.id, "result-list:jump.file");
+    assert.equal(file.activeTarget?.kind, "file");
+    assert.equal(text.status, "completed");
+    assert.equal(text.resultList?.id, "result-list:jump.text");
+    assert.equal(text.referenceTargets.length, 2);
+    assert.equal(symbol.status, "deferred");
+    assert.equal(symbol.resultList?.id, "result-list:jump.symbol");
+    assert.equal(symbol.activeTarget?.kind, "diagnostic");
+    assert.equal(symbol.diagnostics[0]?.code, "JUMP_NAVIGATOR_SYMBOL_DEFERRED");
+    assert.equal(platform.runs.length, 0);
   });
 
   it("defers repo recall and project index to existing chat/index providers with typed diagnostics", async () => {

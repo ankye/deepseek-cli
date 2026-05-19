@@ -5,7 +5,18 @@ import type { CliInputStrategy } from "../host/terminal-profile.js";
 import { readCliLines } from "./lines.js";
 import { readCliRawInputEvents } from "./raw-keys.js";
 
-export type CliLocalInputDispatch = (event: CliRawInputEvent) => boolean;
+export interface CliLocalInputContext {
+  readonly pending: string;
+}
+
+export interface CliLocalInputDispatchOutcome {
+  readonly handled: boolean;
+  readonly insertText?: string;
+  readonly submitText?: string;
+}
+
+export type CliLocalInputDispatchResult = boolean | CliLocalInputDispatchOutcome;
+export type CliLocalInputDispatch = (event: CliRawInputEvent, context: CliLocalInputContext) => CliLocalInputDispatchResult;
 
 export async function* readCliChatPrompts(
   input: CliInputStream,
@@ -18,9 +29,20 @@ export async function* readCliChatPrompts(
   }
   let pending = "";
   for await (const event of readCliRawInputEvents(input)) {
-    if (dispatchLocalInput?.(event)) continue;
     const key = rawInputEventToKeyName(event);
     if (!key) continue;
+    const local = dispatchLocalInput?.(event, { pending });
+    if (typeof local === "object") {
+      if (local.submitText !== undefined) {
+        yield local.submitText;
+        pending = "";
+        continue;
+      }
+      if (local.insertText !== undefined) pending = local.insertText;
+      if (local.handled) continue;
+    } else if (local) {
+      continue;
+    }
     if (key === "Enter") {
       yield pending;
       pending = "";
@@ -34,4 +56,3 @@ export async function* readCliChatPrompts(
   }
   if (pending.length > 0) yield pending;
 }
-

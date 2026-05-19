@@ -5,6 +5,7 @@ import type {
   ExtensionManagementRecord,
   ExtensionManagementStatus,
   ExtensionPermissionDiffRecord,
+  CliInteractionContribution,
   JsonObject,
   McpServerManifest,
   PluginLockfile,
@@ -22,10 +23,11 @@ import {
 } from "@deepseek/platform-contracts";
 import { explainCliPluginContribution } from "@deepseek/command-system";
 import { createDeepSeekCredentialAuthServiceFromEnv, deepSeekLiveCredentialProcessEnv } from "@deepseek/credential-auth-management";
-import { firstPartyTuiContributions, listFirstPartyDevPluginManifests, snapshotFirstPartyDevPluginPack } from "@deepseek/first-party-dev-plugins";
+import { listFirstPartyDevPluginManifests, snapshotFirstPartyDevPluginPack } from "@deepseek/first-party-dev-plugins";
 import { InMemoryMcpGateway, createRealMcpAdapter } from "@deepseek/mcp-gateway";
 import { InMemoryPluginManager, NodePlatformRuntime } from "@deepseek/platform-abstraction";
 import { InMemorySkillSystem } from "@deepseek/skill-system";
+import { firstPartyTuiContributionsWithOwnerRoutes, listBuiltInPluginOwnerRoutes, validateBuiltInPluginOwnerRoutes } from "../plugins/builtin-owner-routes.js";
 import type { CliOptions } from "../types.js";
 
 const pitPermissionDiff = "pit.extension-permission-expansion.permission-diff";
@@ -109,18 +111,30 @@ async function extensionListRecord(): Promise<ExtensionManagementRecord> {
   const credentialScopes = await credentialScopeDiagnostics(undefined);
   const firstPartyPlugins = listFirstPartyDevPluginManifests();
   const firstPartySnapshot = snapshotFirstPartyDevPluginPack();
+  const ownerRoutes = listBuiltInPluginOwnerRoutes(firstPartyPlugins);
+  const ownerRouteValidation = validateBuiltInPluginOwnerRoutes(firstPartyPlugins);
   const items: ExtensionManagementItem[] = [
     ...firstPartyPlugins.map((manifest) => pluginItem(manifest)),
     ...skills.map((summary) => skillItem(summary)),
     ...credentialScopes.map(credentialItem),
-    contributionItem("contribution:first-party-dev-plugins", "first-party-dev-plugins", ["commands", "palette", "tui", "context"]),
+    contributionItem("contribution:first-party-dev-plugins", "first-party-dev-plugins", ["commands", "owner-routes", "palette", "tui", "context"]),
     contributionItem("contribution:plugin-system", "plugin-system", ["plugin", "lockfile", "permission-diff"]),
     contributionItem("contribution:mcp-gateway", "mcp-gateway", ["mcp", "tools", "resources"])
   ];
   return baseRecord("extension.list", "completed", `listed ${items.length} extension management items`, {
     items,
     credentialScopes,
-    lifecycle: [lifecycle("first-party-dev-plugins.snapshot", "plugin-pack:deepseek.first-party-dev-plugins", "completed", firstPartySnapshot)],
+    lifecycle: [
+      lifecycle("first-party-dev-plugins.snapshot", "plugin-pack:deepseek.first-party-dev-plugins", "completed", firstPartySnapshot),
+      lifecycle("builtin-plugin-owner-routes.validate", "plugin-pack:deepseek.first-party-dev-plugins", ownerRouteValidation.ok ? "completed" : "failed", {
+        routeCount: ownerRoutes.length,
+        implemented: ownerRoutes.filter((route) => route.status === "implemented").length,
+        deferred: ownerRoutes.filter((route) => route.status === "deferred").length,
+        unsupported: ownerRoutes.filter((route) => route.status === "unsupported").length,
+        diagnostics: ownerRouteValidation.errors
+      })
+    ],
+    diagnostics: ownerRouteValidation.errors,
     referencePitFixtureIds: [pitMcpPluginPrecedence, pitContributionBoundary, pitEnvSnapshot, pitDiagnosticRedaction]
   });
 }
@@ -176,33 +190,87 @@ async function pluginApplyLockfileRecord(options: CliOptions): Promise<Extension
 }
 
 async function pluginContributionsRecord(): Promise<ExtensionManagementRecord> {
-  const explanations = firstPartyTuiContributions().map((contribution) => explainCliPluginContribution(contribution));
+  const contributions = firstPartyTuiContributionsWithOwnerRoutes();
+  const contributionById = new Map(contributions.map((contribution) => [contribution.id, contribution]));
+  const explanations = contributions.map((contribution) => explainCliPluginContribution(contribution));
   const items: ExtensionManagementItem[] = explanations.map((entry) => ({
     targetKind: "plugin-contribution",
     targetId: `plugin-contribution:${entry.contributionId}`,
     label: entry.label,
-    status: entry.degraded ? "partial" : entry.hidden ? "skipped" : entry.active ? "enabled" : "disabled",
-    summary: `${entry.kind} namespace=${entry.namespace} active=${entry.active} hidden=${entry.hidden} degraded=${entry.degraded} permissions=${entry.permissions.length} sideEffects=${entry.sideEffects.length}`,
+    status: pluginContributionStatus(entry, contributionById.get(entry.contributionId)),
+    summary: pluginContributionSummary(entry, contributionById.get(entry.contributionId)),
     provenance: {
       pluginId: entry.pluginId,
       namespace: entry.namespace,
       conflictGroup: entry.conflictGroup,
       governance: entry.governance,
       modeScopes: entry.modeScopes,
-      keymapScopes: entry.keymapScopes
+      keymapScopes: entry.keymapScopes,
+      ...ownerRouteProvenance(contributionById.get(entry.contributionId))
     },
     permissions: entry.permissions,
     actionHints: actions("inspect"),
     redaction: { class: "internal", fields: ["provenance.governance", "permissions"] }
   }));
+  const routes = listBuiltInPluginOwnerRoutes();
+  const routeValidation = validateBuiltInPluginOwnerRoutes();
   return baseRecord("extension.plugin.contributions", "completed", `listed ${items.length} plugin TUI contributions`, {
     items,
-    lifecycle: [lifecycle("plugin.contributions.explain", "plugin-pack:deepseek.first-party-dev-plugins", "completed", {
-      contributionCount: items.length,
-      explanations
-    })],
+    lifecycle: [
+      lifecycle("plugin.contributions.explain", "plugin-pack:deepseek.first-party-dev-plugins", "completed", {
+        contributionCount: items.length,
+        explanations
+      }),
+      lifecycle("builtin-plugin-owner-routes.project", "plugin-pack:deepseek.first-party-dev-plugins", routeValidation.ok ? "completed" : "failed", {
+        routeCount: routes.length,
+        implemented: routes.filter((route) => route.status === "implemented").length,
+        deferred: routes.filter((route) => route.status === "deferred").length,
+        unsupported: routes.filter((route) => route.status === "unsupported").length,
+        diagnostics: routeValidation.errors
+      })
+    ],
+    diagnostics: routeValidation.errors,
     referencePitFixtureIds: [pitContributionBoundary, pitPermissionDiff, pitDiagnosticRedaction]
   });
+}
+
+function pluginContributionStatus(
+  entry: ReturnType<typeof explainCliPluginContribution>,
+  contribution: CliInteractionContribution | undefined
+): ExtensionManagementItem["status"] {
+  const routeStatus = stringField(contribution?.metadata?.ownerRouteStatus);
+  if (entry.degraded) return "partial";
+  if (entry.hidden) return "skipped";
+  if (routeStatus === "unsupported") return "disabled";
+  if (routeStatus === "deferred") return "partial";
+  return entry.active ? "enabled" : "disabled";
+}
+
+function pluginContributionSummary(
+  entry: ReturnType<typeof explainCliPluginContribution>,
+  contribution: CliInteractionContribution | undefined
+): string {
+  const base = `${entry.kind} namespace=${entry.namespace} active=${entry.active} hidden=${entry.hidden} degraded=${entry.degraded} permissions=${entry.permissions.length} sideEffects=${entry.sideEffects.length}`;
+  const routeStatus = stringField(contribution?.metadata?.ownerRouteStatus);
+  const dispatchAvailable = typeof contribution?.metadata?.dispatchAvailable === "boolean" ? contribution.metadata.dispatchAvailable : undefined;
+  if (routeStatus) return `${base} route=${routeStatus} dispatch=${String(dispatchAvailable ?? false)}`;
+  const summary = jsonObjectField(contribution?.metadata?.ownerRouteSummary);
+  if (summary) {
+    return `${base} routes=${String(summary.dispatchable ?? 0)}/${String(summary.total ?? 0)} deferred=${String(summary.deferred ?? 0)} unsupported=${String(summary.unsupported ?? 0)}`;
+  }
+  return base;
+}
+
+function ownerRouteProvenance(contribution: CliInteractionContribution | undefined): JsonObject {
+  const provenance: Record<string, JsonObject | string | boolean | undefined> = {};
+  const route = jsonObjectField(contribution?.metadata?.ownerRoute);
+  const summary = jsonObjectField(contribution?.metadata?.ownerRouteSummary);
+  if (route) provenance.ownerRoute = route;
+  if (summary) provenance.ownerRouteSummary = summary;
+  const status = stringField(contribution?.metadata?.ownerRouteStatus);
+  if (status) provenance.ownerRouteStatus = status;
+  if (typeof contribution?.metadata?.dispatchAvailable === "boolean") provenance.dispatchAvailable = contribution.metadata.dispatchAvailable;
+  return provenance;
 }
 
 async function skillListRecord(): Promise<ExtensionManagementRecord> {
@@ -558,6 +626,14 @@ function sumEstimatedTokens(segments: readonly { readonly estimatedTokens: numbe
 
 function uniqueStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values)].sort();
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function jsonObjectField(value: unknown): JsonObject | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonObject : undefined;
 }
 
 function toJsonObject(value: unknown): JsonObject {

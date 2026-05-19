@@ -1,0 +1,17 @@
+{
+  "name": "@deepseek/builtin-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@deepseek/platform-contracts": "0.1.0",
+    "@deepseek/plugin-api": "0.1.0",
+    "@deepseek/plugin-system": "0.1.0"
+  }
+}

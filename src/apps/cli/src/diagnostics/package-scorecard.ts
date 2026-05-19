@@ -49,7 +49,6 @@ interface WorkspacePackage {
 interface EvaluationContext {
   readonly platform: PlatformRuntime;
   readonly workspaceRoot: string;
-  readonly packagesRoot: string;
   readonly pkg: WorkspacePackage;
 }
 
@@ -73,6 +72,9 @@ const roleAcceptanceEvidenceByRole: Readonly<Record<string, readonly string[]>> 
   "observability": ["src/packages/observability/src/index.test.ts", "tests/contracts/observability-privacy-contracts.test.ts", "tests/integration/observability-privacy-runtime.test.ts"],
   "platform-abstraction": ["tests/contracts/cross-platform-runtime-contracts.test.ts", "tests/contracts/remote-identity-fixtures.test.ts", "tests/matrix/fake-platforms.test.ts"],
   "platform-contracts": ["src/packages/platform-contracts/test/dependency-boundary.test.ts", "src/packages/platform-contracts/test/package-scorecard-contracts.test.ts", "tests/contracts/package-boundaries.test.ts"],
+  builtin: ["tests/contracts/builtin-plugin-registry.test.ts"],
+  "plugin-api": ["tests/contracts/plugin-api.test.ts", "tests/contracts/plugin-platform-foundation.test.ts"],
+  "plugin-system": ["tests/contracts/plugin-api.test.ts", "tests/contracts/plugin-platform-foundation.test.ts"],
   "policy-sandbox": ["src/packages/policy-sandbox/src/index.test.ts", "tests/contracts/secret-sandbox-hardening-contracts.test.ts", "tests/matrix/secret-sandbox-matrix.test.ts"],
   "prompt-assembly": ["src/packages/prompt-assembly/test/prompt-assembly.test.ts"],
   "runtime": ["src/packages/runtime/test/runtime.test.ts", "src/packages/runtime/test/runtime-tool-feedback.test.ts", "tests/integration/runtime-pipeline.test.ts"],
@@ -129,7 +131,7 @@ export const packageScorecardCatalog: PackageScorecardCatalog = {
     ...roleAcceptanceRubrics()
   ],
   criteria: [
-    criterion("package.manifest.present", "Package manifest exists", "contract", 2, true, true, ["*"], "src/packages/<name>/package.json"),
+    criterion("package.manifest.present", "Package manifest exists", "contract", 2, true, true, ["*"], "src/packages/<name>/package.json or src/plugins/<name>/package.json"),
     criterion("package.manifest.public-export", "Package public export points at src/index.ts", "contract", 2, true, true, ["*"], "package.json exports[\".\"]"),
     criterion("package.source-index.present", "Package source index exists", "maintainability", 2, true, true, ["*"], "src/index.ts"),
     criterion("package.workspace-name.matches-path", "Package name matches workspace path", "boundary", 2, true, true, ["*"], "@deepseek/<workspace>"),
@@ -158,9 +160,12 @@ export async function collectPackageScorecards(platform: PlatformRuntime = new N
   readonly aggregate: PackageScorecardAggregate;
 }> {
   const workspaceRoot = process.cwd();
-  const packagesRoot = platform.resolvePath(workspaceRoot, "src", "packages");
-  const packages = await discoverWorkspacePackages(platform, workspaceRoot, packagesRoot);
-  const scorecards = await Promise.all(packages.map((pkg) => scorePackage({ platform, workspaceRoot, packagesRoot, pkg })));
+  const workspaceRoots = [
+    platform.resolvePath(workspaceRoot, "src", "packages"),
+    platform.resolvePath(workspaceRoot, "src", "plugins")
+  ];
+  const packages = await discoverWorkspacePackages(platform, workspaceRoot, workspaceRoots);
+  const scorecards = await Promise.all(packages.map((pkg) => scorePackage({ platform, workspaceRoot, pkg })));
   return {
     catalogVersion: packageScorecardCatalog.catalogVersion,
     scorecards,
@@ -288,9 +293,10 @@ export function summarizeCriterionResults(input: {
   };
 }
 
-async function discoverWorkspacePackages(platform: PlatformRuntime, workspaceRoot: string, packagesRoot: string): Promise<readonly WorkspacePackage[]> {
-  const manifestPaths = (await platform.findFiles("package.json", packagesRoot).catch(() => []))
-    .filter((file) => /[\\/]src[\\/]packages[\\/][^\\/]+[\\/]package\.json$/.test(file))
+async function discoverWorkspacePackages(platform: PlatformRuntime, workspaceRoot: string, workspaceRoots: readonly string[]): Promise<readonly WorkspacePackage[]> {
+  const manifestPaths = (await Promise.all(workspaceRoots.map((root) => platform.findFiles("package.json", root).catch(() => []))))
+    .flat()
+    .filter((file) => /[\\/]src[\\/](packages|plugins)[\\/][^\\/]+[\\/]package\.json$/.test(file))
     .sort((a, b) => workspaceRole(a).localeCompare(workspaceRole(b)));
   const packages: WorkspacePackage[] = [];
   for (const manifestPath of manifestPaths) {
@@ -461,7 +467,7 @@ async function fileExistsCriterion(definition: PackageScorecardCriterionDefiniti
 }
 
 function workspaceNameCriterion(definition: PackageScorecardCriterionDefinition, context: EvaluationContext): PackageScorecardCriterionResult {
-  const expected = `@deepseek/${context.pkg.role}`;
+  const expected = expectedPackageNameForRole(context.pkg.role);
   const ok = context.pkg.packageName === expected;
   return criterionResult(
     definition,
@@ -470,6 +476,11 @@ function workspaceNameCriterion(definition: PackageScorecardCriterionDefinition,
     [evidence("package-manifest", context.pkg.manifestPath, ok ? "pass" : "fail")],
     ok ? [] : [diagnostic("PACKAGE_SCORECARD_WORKSPACE_NAME_MISMATCH", "error", `${context.pkg.packageName} must be named ${expected}.`, { expected, actual: context.pkg.packageName })]
   );
+}
+
+function expectedPackageNameForRole(role: string): string {
+  if (role === "builtin") return "@deepseek/builtin-plugins";
+  return `@deepseek/${role}`;
 }
 
 function internalDependencyCriterion(definition: PackageScorecardCriterionDefinition, context: EvaluationContext): PackageScorecardCriterionResult {

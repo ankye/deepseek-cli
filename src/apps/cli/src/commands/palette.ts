@@ -8,7 +8,11 @@ import type {
   CliPaletteProjectionEntry,
   CliPaletteProjectionResult,
   CliTargetRef,
-  CommandCompositionRecord
+  CommandCompositionContribution,
+  CommandCompositionRecord,
+  LosslessContextManager,
+  PlatformRuntime,
+  JsonObject
 } from "@deepseek/platform-contracts";
 import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
 import {
@@ -23,6 +27,8 @@ import {
   viProfessionalKeymapProfile
 } from "@deepseek/command-system";
 import { firstPartyPluginCommandContributions } from "@deepseek/first-party-dev-plugins";
+import { ownerRouteReadinessByCommandId } from "../plugins/builtin-owner-routes.js";
+import { executeBuiltInPluginWorkbenchRoute, type PluginWorkbenchExecutionRecord, type PluginWorkbenchExecutionSource } from "../plugins/plugin-workbench-execution.js";
 import type { CliOptions } from "../types.js";
 
 const supportedActions = new Set<CliActionKind>([
@@ -64,13 +70,66 @@ export function createCliPaletteProjection(records: readonly CommandCompositionR
   return projectCommandPalette(records);
 }
 
+export async function executePalettePluginRoute(input: {
+  readonly projection?: CliPaletteProjectionResult;
+  readonly targetId?: string;
+  readonly commandId?: string;
+  readonly source?: PluginWorkbenchExecutionSource;
+  readonly platform: PlatformRuntime;
+  readonly workspaceRoot: string;
+  readonly query?: string;
+  readonly target?: string;
+  readonly args?: readonly string[];
+  readonly losslessContext?: LosslessContextManager;
+}): Promise<PluginWorkbenchExecutionRecord> {
+  const projection = input.projection ?? createCliPaletteProjection();
+  const commandId = input.commandId ?? commandIdForPaletteTarget(projection, input.targetId);
+  return executeBuiltInPluginWorkbenchRoute({
+    commandId: commandId ?? "palette.plugin-route.missing",
+    source: input.source ?? "palette",
+    platform: input.platform,
+    workspaceRoot: input.workspaceRoot,
+    ...(input.query ? { query: input.query } : {}),
+    ...(input.target ? { target: input.target } : {}),
+    ...(input.args ? { args: input.args } : {}),
+    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {})
+  });
+}
+
 function defaultPaletteRecords(): readonly CommandCompositionRecord[] {
+  const routes = ownerRouteReadinessByCommandId();
   return [
-    ...firstPartyPluginCommandContributions().map(contributionToCompositionRecord),
+    ...firstPartyPluginCommandContributions().map((contribution) => contributionToCompositionRecord(commandContributionWithOwnerRoute(contribution, routes))),
     ...readinessCompositionRecords(),
     ...interactiveControlCompositionRecords(),
     ...modeControlCompositionRecords()
   ];
+}
+
+function commandContributionWithOwnerRoute(
+  contribution: CommandCompositionContribution,
+  routes: ReadonlyMap<string, JsonObject>
+): CommandCompositionContribution {
+  const commandId = typeof contribution.metadata?.commandId === "string" ? contribution.metadata.commandId : undefined;
+  const ownerRoute = commandId ? routes.get(commandId) : undefined;
+  if (!ownerRoute) return contribution;
+  return {
+    ...contribution,
+    projection: {
+      ...(contribution.projection ?? {}),
+      metadata: {
+        ...(contribution.projection?.metadata ?? {}),
+        ownerRouteStatus: ownerRoute.status,
+        dispatchAvailable: ownerRoute.dispatchAvailable
+      }
+    },
+    metadata: {
+      ...(contribution.metadata ?? {}),
+      ownerRoute,
+      ownerRouteStatus: ownerRoute.status,
+      dispatchAvailable: ownerRoute.dispatchAvailable
+    }
+  };
 }
 
 export function paletteKeymapProfile(options: Pick<CliOptions, "paletteKeymapProfile">): CliKeymapProfile {
@@ -152,6 +211,16 @@ function entryContribution(entry: CliPaletteProjectionEntry): CliCompositionSnap
   };
 }
 
+function commandIdForPaletteTarget(projection: CliPaletteProjectionResult, targetId: string | undefined): string | undefined {
+  if (!targetId) return undefined;
+  const entry = projection.entries.find((candidate) =>
+    candidate.entry.id === targetId ||
+    candidate.target.id === targetId ||
+    `palette-item:${candidate.entry.id}` === targetId
+  );
+  return stringField(entry?.metadata.recordMetadata, "commandId") ?? stringField(entry?.target.metadata?.recordMetadata, "commandId");
+}
+
 function actionFailure(
   code: CliPaletteDiagnostic["code"],
   message: string,
@@ -178,6 +247,12 @@ function actionFailure(
     }],
     redaction: { class: "internal" }
   };
+}
+
+function stringField(container: unknown, key: string): string | undefined {
+  if (typeof container !== "object" || container === null || Array.isArray(container)) return undefined;
+  const value = (container as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 export function renderPaletteProjection(projection: CliPaletteProjectionResult, output: AgentLoopOutputMode): readonly string[] {

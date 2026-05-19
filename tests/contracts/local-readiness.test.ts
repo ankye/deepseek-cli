@@ -84,7 +84,7 @@ describe("local readiness contracts", () => {
     assert.equal(result.checks.some((check) => check.id === "release.verification"), true);
     assert.equal(result.metadata.release && typeof result.metadata.release === "object", true);
     assert.equal(release.verification.acceptanceEvidencePaths.includes("tests/acceptance/acceptance-index.md"), true);
-    assert.equal(release.firstPartyPluginPack?.pluginCount, 4);
+    assert.equal(release.firstPartyPluginPack?.pluginCount, 6);
     assert.equal(release.checks.some((check) => check.id === "release.first-party-dev-plugins" && check.status === "pass"), true);
     assert.equal(JSON.stringify(result).includes("npm publish --dry-run"), true);
     assert.equal(JSON.stringify(result).includes(fakeSecret), false);
