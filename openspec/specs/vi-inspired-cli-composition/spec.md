@@ -5,21 +5,21 @@ TBD - created by archiving change split-cli-host-and-architecture-scale-guardrai
 ## Requirements
 ### Requirement: Vi-Inspired Composition Model / Vi 启发式组合模型
 
-The CLI SHALL define a vi-inspired composition model built from explicit modes, composable actions, typed targets, optional counts, repeatable commands, command palette entries, keymap contributions, and extension contribution manifests.
+The CLI SHALL model vi-inspired interactions as typed actions and targets that can drive result-list navigation, command execution, references, and TUI workbench panel focus without relying on prompt text. Workbench focus actions MUST remain local and deterministic.
 
-CLI 必须定义 vi-inspired composition model，由显式 modes、可组合 actions、类型化 targets、可选 counts、可重复 commands、command palette entries、keymap contributions 和 extension contribution manifests 组成。
+CLI 必须将 vi-inspired interactions 建模为 typed actions 与 targets，可驱动 result-list navigation、command execution、references 与 TUI workbench panel focus，且不依赖 prompt text。Workbench focus actions 必须保持本地且确定性。
 
-#### Scenario: Modes are explicit state / Mode 是显式状态
+#### Scenario: Vi keys drive workbench focus
 
-- **WHEN** the CLI enters prompt editing, navigation, command entry, approval, selection, or result-list interaction
-- **THEN** the active mode is represented explicitly and renderer/input behavior is derived from that mode
-- **中文** 当 CLI 进入 prompt editing、navigation、command entry、approval、selection 或 result-list interaction 时，active mode 必须显式表示，renderer/input 行为必须从该 mode 派生。
+- **WHEN** a compatible TUI dispatches panel navigation keys
+- **THEN** the focused panel changes through typed local state, command bar and inspector projections update, and model-visible commands remain unchanged
+- **中文** 当兼容 TUI 分发 panel navigation keys 时，focused panel 必须通过 typed local state 改变，command bar 与 inspector projections 必须更新，model-visible commands 保持不变。
 
-#### Scenario: Actions target structured objects / Action 作用于结构化对象
+#### Scenario: Existing result-list actions keep working
 
-- **WHEN** a user invokes an action such as open, inspect, copy, retry, explain, diff, apply, revert, search, narrow, expand, accept, or deny
-- **THEN** the action resolves against typed targets such as message, turn, file reference, diff hunk, diagnostic, command, session, task, approval request, extension, or result-list item
-- **中文** 当用户调用 open、inspect、copy、retry、explain、diff、apply、revert、search、narrow、expand、accept 或 deny 等 action 时，该 action 必须解析到 message、turn、file reference、diff hunk、diagnostic、command、session、task、approval request、extension 或 result-list item 等类型化 target。
+- **WHEN** the focused panel is a result list and the user dispatches j, k, gg, G, Enter, or reference actions
+- **THEN** existing vi-inspired result-list behavior remains deterministic and compatible with palette references and jump history
+- **中文** 当 focused panel 是 result list 且用户触发 j、k、gg、G、Enter 或 reference actions 时，既有 vi-inspired result-list 行为必须保持确定性，并兼容 palette references 与 jump history。
 
 ### Requirement: Multi-File Reference Sets / 多文件引用集
 
@@ -408,17 +408,89 @@ Vi-inspired composition model 必须将其 local modes 映射到 canonical CLI i
 
 ### Requirement: Raw-Key Mode Is Optional / Raw-Key Mode 可选
 
-Raw terminal key handling SHALL be an optional renderer/input profile over the same action model, not a prerequisite for vi-inspired navigation.
+Raw terminal key handling SHALL be an optional renderer/input profile over the same action model, not a prerequisite for vi-inspired navigation, and SHALL provide professional-mode evidence before being counted as product-complete.
 
-Raw terminal key handling 必须是同一 action model 上的可选 renderer/input profile，而不是 vi-inspired navigation 的前置条件。
+Raw terminal key handling 必须是同一 action model 上的可选 renderer/input profile，而不是 vi-inspired navigation 的前置条件；且在被计为 product-complete 前必须提供 professional-mode evidence。
 
 #### Scenario: Slash controls preserve semantics / Slash 控制保留语义
 - **WHEN** raw key handling is unavailable or disabled
-- **THEN** slash-driven controls still update active target, result-list focus, reference sets, and jump history with identical structured action results
-- **中文** 当 raw key handling 不可用或被禁用时，slash-driven controls 仍必须以相同 structured action results 更新 active target、result-list focus、reference sets 与 jump history。
+- **THEN** slash-driven controls still update active target, result-list focus, reference sets, jump history, plugin contribution focus, and diagnostics with identical structured action results
+- **中文** 当 raw key handling 不可用或被禁用时，slash-driven controls 仍必须以相同 structured action results 更新 active target、result-list focus、reference sets、jump history、plugin contribution focus 与 diagnostics。
 
 #### Scenario: Keymap profile declares mode support / Keymap Profile 声明 Mode 支持
 - **WHEN** a keymap contribution is registered
-- **THEN** it declares the interaction/composition modes where the binding is valid and receives deterministic conflict diagnostics when overlapping with another binding
-- **中文** 当 keymap contribution 被注册时，必须声明该 binding 有效的 interaction/composition modes，并在与其他 binding 重叠时收到确定性 conflict diagnostics。
+- **THEN** it declares the interaction/composition modes where the binding is valid, whether it participates in raw or line input, and receives deterministic conflict diagnostics when overlapping with another binding
+- **中文** 当 keymap contribution 被注册时，必须声明该 binding 有效的 interaction/composition modes、是否参与 raw 或 line input，并在与其他 binding 重叠时收到确定性 conflict diagnostics。
+
+### Requirement: Professional Vi Key Grammar / 专业 Vi 快捷键 Grammar
+
+The vi-inspired composition layer SHALL parse count prefixes, multi-key sequences, leader scopes, command/search entry, and Escape cancellation as typed local grammar state.
+
+Vi-inspired composition layer 必须将 count prefixes、多键序列、leader scopes、command/search entry 与 Escape cancellation 解析为类型化 local grammar state。
+
+#### Scenario: Count prefix applies to navigation / Count 前缀应用于导航
+
+- **WHEN** a user enters a count followed by a supported navigation action such as `5j`, `3k`, `10G`, or `2Ctrl+d`
+- **THEN** action resolution applies the bounded count deterministically, records the count in action evidence, and clamps movement at list/scroll boundaries
+- **中文** 当用户输入 count 后接支持的 navigation action，如 `5j`、`3k`、`10G` 或 `2Ctrl+d` 时，action resolution 必须确定性应用有界 count，在 action evidence 中记录 count，并在 list/scroll 边界处 clamp movement。
+
+#### Scenario: Leader namespace routes plugins / Leader 命名空间路由插件
+
+- **WHEN** a plugin registers leader-prefixed bindings
+- **THEN** those bindings are namespaced by plugin id or configured alias, appear in key help, and cannot shadow core safety bindings unless a user override explicitly allows it
+- **中文** 当 plugin 注册 leader-prefixed bindings 时，这些 bindings 必须按 plugin id 或配置别名 namespaced，显示在 key help 中，且不得覆盖 core safety bindings，除非 user override 显式允许。
+
+### Requirement: Basic TUI Uses Vi-Inspired Composition Frame / 基础 TUI 使用 Vi 启发式组合框架
+
+The basic chat TUI SHALL treat mode, target, action, result-list, jump history, and reference set as the core interaction frame before adding plugin-contributed controls.
+
+基础 chat TUI 必须将 mode、target、action、result-list、jump history 与 reference set 作为核心交互框架，然后再添加 plugin-contributed controls。
+
+#### Scenario: Prompt shell exposes composition state / Prompt Shell 暴露组合状态
+
+- **WHEN** the basic chat shell renders startup status or local control output
+- **THEN** it identifies the active interaction/composition profile and keeps local commands mapped to typed actions or typed command results
+- **中文** 当基础 chat shell 渲染 startup status 或 local control output 时，必须标识 active interaction/composition profile，并保持 local commands 映射到 typed actions 或 typed command results。
+
+#### Scenario: Plugin controls are declarative follow-up / 插件控制是声明式后续工作
+
+- **WHEN** future plugins add commands, actions, target resolvers, result-list providers, keymap entries, palette entries, or render hints
+- **THEN** they must contribute through versioned declarative manifests and deterministic conflict diagnostics over the same vi-inspired composition model
+- **中文** 当未来插件添加 commands、actions、target resolvers、result-list providers、keymap entries、palette entries 或 render hints 时，它们必须通过版本化声明式 manifests 和同一 vi-inspired composition model 上的确定性冲突诊断进行贡献。
+
+#### Scenario: Plugins cannot bypass basic shell contracts / 插件不能绕过基础 Shell 契约
+
+- **WHEN** a plugin-contributed interaction triggers executable work
+- **THEN** the CLI must route it through typed command/action requests, policy, runtime, and audit paths, preserving structured output parity and terminal-profile degradation
+- **中文** 当 plugin-contributed interaction 触发可执行工作时，CLI 必须通过 typed command/action requests、policy、runtime 与 audit paths 路由，并保留 structured output parity 与 terminal-profile degradation。
+
+### Requirement: TUI Dispatch Uses Vi-Inspired Composition / TUI Dispatch 使用 Vi 启发式组合
+
+The production TUI framework SHALL use the vi-inspired composition snapshot as the canonical local state for modes, active targets, result lists, reference sets, jump history, and contributions.
+
+Production TUI framework 必须使用 vi-inspired composition snapshot 作为 modes、active targets、result lists、reference sets、jump history 与 contributions 的 canonical local state。
+
+#### Scenario: Mode state maps to composition snapshot / Mode 状态映射到组合快照
+
+- **WHEN** the TUI enters prompt, normal, command, approval, selection, or result-list behavior
+- **THEN** the framework state and composition snapshot expose matching interaction mode and active target metadata
+- **中文** 当 TUI 进入 prompt、normal、command、approval、selection 或 result-list behavior 时，framework state 与 composition snapshot 必须暴露一致的 interaction mode 与 active target metadata。
+
+#### Scenario: Contributions are part of composition / Contributions 属于组合模型
+
+- **WHEN** core, user, or plugin contributions are registered with the TUI framework
+- **THEN** the accepted contributions are represented as composition contributions with source, kind, ids, priority, keymap or palette metadata, and diagnostics
+- **中文** 当 core、user 或 plugin contributions 注册到 TUI framework 时，被接受的 contributions 必须以 composition contributions 表示，包含 source、kind、ids、priority、keymap 或 palette metadata 与 diagnostics。
+
+### Requirement: Vim Emulation Still Does Not Block Production TUI / Vim 模拟不阻塞 Production TUI
+
+The production TUI framework SHALL be complete as a vi-inspired action framework without requiring full Vim emulation.
+
+Production TUI framework 必须作为 vi-inspired action framework 完整可用，但不得要求完整 Vim 模拟。
+
+#### Scenario: Unsupported Vim feature is explicit diagnostic / 不支持的 Vim 功能是显式诊断
+
+- **WHEN** a contribution or key dispatch requests registers, macros, marks, visual mode, text objects, or editor-buffer semantics
+- **THEN** the framework records an unsupported capability diagnostic and preserves the prior TUI state
+- **中文** 当 contribution 或 key dispatch 请求 registers、macros、marks、visual mode、text objects 或 editor-buffer semantics 时，framework 必须记录 unsupported capability diagnostic，并保留之前的 TUI state。
 

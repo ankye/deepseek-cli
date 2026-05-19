@@ -49,6 +49,11 @@ export function resolveViKeySequence(input: ResolveViKeySequenceInput): CliKeySe
   const { count, commandKeys } = splitCount(state.keys);
   if (commandKeys.length === 0) return pending(state);
   const first = commandKeys[0];
+  const bindings = profile.contributions
+    .map((contribution) => contribution.keymap)
+    .filter((entry): entry is CliKeymapEntry => entry !== undefined && entry.mode === input.mode);
+  const exact = bindings.find((entry) => sameSequence(entrySequence(entry), commandKeys));
+  if (exact && exact.targetKind !== "command") return resolvedFromEntry(state, exact, count);
   if (first === "Escape") return cancelled({ ...state, status: "cancelled" });
   const commandMode = commandModeForKey(first);
   if (commandMode && commandKeys.length === 1) {
@@ -65,22 +70,7 @@ export function resolveViKeySequence(input: ResolveViKeySequenceInput): CliKeySe
     };
   }
 
-  const bindings = profile.contributions
-    .map((contribution) => contribution.keymap)
-    .filter((entry): entry is CliKeymapEntry => entry !== undefined && entry.mode === input.mode);
-  const exact = bindings.find((entry) => sameSequence(entrySequence(entry), commandKeys));
-  if (exact) {
-    return {
-      schemaVersion: CLI_PALETTE_SCHEMA_VERSION,
-      state: { ...state, status: "resolved" },
-      status: "resolved",
-      action: exact.action,
-      ...(exact.targetKind ? { targetKind: exact.targetKind } : {}),
-      ...(count !== undefined ? { count } : {}),
-      previewText: exact.preview ?? exact.description ?? `${exact.key} -> ${exact.action}`,
-      redaction: { class: "public" }
-    };
-  }
+  if (exact) return resolvedFromEntry(state, exact, count);
   if (bindings.some((entry) => isPrefix(commandKeys, entrySequence(entry)))) {
     if ((input.elapsedMs ?? 0) > (input.sequenceTimeoutMs ?? 1000)) {
       return {
@@ -104,6 +94,23 @@ export function resolveViKeySequence(input: ResolveViKeySequenceInput): CliKeySe
       code: "CLI_KEY_SEQUENCE_UNBOUND",
       message: `No vi-professional binding for ${commandKeys.join(" ")} in ${input.mode} mode.`
     },
+    redaction: { class: "public" }
+  };
+}
+
+function resolvedFromEntry(
+  state: CliKeySequenceState,
+  exact: CliKeymapEntry,
+  count: number | undefined
+): CliKeySequenceResolution {
+  return {
+    schemaVersion: CLI_PALETTE_SCHEMA_VERSION,
+    state: { ...state, status: "resolved" },
+    status: "resolved",
+    action: exact.action,
+    ...(exact.targetKind ? { targetKind: exact.targetKind } : {}),
+    ...(count !== undefined ? { count } : {}),
+    previewText: exact.preview ?? exact.description ?? `${exact.key} -> ${exact.action}`,
     redaction: { class: "public" }
   };
 }

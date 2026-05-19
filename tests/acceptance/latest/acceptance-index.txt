@@ -2,11 +2,11 @@
 
 Command: npm run acceptance:index
 Exit Code: 0
-Duration Ms: 401
+Duration Ms: 247
 
 ## stdout
 
-> deepseek-cli-platform@0.1.0 acceptance:index
+> deepseek-cli-platform@0.1.8 acceptance:index
 > node scripts/write-acceptance-index.mjs
 
 wrote tests/acceptance/acceptance-index.md

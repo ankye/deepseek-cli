@@ -224,9 +224,15 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
   const conflicts: ChatTuiDiagnostic[] = [];
   const malformed: ChatTuiDiagnostic[] = [];
   const hiddenContributionIds = new Set<string>();
+  const rejectedContributionIds = new Set<string>();
 
   for (const contribution of contributions) {
-    malformed.push(...validateContributionShape(contribution));
+    const shapeDiagnostics = validateContributionShape(contribution);
+    if (shapeDiagnostics.length > 0) {
+      malformed.push(...shapeDiagnostics);
+      rejectedContributionIds.add(contribution.id);
+      continue;
+    }
     const key = contributionConflictKey(contribution);
     const existing = byConflictKey.get(key);
     if (!existing) {
@@ -259,7 +265,7 @@ export function createChatTuiContributionRegistry(input: ChatTuiContributionInpu
     .map((contribution) => explainCliPluginContribution(contribution, {
       active: acceptedIds.has(contribution.id),
       hidden: hiddenContributionIds.has(contribution.id),
-      degraded: (diagnosticsById.get(contribution.id) ?? []).length > 0,
+      degraded: rejectedContributionIds.has(contribution.id) || (diagnosticsById.get(contribution.id) ?? []).length > 0,
       diagnostics: diagnosticsById.get(contribution.id) ?? []
     }))
     .sort((a, b) => a.contributionId.localeCompare(b.contributionId, "en"));
@@ -474,14 +480,14 @@ function dispatchResolvedViAction(
   if (resolution.commandMode || resolution.action === "search") {
     return commandDispatch(state, key, resolution.commandMode === "search" ? "search" : resolution.commandMode === "help" ? "help" : "command");
   }
-  if (action === "cancel") {
+  if (action === "cancel" && resolution.targetKind !== "approval-request") {
     return dispatchChatTuiKey(state, "Escape");
   }
   const target = targetForResolvedAction(state, resolution.targetKind);
   if (!target) return diagnosticDispatch(state, key, "CHAT_TUI_TARGET_MISSING", `No active target for ${action}.`);
   const result = resolveCliAction({
     action,
-    mode: actionMode(action),
+    mode: resolution.targetKind === "approval-request" ? "approval" : actionMode(action),
     target,
     dryRun: true,
     ...(resolution.count !== undefined ? { count: resolution.count } : {}),
@@ -526,6 +532,11 @@ function targetForResolvedAction(state: ChatTuiStateSnapshot, targetKind: CliTar
   if (targetKind === "result-list") return activeResultListTarget(state.composition);
   if (targetKind === "result-list-item") return activeResultListItemTarget(state.composition);
   if (targetKind === "panel") return { kind: "panel", id: state.workbench.focus.activePanel, label: state.workbench.focus.activePanel };
+  if (targetKind === "approval-request") return state.composition.activeTarget?.kind === "approval-request"
+    ? state.composition.activeTarget
+    : state.composition.resultLists
+      .find((list) => list.kind === "approvals")
+      ?.items.find((item) => item.target.kind === "approval-request")?.target;
   if (targetKind === "plugin-contribution") {
     const explanation = state.pluginContributionExplanations.find((entry) => entry.active) ?? state.pluginContributionExplanations[0];
     return explanation ? {
@@ -657,6 +668,7 @@ function activeResultListItemTarget(composition: CliCompositionSnapshot): CliTar
 
 function actionMode(action: CliActionKind): CliInteractionMode {
   if (action === "next" || action === "previous" || action === "first" || action === "last" || action === "back" || action === "forward") return "result-list";
+  if (action === "accept" || action === "deny") return "approval";
   return "normal";
 }
 

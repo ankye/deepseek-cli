@@ -2,11 +2,11 @@
 
 Command: npm run test:matrix
 Exit Code: 0
-Duration Ms: 820
+Duration Ms: 877
 
 ## stdout
 
-> deepseek-cli-platform@0.1.0 test:matrix
+> deepseek-cli-platform@0.1.8 test:matrix
 > tsx --test "tests/matrix/**/*.test.ts"
 
 TAP version 13
@@ -14,209 +14,228 @@ TAP version 13
     # Subtest: renders deterministic approval fallback across terminal profiles
     ok 1 - renders deterministic approval fallback across terminal profiles
       ---
-      duration_ms: 3.1124
+      duration_ms: 3.0603
       type: 'test'
       ...
     1..1
 ok 1 - approval rendering terminal matrix
   ---
-  duration_ms: 4.0093
+  duration_ms: 3.9221
   type: 'suite'
   ...
 # Subtest: checkpoint undo platform matrix
     # Subtest: rejects stale restores consistently across writable fake platforms
     ok 1 - rejects stale restores consistently across writable fake platforms
       ---
-      duration_ms: 2.7387
+      duration_ms: 2.8139
       type: 'test'
       ...
     1..1
 ok 2 - checkpoint undo platform matrix
   ---
-  duration_ms: 3.3036
+  duration_ms: 3.3704
   type: 'suite'
   ...
 # Subtest: CLI mode terminal matrix
     # Subtest: renders mode controls and verification markers deterministically across terminal profiles
     ok 1 - renders mode controls and verification markers deterministically across terminal profiles
       ---
-      duration_ms: 1.6335
+      duration_ms: 1.9241
       type: 'test'
       ...
     1..1
 ok 3 - CLI mode terminal matrix
   ---
-  duration_ms: 2.1612
+  duration_ms: 2.5384
   type: 'suite'
   ...
 # Subtest: code intelligence platform matrix
     # Subtest: indexes supported files without live IDE dependencies across fake platforms
     ok 1 - indexes supported files without live IDE dependencies across fake platforms
       ---
-      duration_ms: 3.4269
+      duration_ms: 3.5067
       type: 'test'
       ...
     1..1
 ok 4 - code intelligence platform matrix
   ---
-  duration_ms: 3.9748
+  duration_ms: 4.0884
   type: 'suite'
   ...
 # Subtest: context projection matrix
     # Subtest: covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
     ok 1 - covers empty, large, secret, stale-cache, hard-budget, and degraded-memory scenarios
       ---
-      duration_ms: 3.2328
+      duration_ms: 4.5943
       type: 'test'
       ...
     1..1
 ok 5 - context projection matrix
   ---
-  duration_ms: 3.8434
+  duration_ms: 5.59
   type: 'suite'
   ...
 # Subtest: fake platform matrix
     # Subtest: covers macOS, Windows, Linux, WSL, CI, and remote host modes
     ok 1 - covers macOS, Windows, Linux, WSL, CI, and remote host modes
       ---
-      duration_ms: 2.2796
+      duration_ms: 2.2797
       type: 'test'
       ...
     # Subtest: covers config paths, workspace metadata paths, and atomic write behavior
     ok 2 - covers config paths, workspace metadata paths, and atomic write behavior
       ---
-      duration_ms: 1.036
+      duration_ms: 1.2681
       type: 'test'
       ...
     # Subtest: covers path rejection, WSL translation, search fallback, and unavailable providers
     ok 3 - covers path rejection, WSL translation, search fallback, and unavailable providers
       ---
-      duration_ms: 0.543
+      duration_ms: 0.7707
       type: 'test'
       ...
     # Subtest: rejects reference pit path canonicalization bypass syntaxes
     ok 4 - rejects reference pit path canonicalization bypass syntaxes
       ---
-      duration_ms: 0.2872
+      duration_ms: 0.3125
       type: 'test'
       ...
     # Subtest: covers core tool path, search, process, and output bounding behavior across the fake matrix
     ok 5 - covers core tool path, search, process, and output bounding behavior across the fake matrix
       ---
-      duration_ms: 19.7592
+      duration_ms: 19.6015
       type: 'test'
       ...
     1..5
 ok 6 - fake platform matrix
   ---
-  duration_ms: 24.6209
+  duration_ms: 24.9978
   type: 'suite'
   ...
 # Subtest: hook system matrix
     # Subtest: covers trust, disabled, malformed, ordering, timeout, and failure policies
     ok 1 - covers trust, disabled, malformed, ordering, timeout, and failure policies
       ---
-      duration_ms: 5.2613
+      duration_ms: 6.663
       type: 'test'
       ...
     1..1
 ok 7 - hook system matrix
   ---
-  duration_ms: 6.3183
+  duration_ms: 7.6735
   type: 'suite'
   ...
 # Subtest: live-agent-tool-execution preflight matrix
     # Subtest: rejects parent traversal on every platform
     ok 1 - rejects parent traversal on every platform
       ---
-      duration_ms: 1.4887
+      duration_ms: 1.5191
       type: 'test'
       ...
     # Subtest: rejects null bytes on every platform
     ok 2 - rejects null bytes on every platform
       ---
-      duration_ms: 0.3572
+      duration_ms: 0.277
       type: 'test'
       ...
     # Subtest: rejects absolute paths on every platform
     ok 3 - rejects absolute paths on every platform
       ---
-      duration_ms: 0.3355
+      duration_ms: 0.2311
       type: 'test'
       ...
     # Subtest: normalises mixed separators into the platform-native shape without rejecting
     ok 4 - normalises mixed separators into the platform-native shape without rejecting
       ---
-      duration_ms: 1.2018
+      duration_ms: 1.0387
       type: 'test'
       ...
     1..4
 ok 8 - live-agent-tool-execution preflight matrix
   ---
-  duration_ms: 4.477
+  duration_ms: 3.8174
   type: 'suite'
   ...
 # Subtest: MCP gateway matrix
     # Subtest: covers trust, disabled, malformed, transport, target, timeout, and redaction modes
     ok 1 - covers trust, disabled, malformed, transport, target, timeout, and redaction modes
       ---
-      duration_ms: 11.9584
+      duration_ms: 18.8139
       type: 'test'
       ...
     1..1
 ok 9 - MCP gateway matrix
   ---
-  duration_ms: 12.5558
+  duration_ms: 19.6702
   type: 'suite'
   ...
 # Subtest: observability privacy matrix
     # Subtest: covers deterministic privacy modes
     ok 1 - covers deterministic privacy modes
       ---
-      duration_ms: 3.923
+      duration_ms: 3.9303
       type: 'test'
       ...
     1..1
 ok 10 - observability privacy matrix
   ---
-  duration_ms: 4.7476
+  duration_ms: 4.8725
+  type: 'suite'
+  ...
+# Subtest: plugin extension TUI matrix
+    # Subtest: explains active, hidden, degraded, conflicted, rejected, read-only, side-effecting, and permission-gated actions
+    ok 1 - explains active, hidden, degraded, conflicted, rejected, read-only, side-effecting, and permission-gated actions
+      ---
+      duration_ms: 11.3125
+      type: 'test'
+      ...
+    # Subtest: creates dry-run plugin action descriptors that never grant direct host execution
+    ok 2 - creates dry-run plugin action descriptors that never grant direct host execution
+      ---
+      duration_ms: 0.2501
+      type: 'test'
+      ...
+    1..2
+ok 11 - plugin extension TUI matrix
+  ---
+  duration_ms: 12.2338
   type: 'suite'
   ...
 # Subtest: secret sandbox platform matrix
     # Subtest: covers deterministic sandbox decisions across fake platform modes
     ok 1 - covers deterministic sandbox decisions across fake platform modes
       ---
-      duration_ms: 3.3221
+      duration_ms: 3.203
       type: 'test'
       ...
     1..1
-ok 11 - secret sandbox platform matrix
+ok 12 - secret sandbox platform matrix
   ---
-  duration_ms: 3.9247
+  duration_ms: 3.7718
   type: 'suite'
   ...
 # Subtest: skill system matrix
     # Subtest: covers trust, disabled, malformed, summary, activation, and projection modes
     ok 1 - covers trust, disabled, malformed, summary, activation, and projection modes
       ---
-      duration_ms: 1.7551
+      duration_ms: 2.0551
       type: 'test'
       ...
     1..1
-ok 12 - skill system matrix
+ok 13 - skill system matrix
   ---
-  duration_ms: 2.2508
+  duration_ms: 2.6121
   type: 'suite'
   ...
-1..12
-# tests 19
-# suites 12
-# pass 19
+1..13
+# tests 21
+# suites 13
+# pass 21
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 510.2725
+# duration_ms 558.5519
 
 ## stderr
 

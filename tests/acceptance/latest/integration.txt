@@ -2,11 +2,11 @@
 
 Command: npm run test:integration
 Exit Code: 0
-Duration Ms: 4169
+Duration Ms: 5405
 
 ## stdout
 
-> deepseek-cli-platform@0.1.0 test:integration
+> deepseek-cli-platform@0.1.8 test:integration
 > tsx --test "tests/integration/**/*.test.ts"
 
 TAP version 13
@@ -14,459 +14,534 @@ TAP version 13
     # Subtest: records typed skipped phases for a simple single-agent turn
     ok 1 - records typed skipped phases for a simple single-agent turn
       ---
-      duration_ms: 66.8089
+      duration_ms: 72.6501
       type: 'test'
       ...
     # Subtest: records evidence phase and consumed evidence budget for fact-sensitive project tasks
     ok 2 - records evidence phase and consumed evidence budget for fact-sensitive project tasks
       ---
-      duration_ms: 43.5866
+      duration_ms: 47.4738
       type: 'test'
       ...
     # Subtest: requires verifier verdict and reconciles generated artifacts without overstating success
     ok 3 - requires verifier verdict and reconciles generated artifacts without overstating success
       ---
-      duration_ms: 23.4913
+      duration_ms: 33.6681
       type: 'test'
       ...
-    # Subtest: records verifier failure, governed repair attempt, and rerun chain when repair budget exists
-    ok 4 - records verifier failure, governed repair attempt, and rerun chain when repair budget exists
+    # Subtest: fails closed when verifier repair budget exists but self-repair is disabled
+    ok 4 - fails closed when verifier repair budget exists but self-repair is disabled
       ---
-      duration_ms: 18.041
+      duration_ms: 23.9883
+      type: 'test'
+      ...
+    # Subtest: feeds verifier failure back through self-repair before accepting final completion
+    ok 5 - feeds verifier failure back through self-repair before accepting final completion
+      ---
+      duration_ms: 48.6995
       type: 'test'
       ...
     # Subtest: credits independent command evidence before reporting verifier pass
-    ok 5 - credits independent command evidence before reporting verifier pass
+    ok 6 - credits independent command evidence before reporting verifier pass
       ---
-      duration_ms: 23.7788
+      duration_ms: 32.0578
       type: 'test'
       ...
     # Subtest: reports reasoning effort separately from evidence and verification budgets
-    ok 6 - reports reasoning effort separately from evidence and verification budgets
+    ok 7 - reports reasoning effort separately from evidence and verification budgets
       ---
-      duration_ms: 12.3202
+      duration_ms: 13.4548
       type: 'test'
       ...
-    1..6
+    # Subtest: maps DeepSeek low and medium thinking effort to high per provider API contract
+    ok 8 - maps DeepSeek low and medium thinking effort to high per provider API contract
+      ---
+      duration_ms: 0.2306
+      type: 'test'
+      ...
+    1..8
 ok 1 - agent loop mode orchestration
   ---
-  duration_ms: 189.2091
+  duration_ms: 273.751
   type: 'suite'
   ...
 # Subtest: chat SIGINT cancellation
     # Subtest: first SIGINT cancels active turn and leaves REPL alive
     ok 1 - first SIGINT cancels active turn and leaves REPL alive
       ---
-      duration_ms: 55.9062
+      duration_ms: 86.6579
       type: 'test'
       ...
     # Subtest: /cancel on idle prints nothing-to-cancel notice
     ok 2 - /cancel on idle prints nothing-to-cancel notice
       ---
-      duration_ms: 10.1507
+      duration_ms: 12.3182
       type: 'test'
       ...
     # Subtest: agent.loop.cancelled is emitted when runtime receives aborted signal
     ok 3 - agent.loop.cancelled is emitted when runtime receives aborted signal
       ---
-      duration_ms: 31.2293
+      duration_ms: 41.9808
       type: 'test'
       ...
     1..3
 ok 2 - chat SIGINT cancellation
   ---
-  duration_ms: 98.3345
+  duration_ms: 142.2228
+  type: 'suite'
+  ...
+# Subtest: chat TUI workbench interaction experience
+    # Subtest: renders a coherent startup frame and supports local focus, command, reasoning, and inspector flows
+    ok 1 - renders a coherent startup frame and supports local focus, command, reasoning, and inspector flows
+      ---
+      duration_ms: 49.1023
+      type: 'test'
+      ...
+    1..1
+ok 3 - chat TUI workbench interaction experience
+  ---
+  duration_ms: 50.0193
   type: 'suite'
   ...
 # Subtest: checkpoint undo runtime integration
     # Subtest: records checkpoint evidence for governed edits and supports undo through workspace state
     ok 1 - records checkpoint evidence for governed edits and supports undo through workspace state
       ---
-      duration_ms: 36.0578
+      duration_ms: 30.3233
       type: 'test'
       ...
     1..1
-ok 3 - checkpoint undo runtime integration
+ok 4 - checkpoint undo runtime integration
   ---
-  duration_ms: 36.9792
+  duration_ms: 31.3699
   type: 'suite'
   ...
 # Subtest: code intelligence context integration
     # Subtest: feeds diagnostic context nodes into context projection
     ok 1 - feeds diagnostic context nodes into context projection
       ---
-      duration_ms: 5.9446
+      duration_ms: 8.6938
       type: 'test'
       ...
     # Subtest: auto-enriches projection from workspace file without a manual contextNodes call
     ok 2 - auto-enriches projection from workspace file without a manual contextNodes call
       ---
-      duration_ms: 1.0594
+      duration_ms: 1.4973
       type: 'test'
       ...
     # Subtest: projects references and definitions through the runtime main path
     ok 3 - projects references and definitions through the runtime main path
       ---
-      duration_ms: 52.1226
+      duration_ms: 104.7065
       type: 'test'
       ...
     # Subtest: degrades reference and definition misses without blocking model dispatch
     ok 4 - degrades reference and definition misses without blocking model dispatch
       ---
-      duration_ms: 13.3422
+      duration_ms: 37.8371
       type: 'test'
       ...
     1..4
-ok 4 - code intelligence context integration
+ok 5 - code intelligence context integration
   ---
-  duration_ms: 73.6984
+  duration_ms: 154.1726
   type: 'suite'
   ...
 # Subtest: context projection runtime integration
     # Subtest: projects context before kernel-backed execution
     ok 1 - projects context before kernel-backed execution
       ---
-      duration_ms: 29.7106
+      duration_ms: 30.0883
       type: 'test'
       ...
     # Subtest: fails closed before kernel execution when projection exceeds hard budget
     ok 2 - fails closed before kernel execution when projection exceeds hard budget
       ---
-      duration_ms: 1.5752
+      duration_ms: 1.553
       type: 'test'
       ...
     1..2
-ok 5 - context projection runtime integration
+ok 6 - context projection runtime integration
   ---
-  duration_ms: 32.3437
+  duration_ms: 32.7229
   type: 'suite'
   ...
 # Subtest: core coding tools runtime integration
     # Subtest: executes the minimal read-edit-test loop through governed runtime events
     ok 1 - executes the minimal read-edit-test loop through governed runtime events
       ---
-      duration_ms: 45.7563
+      duration_ms: 49.9907
       type: 'test'
       ...
     # Subtest: prevents denied write tools from reaching scheduler
     ok 2 - prevents denied write tools from reaching scheduler
       ---
-      duration_ms: 13.2858
+      duration_ms: 10.2411
       type: 'test'
       ...
     1..2
-ok 6 - core coding tools runtime integration
+ok 7 - core coding tools runtime integration
   ---
-  duration_ms: 60.2652
+  duration_ms: 61.3644
   type: 'suite'
   ...
 # Subtest: ecosystem and governance integration
     # Subtest: validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
     ok 1 - validates capabilities, commands, skills, hooks, MCP, plugins, extensions, and evolution controls
       ---
-      duration_ms: 20.073
+      duration_ms: 20.2328
       type: 'test'
       ...
     # Subtest: covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
     ok 2 - covers policy, sandbox, workspace, platform fallback, memory/cache, credentials, and code intelligence
       ---
-      duration_ms: 11.9775
+      duration_ms: 5.7116
       type: 'test'
       ...
     1..2
-ok 7 - ecosystem and governance integration
+ok 8 - ecosystem and governance integration
   ---
-  duration_ms: 33.1037
+  duration_ms: 27.9606
   type: 'suite'
   ...
 # Subtest: edit invalidation flushes code-intelligence index
     # Subtest: write → diagnostics(v1); edit → diagnostics(v2) reflects the new content
     ok 1 - write → diagnostics(v1); edit → diagnostics(v2) reflects the new content
       ---
-      duration_ms: 26.8874
+      duration_ms: 29.345
       type: 'test'
       ...
     1..1
-ok 8 - edit invalidation flushes code-intelligence index
+ok 9 - edit invalidation flushes code-intelligence index
   ---
-  duration_ms: 27.8006
+  duration_ms: 30.3666
   type: 'suite'
   ...
 # Subtest: hook system integration
     # Subtest: records observe-only hook evidence without mutating owner subsystems
     ok 1 - records observe-only hook evidence without mutating owner subsystems
       ---
-      duration_ms: 6.7663
+      duration_ms: 11.3161
       type: 'test'
       ...
     1..1
-ok 9 - hook system integration
+ok 10 - hook system integration
   ---
-  duration_ms: 7.7505
+  duration_ms: 15.189
   type: 'suite'
   ...
 # Subtest: CLI loads user hooks from .deepseek/hooks.json
     # Subtest: registers a user hook defined in .deepseek/hooks.json and invokes it during a run
     ok 1 - registers a user hook defined in .deepseek/hooks.json and invokes it during a run
       ---
-      duration_ms: 625.6002
+      duration_ms: 941.492
       type: 'test'
       ...
     # Subtest: ignores missing .deepseek/hooks.json silently
     ok 2 - ignores missing .deepseek/hooks.json silently
       ---
-      duration_ms: 595.3255
+      duration_ms: 765.194
       type: 'test'
       ...
     1..2
-ok 10 - CLI loads user hooks from .deepseek/hooks.json
+ok 11 - CLI loads user hooks from .deepseek/hooks.json
   ---
-  duration_ms: 1221.5918
+  duration_ms: 1707.5945
   type: 'suite'
   ...
 # Subtest: live CLI dependency factory resolves against real filesystem
     # Subtest: core.file.read resolves a fixture file through the real NodePlatformRuntime
     ok 1 - core.file.read resolves a fixture file through the real NodePlatformRuntime
       ---
-      duration_ms: 725.1509
+      duration_ms: 977.315
       type: 'test'
       ...
     # Subtest: returns a dependency bundle whose platform is a real NodePlatformRuntime
     ok 2 - returns a dependency bundle whose platform is a real NodePlatformRuntime
       ---
-      duration_ms: 514.1779
+      duration_ms: 722.1042
       type: 'test'
       ...
     # Subtest: leaves deterministic dependencies in place for non-platform concerns
     ok 3 - leaves deterministic dependencies in place for non-platform concerns
       ---
-      duration_ms: 458.9122
+      duration_ms: 641.4529
       type: 'test'
       ...
     # Subtest: allows workspace writes only when explicitly requested
     ok 4 - allows workspace writes only when explicitly requested
       ---
-      duration_ms: 1125.6722
+      duration_ms: 1496.114
       type: 'test'
       ...
     1..4
-ok 11 - live CLI dependency factory resolves against real filesystem
+ok 12 - live CLI dependency factory resolves against real filesystem
   ---
-  duration_ms: 2824.8323
+  duration_ms: 3837.8869
   type: 'suite'
   ...
 # Subtest: MCP gateway integration
     # Subtest: records governed MCP evidence without mutating owner subsystems
     ok 1 - records governed MCP evidence without mutating owner subsystems
       ---
-      duration_ms: 10.8907
+      duration_ms: 6.4333
       type: 'test'
       ...
     1..1
-ok 12 - MCP gateway integration
+ok 13 - MCP gateway integration
   ---
-  duration_ms: 11.7881
+  duration_ms: 7.3793
   type: 'suite'
   ...
 # Subtest: MCP real transport opt-in
     # Subtest: fails closed without --enable-real-mcp
     ok 1 - fails closed without --enable-real-mcp
       ---
-      duration_ms: 9.4093
+      duration_ms: 10.2474
       type: 'test'
       ...
     # Subtest: connects and calls the echo tool with --enable-real-mcp
     ok 2 - connects and calls the echo tool with --enable-real-mcp
       ---
-      duration_ms: 54.3757
+      duration_ms: 60.9816
       type: 'test'
       ...
     1..2
-ok 13 - MCP real transport opt-in
+ok 14 - MCP real transport opt-in
   ---
-  duration_ms: 64.5335
+  duration_ms: 72.2921
   type: 'suite'
   ...
 # Subtest: minimal chat CLI runtime integration
     # Subtest: renders scripted chat prompts from the runtime-owned agent loop
     ok 1 - renders scripted chat prompts from the runtime-owned agent loop
       ---
-      duration_ms: 36.2648
+      duration_ms: 60.8663
       type: 'test'
       ...
     1..1
-ok 14 - minimal chat CLI runtime integration
+ok 15 - minimal chat CLI runtime integration
   ---
-  duration_ms: 36.8618
+  duration_ms: 61.697
   type: 'suite'
   ...
 # Subtest: observability privacy runtime integration
     # Subtest: captures runtime events as redacted canonical diagnostic evidence
     ok 1 - captures runtime events as redacted canonical diagnostic evidence
       ---
-      duration_ms: 22.8772
+      duration_ms: 19.2585
       type: 'test'
       ...
     1..1
-ok 15 - observability privacy runtime integration
+ok 16 - observability privacy runtime integration
   ---
-  duration_ms: 23.8587
+  duration_ms: 20.1954
+  type: 'suite'
+  ...
+# Subtest: output contract runtime verification
+    # Subtest: feeds required JSON contract failures into bounded self-repair
+    ok 1 - feeds required JSON contract failures into bounded self-repair
+      ---
+      duration_ms: 52.4192
+      type: 'test'
+      ...
+    # Subtest: verifies file artifacts and expectations through the final verifier path
+    ok 2 - verifies file artifacts and expectations through the final verifier path
+      ---
+      duration_ms: 39.7632
+      type: 'test'
+      ...
+    1..2
+ok 17 - output contract runtime verification
+  ---
+  duration_ms: 93.3127
   type: 'suite'
   ...
 # Subtest: plugin lockfile roundtrip
     # Subtest: A.install + A.snapshot + B.applyLockfile -> B.list matches A.list by pluginId and permissions
     ok 1 - A.install + A.snapshot + B.applyLockfile -> B.list matches A.list by pluginId and permissions
       ---
-      duration_ms: 31.8967
+      duration_ms: 23.5142
       type: 'test'
       ...
     # Subtest: attempting to install same plugin id with divergent integrity after lockfile apply throws
     ok 2 - attempting to install same plugin id with divergent integrity after lockfile apply throws
       ---
-      duration_ms: 1.0281
+      duration_ms: 1.3902
       type: 'test'
       ...
     1..2
-ok 16 - plugin lockfile roundtrip
+ok 18 - plugin lockfile roundtrip
   ---
-  duration_ms: 34.0277
+  duration_ms: 26.1922
+  type: 'suite'
+  ...
+# Subtest: professional TUI pseudo-terminal interaction
+    # Subtest: drives result-list navigation through real raw key chunks
+    ok 1 - drives result-list navigation through real raw key chunks
+      ---
+      duration_ms: 54.8936
+      type: 'test'
+      ...
+    # Subtest: opens and cancels search and command modes without leaking typed text as model input
+    ok 2 - opens and cancels search and command modes without leaking typed text as model input
+      ---
+      duration_ms: 4.175
+      type: 'test'
+      ...
+    # Subtest: executes leader plugin actions through governed local descriptors
+    ok 3 - executes leader plugin actions through governed local descriptors
+      ---
+      duration_ms: 6.5076
+      type: 'test'
+      ...
+    # Subtest: routes approval accept, inspect, deny, and escape cancellation from pseudo-terminal input
+    ok 4 - routes approval accept, inspect, deny, and escape cancellation from pseudo-terminal input
+      ---
+      duration_ms: 22.5507
+      type: 'test'
+      ...
+    1..4
+ok 19 - professional TUI pseudo-terminal interaction
+  ---
+  duration_ms: 89.3138
   type: 'suite'
   ...
 # Subtest: provider tool intent preflight integration
     # Subtest: repairs normalized provider tool-call paths before governed execution
     ok 1 - repairs normalized provider tool-call paths before governed execution
       ---
-      duration_ms: 3.1026
+      duration_ms: 3.2739
       type: 'test'
       ...
     1..1
-ok 17 - provider tool intent preflight integration
+ok 20 - provider tool intent preflight integration
   ---
-  duration_ms: 3.969
+  duration_ms: 4.1822
   type: 'suite'
   ...
 # Subtest: runtime integration pipeline
     # Subtest: records bus, session, and observability state for a kernel-backed turn
     ok 1 - records bus, session, and observability state for a kernel-backed turn
       ---
-      duration_ms: 15.9628
+      duration_ms: 20.3099
       type: 'test'
       ...
     # Subtest: connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
     ok 2 - connects registry, envelope, workflow, policy, scheduler, bus, and result metadata through the kernel
       ---
-      duration_ms: 6.1021
+      duration_ms: 6.4364
       type: 'test'
       ...
     # Subtest: streams scheduler timeout events through kernel.execute and closes workflow once
     ok 3 - streams scheduler timeout events through kernel.execute and closes workflow once
       ---
-      duration_ms: 6.0885
+      duration_ms: 15.8315
       type: 'test'
       ...
     1..3
-ok 18 - runtime integration pipeline
+ok 21 - runtime integration pipeline
   ---
-  duration_ms: 29.1469
+  duration_ms: 43.9302
   type: 'suite'
   ...
 # Subtest: secret sandbox policy runtime integration
     # Subtest: rewrites raw secret input before scheduler execution
     ok 1 - rewrites raw secret input before scheduler execution
       ---
-      duration_ms: 17.8787
+      duration_ms: 15.3412
       type: 'test'
       ...
     # Subtest: denies read-only filesystem writes before scheduler execution
     ok 2 - denies read-only filesystem writes before scheduler execution
       ---
-      duration_ms: 17.1796
+      duration_ms: 9.1534
       type: 'test'
       ...
     # Subtest: passes process test metadata through policy, scheduler, sandbox, bus, and session events
     ok 3 - passes process test metadata through policy, scheduler, sandbox, bus, and session events
       ---
-      duration_ms: 11.0914
+      duration_ms: 8.1791
       type: 'test'
       ...
     1..3
-ok 19 - secret sandbox policy runtime integration
+ok 22 - secret sandbox policy runtime integration
   ---
-  duration_ms: 47.3874
+  duration_ms: 33.674
   type: 'suite'
   ...
 # Subtest: session persistence across CLI invocations
     # Subtest: resumes a session written by a prior CLI run from the same persistent directory
     ok 1 - resumes a session written by a prior CLI run from the same persistent directory
       ---
-      duration_ms: 94.8718
+      duration_ms: 125.114
       type: 'test'
       ...
     # Subtest: emits a resume hint in text output after a one-shot run
     ok 2 - emits a resume hint in text output after a one-shot run
       ---
-      duration_ms: 13.8295
+      duration_ms: 14.7532
       type: 'test'
       ...
     # Subtest: includes resumeCommand in JSON one-shot summary
     ok 3 - includes resumeCommand in JSON one-shot summary
       ---
-      duration_ms: 11.8082
+      duration_ms: 16.9286
       type: 'test'
       ...
     1..3
-ok 20 - session persistence across CLI invocations
+ok 23 - session persistence across CLI invocations
   ---
-  duration_ms: 121.5329
+  duration_ms: 157.7285
   type: 'suite'
   ...
 # Subtest: session resume and fork runtime integration
     # Subtest: appends resumed turns to the selected session id
     ok 1 - appends resumed turns to the selected session id
       ---
-      duration_ms: 10.8556
+      duration_ms: 10.0241
       type: 'test'
       ...
     # Subtest: executes forked child sessions through the governed kernel path
     ok 2 - executes forked child sessions through the governed kernel path
       ---
-      duration_ms: 11.0513
+      duration_ms: 7.4061
       type: 'test'
       ...
     # Subtest: persists and restores mode metadata from agent-loop events without environment state
     ok 3 - persists and restores mode metadata from agent-loop events without environment state
       ---
-      duration_ms: 28.4117
+      duration_ms: 32.1773
       type: 'test'
       ...
     1..3
-ok 21 - session resume and fork runtime integration
+ok 24 - session resume and fork runtime integration
   ---
-  duration_ms: 51.2495
+  duration_ms: 50.3672
   type: 'suite'
   ...
 # Subtest: skill context projection integration
     # Subtest: feeds trusted skill context nodes into the context engine
     ok 1 - feeds trusted skill context nodes into the context engine
       ---
-      duration_ms: 6.222
+      duration_ms: 4.4368
       type: 'test'
       ...
     1..1
-ok 22 - skill context projection integration
+ok 25 - skill context projection integration
   ---
-  duration_ms: 7.0993
+  duration_ms: 5.0173
   type: 'suite'
   ...
-1..22
-# tests 49
-# suites 22
-# pass 49
+1..25
+# tests 58
+# suites 25
+# pass 58
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 3859.1017
+# duration_ms 5080.8955
 
 ## stderr
 

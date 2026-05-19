@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { PackageScorecardCriterionResult } from "@deepseek/platform-contracts";
-import { collectCliEvaluation } from "../src/diagnostics/evaluation.js";
+import type { PackageScorecardCriterionResult, PlatformRuntime } from "@deepseek/platform-contracts";
+import { collectCliEvaluation, collectToolFamilyParityMatrix } from "../src/diagnostics/evaluation.js";
 import { aggregatePackageScorecards, collectPackageScorecards, packageScorecardCatalog, summarizeCriterionResults } from "../src/diagnostics/package-scorecard.js";
 import { coreToolExecutionCriterionId, liveFamilyCoverageTargets, liveToolCoverageTargets } from "../src/diagnostics/tool-live-coverage.js";
 import { runCli } from "../src/index.js";
@@ -233,6 +233,45 @@ describe("package scorecard diagnostics", () => {
     assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityScore, 1);
     assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityTargetFamilyCount, 58);
     assert.equal(summary.toolFamilyParityMatrix?.deliveryCapabilityPassed, true);
+  });
+
+  it("does not count replay-only evidence as live product readiness", async () => {
+    const replayOnlyPlatform = {
+      readFile: async (path: string) => {
+        if (path.endsWith("live-tool-coverage-replay.json")) {
+          return JSON.stringify({
+            schemaVersion: "1.1.0",
+            kind: "deepseek.live-tool-coverage",
+            generatedAt: "1970-01-01T00:00:00.000Z",
+            provider: "deepseek",
+            model: "deepseek-test",
+            summary: { replayOnly: true },
+            records: liveFamilyCoverageTargets.map((target) => ({
+              toolId: target.toolId,
+              familyId: target.familyId,
+              safeName: target.safeName,
+              status: "pass",
+              model: { replay: true },
+              preflight: { status: "pass" },
+              execution: { status: "pass" },
+              continuation: { status: "pass" },
+              taskOutcome: { status: "pass" },
+              safetyOutcome: { status: "pass" },
+              providerNative: { status: "native" },
+              diagnostics: []
+            }))
+          });
+        }
+        throw new Error(`live evidence intentionally unavailable: ${path}`);
+      }
+    } as unknown as PlatformRuntime;
+
+    const matrix = await collectToolFamilyParityMatrix(replayOnlyPlatform);
+
+    assert.equal(matrix.liveCoveredFamilyCount, 0);
+    assert.equal(matrix.deliveryCapabilityScore, 0);
+    assert.equal(matrix.deliveryCapabilityPassed, false);
+    assert.equal(matrix.deliveryCapabilityBlockingFamilyIds.length, matrix.totalFamilyCount);
   });
 
   it("keeps package scorecard release evidence advisory", async () => {

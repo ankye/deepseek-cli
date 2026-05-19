@@ -994,3 +994,69 @@ Chat 必须将 reasoning effort status 与 evidence 和 verification loop status
 - **THEN** chat still reports evidence and verification loop counts separately and does not imply they ran
 - **中文** 当 model status 显示 high 或 max reasoning effort 时，chat 仍必须单独报告 evidence 与 verification loop counts，不得暗示它们已运行。
 
+### Requirement: Basic Line TUI Shell / 基础行式 TUI Shell
+
+The chat shell SHALL provide a basic line-oriented TUI foundation in text TTY sessions, including a deterministic startup status, visible prompt, and prompt redraw after local commands or completed turns.
+
+Chat shell 必须在 text TTY sessions 中提供基础行式 TUI 基座，包括确定性的启动状态、可见 prompt，以及 local commands 或 completed turns 后的 prompt redraw。
+
+#### Scenario: Interactive chat shows startup status and prompt / 交互式 Chat 显示启动状态与 Prompt
+
+- **WHEN** a user starts `deepseek chat` with text output and reliable TTY line input
+- **THEN** the shell renders a compact status line derived from terminal profile and chat state, then renders a visible prompt before waiting for input
+- **中文** 当用户以 text output 和可靠 TTY line input 启动 `deepseek chat` 时，shell 必须渲染基于 terminal profile 与 chat state 的紧凑状态行，然后在等待输入前渲染可见 prompt。
+
+#### Scenario: Prompt redraw follows local commands / 本地命令后重绘 Prompt
+
+- **WHEN** a user enters a local slash command such as `/help`, `/mode`, `/palette`, `/history`, or `/cost`
+- **THEN** the shell renders that command locally and then redraws the prompt without submitting slash text to the model
+- **中文** 当用户输入 `/help`、`/mode`、`/palette`、`/history` 或 `/cost` 等本地 slash command 时，shell 必须本地渲染该命令，然后重绘 prompt，不得将 slash text 提交给 model。
+
+#### Scenario: Prompt redraw follows runtime turn / Runtime Turn 后重绘 Prompt
+
+- **WHEN** a normal prompt turn completes, fails, or is cancelled
+- **THEN** text TTY chat renders the terminal event summary and then redraws the prompt for the next line
+- **中文** 当普通 prompt turn completed、failed 或 cancelled 时，text TTY chat 必须渲染 terminal event summary，然后为下一行重绘 prompt。
+
+#### Scenario: Structured and scripted modes remain prompt-free / 结构化与脚本模式保持无 Prompt
+
+- **WHEN** chat runs with JSON, JSONL, redirected IO, CI, or scripted input
+- **THEN** startup status, prompt text, cursor controls, alternate-screen controls, and terminal-only hints are omitted while command/runtime semantics remain unchanged
+- **中文** 当 chat 以 JSON、JSONL、redirected IO、CI 或 scripted input 运行时，必须省略 startup status、prompt text、cursor controls、alternate-screen controls 与 terminal-only hints，同时保持 command/runtime 语义不变。
+
+### Requirement: Chat Uses Production TUI Framework / Chat 使用 Production TUI Framework
+
+The chat shell SHALL use the production CLI TUI framework for interactive text TTY startup, prompt redraw, local status, and local slash-command state rendering while preserving the governed runtime event path for prompt turns.
+
+Chat shell 必须使用 production CLI TUI framework 处理 interactive text TTY startup、prompt redraw、本地状态与本地 slash-command state rendering，同时保留 prompt turns 的受治理 runtime event path。
+
+#### Scenario: Chat startup identifies framework / Chat 启动标识 Framework
+
+- **WHEN** a user starts `deepseek chat` in an interactive text TTY
+- **THEN** startup output identifies the TUI framework, vi-inspired composition profile, viewport profile, keymap profile, plugin readiness, contribution count, diagnostic count, and session id
+- **中文** 当用户在 interactive text TTY 中启动 `deepseek chat` 时，startup output 必须标识 TUI framework、vi-inspired composition profile、viewport profile、keymap profile、plugin readiness、contribution count、diagnostic count 与 session id。
+
+#### Scenario: Prompt turn still uses runtime events / Prompt Turn 仍使用 Runtime Events
+
+- **WHEN** the user enters a non-command prompt in the TUI-backed chat shell
+- **THEN** the prompt is submitted through the existing runtime/kernel event path and the TUI framework only updates local viewport and prompt state around those events
+- **中文** 当用户在 TUI-backed chat shell 中输入非 command prompt 时，该 prompt 必须通过现有 runtime/kernel event path 提交，TUI framework 只围绕这些 events 更新本地 viewport 与 prompt state。
+
+### Requirement: TUI Local Controls Stay Local / TUI 本地控制保持本地
+
+The chat shell SHALL route local slash commands through the TUI framework state and action dispatcher without sending slash inputs to model execution.
+
+Chat shell 必须通过 TUI framework state 与 action dispatcher 路由本地 slash commands，不得将 slash inputs 发送到 model execution。
+
+#### Scenario: Local command redraws framework status / 本地命令重绘 Framework 状态
+
+- **WHEN** a user enters `/help`, `/palette`, `/keymap`, `/history`, `/mode`, `/cost`, `/model`, `/revert`, or approval controls
+- **THEN** chat renders the local command result and updates or redraws TUI status/prompt from framework state without submitting a runtime prompt turn
+- **中文** 当用户输入 `/help`、`/palette`、`/keymap`、`/history`、`/mode`、`/cost`、`/model`、`/revert` 或 approval controls 时，chat 必须渲染本地 command result，并从 framework state 更新或重绘 TUI status/prompt，且不得提交 runtime prompt turn。
+
+#### Scenario: Unknown slash remains diagnostic / 未知 Slash 保持诊断
+
+- **WHEN** a slash input is not recognized by chat local controls or the TUI contribution registry
+- **THEN** chat emits a local typed diagnostic, preserves framework state, and continues the prompt loop
+- **中文** 当 slash input 未被 chat local controls 或 TUI contribution registry 识别时，chat 必须发出本地 typed diagnostic、保留 framework state，并继续 prompt loop。
+

@@ -59,6 +59,7 @@ export function viProfessionalKeymapProfile(): CliKeymapProfile {
     key("vi.pro.approval.accept", "approval", "Enter", "accept", "approval-request", { description: "Accept active approval." }),
     key("vi.pro.approval.deny", "approval", "q", "deny", "approval-request", { description: "Deny active approval." }),
     key("vi.pro.approval.inspect", "approval", "?", "inspect", "approval-request", { description: "Inspect active approval." }),
+    key("vi.pro.approval.cancel", "approval", "Escape", "cancel", "approval-request", { description: "Cancel active approval." }),
 
     key("vi.pro.command.escape", "command", "Escape", "cancel", "command", { description: "Close command bar." }),
     key("vi.pro.search.escape", "search", "Escape", "cancel", "command", { description: "Close search." })

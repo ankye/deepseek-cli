@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Terminal Capability Profiles
+### Requirement: Terminal Capability Profile / 终端能力 Profile
 
 The CLI SHALL detect terminal capabilities and select a renderer profile that preserves deterministic output across text, interactive, JSON, and JSONL modes. Interactive text profiles MAY render deterministic workbench frames, but structured output MUST remain free of ANSI styling, cursor controls, alternate-screen state, and terminal-only layout metadata.
 

@@ -11,9 +11,33 @@ import type {
   CliResultListItem,
   CliTargetRef
 } from "@deepseek/platform-contracts";
-import { CLI_PALETTE_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+import { CLI_PALETTE_SCHEMA_VERSION, resolveCliApprovalAction } from "@deepseek/platform-contracts";
 
 export function resolveCliAction(request: CliActionRequest, snapshot: CliCompositionSnapshot): CliActionResolutionResult {
+  if (request.target.kind === "approval-request" && (request.action === "accept" || request.action === "deny" || request.action === "inspect" || request.action === "cancel")) {
+    const approvalTarget = request.target as CliTargetRef & { readonly kind: "approval-request" };
+    const approval = resolveCliApprovalAction({
+      action: request.action,
+      mode: "approval",
+      target: approvalTarget,
+      ...(request.dryRun !== undefined ? { dryRun: request.dryRun } : {}),
+      ...(request.arguments ? { arguments: request.arguments } : {})
+    });
+    if (!approval.ok) {
+      return failure(request, snapshot, "CLI_ACTION_TARGET_NOT_FOUND", String(approval.error?.message ?? "Approval action failed."), [request.target.id]);
+    }
+    return success(request, snapshot, {
+      activeTarget: request.target,
+      commandDescriptor: {
+        kind: "cli.approval",
+        dryRun: request.dryRun !== false,
+        target: request.target,
+        approval,
+        governed: true,
+        modelVisible: false
+      }
+    });
+  }
   if (request.action === "next" || request.action === "previous" || request.action === "first" || request.action === "last") {
     return resolveNavigation(request, snapshot);
   }
@@ -40,7 +64,7 @@ export function resolveCliAction(request: CliActionRequest, snapshot: CliComposi
     });
   }
   if (request.action === "scroll" || request.action === "focus-panel" || request.action === "preview" || request.action === "plugin-action" || request.action === "cancel" || request.action === "search") {
-    return success(request, snapshot, {
+    return success(request, { ...snapshot, activeTarget: request.target }, {
       activeTarget: request.target,
       commandDescriptor: {
         kind: request.action === "plugin-action" ? "cli.plugin-action" : `cli.${request.action}`,

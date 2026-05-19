@@ -2,11 +2,11 @@
 
 Command: npm run test:versioning
 Exit Code: 0
-Duration Ms: 670
+Duration Ms: 705
 
 ## stdout
 
-> deepseek-cli-platform@0.1.0 test:versioning
+> deepseek-cli-platform@0.1.8 test:versioning
 > tsx --test "tests/versioning/**/*.test.ts"
 
 TAP version 13
@@ -14,13 +14,13 @@ TAP version 13
     # Subtest: requires schemaVersion on persisted subjects
     ok 1 - requires schemaVersion on persisted subjects
       ---
-      duration_ms: 0.9293
+      duration_ms: 0.9218
       type: 'test'
       ...
     # Subtest: requires schemaVersion on session resume and fork artifacts
     ok 2 - requires schemaVersion on session resume and fork artifacts
       ---
-      duration_ms: 0.0975
+      duration_ms: 0.0961
       type: 'test'
       ...
     # Subtest: requires schemaVersion on interaction mode state and transitions
@@ -32,66 +32,72 @@ TAP version 13
     # Subtest: requires schemaVersion on agent mode plans, work orders, worker results, verifier results, reasoning effort mappings, and completion matrix entries
     ok 4 - requires schemaVersion on agent mode plans, work orders, worker results, verifier results, reasoning effort mappings, and completion matrix entries
       ---
-      duration_ms: 0.3294
+      duration_ms: 0.3258
       type: 'test'
       ...
     # Subtest: requires schemaVersion on projection request and result artifacts
     ok 5 - requires schemaVersion on projection request and result artifacts
       ---
-      duration_ms: 1.5997
+      duration_ms: 1.5284
       type: 'test'
       ...
     # Subtest: requires schemaVersion on observability records and diagnostic bundles
     ok 6 - requires schemaVersion on observability records and diagnostic bundles
       ---
-      duration_ms: 0.8105
+      duration_ms: 0.8291
       type: 'test'
       ...
     # Subtest: requires schemaVersion on skill manifests, activation results, summaries, and context segments
     ok 7 - requires schemaVersion on skill manifests, activation results, summaries, and context segments
       ---
-      duration_ms: 1.0389
+      duration_ms: 1.0399
       type: 'test'
       ...
     # Subtest: requires schemaVersion on hook manifests, summaries, invocation results, and output records
     ok 8 - requires schemaVersion on hook manifests, summaries, invocation results, and output records
       ---
-      duration_ms: 1.0267
+      duration_ms: 1.0283
       type: 'test'
       ...
     # Subtest: requires schemaVersion on MCP manifests, summaries, calls, and resource reads
     ok 9 - requires schemaVersion on MCP manifests, summaries, calls, and resource reads
       ---
-      duration_ms: 1.8226
+      duration_ms: 2.0109
       type: 'test'
       ...
     # Subtest: requires schemaVersion on evidence-first manifests and unsupported claim diagnostics
     ok 10 - requires schemaVersion on evidence-first manifests and unsupported claim diagnostics
       ---
-      duration_ms: 0.2798
+      duration_ms: 0.3077
+      type: 'test'
+      ...
+    # Subtest: requires schemaVersion on visible reasoning records and projections
+    ok 11 - requires schemaVersion on visible reasoning records and projections
+      ---
+      duration_ms: 0.2128
       type: 'test'
       ...
     # Subtest: requires schemaVersion on self-repair evidence schemas
-    ok 11 - requires schemaVersion on self-repair evidence schemas
+    ok 12 - requires schemaVersion on self-repair evidence schemas
       ---
-      duration_ms: 0.1821
+      duration_ms: 0.1018
       type: 'test'
       ...
-    1..11
+    1..12
 ok 1 - versioning checks
   ---
-  duration_ms: 9.0517
+  duration_ms: 9.3576
   type: 'suite'
   ...
 1..1
-# tests 11
+# tests 12
 # suites 1
-# pass 11
+# pass 12
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 358.6136
+# duration_ms 379.7598
 
 ## stderr
 

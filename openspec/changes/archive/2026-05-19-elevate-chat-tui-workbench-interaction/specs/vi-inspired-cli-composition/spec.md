@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Vi-Inspired CLI Composition
+### Requirement: Vi-Inspired Composition Model / Vi 启发式组合模型
 
 The CLI SHALL model vi-inspired interactions as typed actions and targets that can drive result-list navigation, command execution, references, and TUI workbench panel focus without relying on prompt text. Workbench focus actions MUST remain local and deterministic.
 

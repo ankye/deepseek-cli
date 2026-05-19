@@ -36,8 +36,8 @@
 ## 6. Verification And Acceptance
 
 - [x] 6.1 Add contract tests for raw input events, key sequence parsing, vi-professional grammar, user overrides, and plugin conflict explanations.
-- [ ] 6.2 Add renderer golden tests for full-screen lifecycle, repaint, resize, teardown, no-color, narrow width, Windows, macOS/Linux, CI, redirected output, and structured-output cleanliness.
-- [ ] 6.3 Add integration/e2e pseudo-terminal tests for real-time `j/k`, `gg/G`, `/`, `:`, `Esc`, `Enter`, leader plugin actions, approval flows, and cancellation.
-- [ ] 6.4 Add plugin extension matrix tests covering active, hidden, degraded, conflicted, rejected, read-only, side-effecting, and permission-gated actions.
-- [ ] 6.5 Refresh acceptance evidence and mode/package scorecards only from real passing evidence; do not count fake/replay as live product readiness.
-- [ ] 6.6 Run `openspec validate upgrade-professional-vi-tui-plugin-experience --strict`, `npm run typecheck`, `npm run lint`, focused TUI tests, `npm test`, `node scripts/check-boundaries.mjs`, `npm run build:cli`, and relevant live/non-live acceptance gates.
+- [x] 6.2 Add renderer golden tests for full-screen lifecycle, repaint, resize, teardown, no-color, narrow width, Windows, macOS/Linux, CI, redirected output, and structured-output cleanliness.
+- [x] 6.3 Add integration/e2e pseudo-terminal tests for real-time `j/k`, `gg/G`, `/`, `:`, `Esc`, `Enter`, leader plugin actions, approval flows, and cancellation.
+- [x] 6.4 Add plugin extension matrix tests covering active, hidden, degraded, conflicted, rejected, read-only, side-effecting, and permission-gated actions.
+- [x] 6.5 Refresh acceptance evidence and mode/package scorecards only from real passing evidence; do not count fake/replay as live product readiness.
+- [x] 6.6 Run `openspec validate upgrade-professional-vi-tui-plugin-experience --strict`, `npm run typecheck`, `npm run lint`, focused TUI tests, `npm test`, `node scripts/check-boundaries.mjs`, `npm run build:cli`, and relevant live/non-live acceptance gates.
