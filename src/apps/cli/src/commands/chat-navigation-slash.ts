@@ -37,7 +37,7 @@ export async function handleChatJumpSlashCommand(
     return;
   }
   const input = parseJumpSlashInput(raw);
-  const result = await resolveJumpNavigator(state.workspaceDeps.platform, state.workspaceRoot, input.action, input.query);
+  const result = await resolveJumpNavigator(state.workspaceDeps.platform, state.workspaceRoot, input.action, input.query, state.workspaceDeps.codeIntelligence);
   if (result.resultList) {
     state.palette = attachChatPaletteResultList(ensureChatPaletteState(state.palette), result.resultList);
   }

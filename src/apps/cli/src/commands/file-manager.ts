@@ -41,12 +41,12 @@ export async function resolveFileManager(platform: PlatformRuntime, workspaceRoo
     const path = await resolvePreviewPath(platform, workspaceRoot, normalized);
     if (!path) return fileManagerResult(action, "failed", normalized, `no file matched ${preview(normalized)}`, { provider: "platform.findFiles", itemCount: 0 }, undefined, [], [diagnostic("FILE_MANAGER_FILE_NOT_FOUND", `No file matched ${normalized}.`)], ["Run /file list with a broader query."]);
     const content = await platform.readFile(path).catch(() => "");
-    const resultList = previewResultList(path, content);
-    return fileManagerResult(action, "completed", normalized, `preview=${normalizePath(path)} bytes=${content.length}`, { provider: "platform.readFile", path: normalizePath(path), bytes: content.length, previewLineCount: previewLines(content).length }, resultList);
+    const resultList = previewResultList(path, content, workspaceRoot);
+    return fileManagerResult(action, "completed", normalized, `preview=${displayPath(path, workspaceRoot)} bytes=${content.length}`, { provider: "platform.readFile", path: normalizePath(path), bytes: content.length, previewLineCount: previewLines(content).length }, resultList);
   }
   const files = [...await platform.findFiles(normalized, workspaceRoot)].sort(compareString).slice(0, 100);
-  const resultList = fileResultList(action, files);
-  const references = action === "references" ? referenceItems(files) : [];
+  const resultList = fileResultList(action, files, workspaceRoot);
+  const references = action === "references" ? referenceItems(files, workspaceRoot) : [];
   return fileManagerResult(action, "completed", normalized, `files=${files.length}`, { provider: "platform.findFiles", itemCount: files.length, workspaceBoundary: "workspace-root" }, resultList, references);
 }
 
@@ -109,40 +109,42 @@ function fileManagerResult(
   };
 }
 
-function fileResultList(action: FileManagerAction, files: readonly string[]): CliResultList {
-  const items = files.map((path, order): CliResultListItem => fileItem(path, order, `file.manager.${action}`));
+function fileResultList(action: FileManagerAction, files: readonly string[], workspaceRoot: string): CliResultList {
+  const items = files.map((path, order): CliResultListItem => fileItem(path, order, `file.manager.${action}`, workspaceRoot));
   return { id: `result-list:file-manager.${action}`, kind: "search", sourceCommand: `file.${action}`, label: `File manager ${action}`, items, ...(items[0] ? { activeItemId: items[0].id } : {}) };
 }
 
-function previewResultList(path: string, content: string): CliResultList {
+function previewResultList(path: string, content: string, workspaceRoot: string): CliResultList {
   const lines = previewLines(content);
+  const labelPath = displayPath(path, workspaceRoot);
   const items: CliResultListItem[] = lines.map((line, order) => ({
     id: `file-preview:${stableId(`${path}:${order}`)}`,
-    target: { kind: "file", id: `file:${stableId(path)}`, label: `${normalizePath(path)}:${order + 1}`, path: normalizePath(path), metadata: { line: order + 1, preview: line } },
-    label: `${normalizePath(path)}:${order + 1}: ${line}`,
+    target: { kind: "file", id: `file:${stableId(path)}`, label: `${labelPath}:${order + 1}`, path: normalizePath(path), metadata: { line: order + 1, preview: line } },
+    label: `${labelPath}:${order + 1}: ${line}`,
     order,
     metadata: { source: "file.manager.preview", line: order + 1 }
   }));
-  if (items.length === 0) items.push(fileItem(path, 0, "file.manager.preview"));
-  return { id: "result-list:file-manager.preview", kind: "search", sourceCommand: "file.preview", label: `File preview ${normalizePath(path)}`, items, ...(items[0] ? { activeItemId: items[0].id } : {}) };
+  if (items.length === 0) items.push(fileItem(path, 0, "file.manager.preview", workspaceRoot));
+  return { id: "result-list:file-manager.preview", kind: "search", sourceCommand: "file.preview", label: `File preview ${labelPath}`, items, ...(items[0] ? { activeItemId: items[0].id } : {}) };
 }
 
-function fileItem(path: string, order: number, source: string): CliResultListItem {
+function fileItem(path: string, order: number, source: string, workspaceRoot: string): CliResultListItem {
+  const label = displayPath(path, workspaceRoot);
   return {
     id: `${source}:file:${stableId(path)}`,
-    target: { kind: "file", id: `file:${stableId(path)}`, label: normalizePath(path), path: normalizePath(path) },
-    label: normalizePath(path),
+    target: { kind: "file", id: `file:${stableId(path)}`, label, path: normalizePath(path) },
+    label,
     order,
     metadata: { source }
   };
 }
 
-function referenceItems(files: readonly string[]): readonly CliReferenceItem[] {
+function referenceItems(files: readonly string[], workspaceRoot: string): readonly CliReferenceItem[] {
   return files.slice(0, 40).map((path, order): CliReferenceItem => ({
     id: `file-ref:${stableId(path)}`,
     kind: "file",
-    target: { kind: "file", id: `file:${stableId(path)}`, label: normalizePath(path), path: normalizePath(path) },
-    label: normalizePath(path),
+    target: { kind: "file", id: `file:${stableId(path)}`, label: displayPath(path, workspaceRoot), path: normalizePath(path) },
+    label: displayPath(path, workspaceRoot),
     provenance: { source: "file.manager.references" },
     order
   }));
@@ -177,6 +179,14 @@ function compareString(a: string, b: string): number {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
+}
+
+function displayPath(path: string, workspaceRoot: string): string {
+  const normalizedPath = normalizePath(path);
+  const normalizedRoot = normalizePath(workspaceRoot).replace(/\/+$/, "");
+  if (!normalizedRoot) return normalizedPath;
+  if (normalizedPath === normalizedRoot) return ".";
+  return normalizedPath.startsWith(`${normalizedRoot}/`) ? normalizedPath.slice(normalizedRoot.length + 1) : normalizedPath;
 }
 
 function preview(value: string): string {

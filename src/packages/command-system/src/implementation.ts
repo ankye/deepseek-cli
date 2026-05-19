@@ -340,7 +340,7 @@ export function renderInteractiveControlText(result: InteractiveControlResult): 
     lines.push("  first-party plugins — dev-checks, repo-navigator, file-manager, jump-navigator, git-review, context-compactor metadata enabled");
     lines.push("  /context status|grep|describe|summarize|expand|budget|pin — inspect and compact lossless context");
     lines.push("  /file list|preview|refs <query> — run local file manager workflows and attach active file results");
-    lines.push("  /jump file|text|symbol <query> — run local jump navigator workflows; symbol jumps remain deferred until code intelligence is wired");
+    lines.push("  /jump file|text|symbol <query> — run local jump navigator workflows backed by host-owned workspace search and code intelligence");
     lines.push("  /palette — show local command palette entries");
     lines.push("  /palette next|previous|first|last — move local palette result focus");
     lines.push("  /palette back|forward — traverse local palette jump history");

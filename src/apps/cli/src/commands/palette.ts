@@ -8,6 +8,7 @@ import type {
   CliPaletteProjectionEntry,
   CliPaletteProjectionResult,
   CliTargetRef,
+  CodeIntelligenceService,
   CommandCompositionContribution,
   CommandCompositionRecord,
   LosslessContextManager,
@@ -81,6 +82,7 @@ export async function executePalettePluginRoute(input: {
   readonly target?: string;
   readonly args?: readonly string[];
   readonly losslessContext?: LosslessContextManager;
+  readonly codeIntelligence?: CodeIntelligenceService;
 }): Promise<PluginWorkbenchExecutionRecord> {
   const projection = input.projection ?? createCliPaletteProjection();
   const commandId = input.commandId ?? commandIdForPaletteTarget(projection, input.targetId);
@@ -92,7 +94,8 @@ export async function executePalettePluginRoute(input: {
     ...(input.query ? { query: input.query } : {}),
     ...(input.target ? { target: input.target } : {}),
     ...(input.args ? { args: input.args } : {}),
-    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {})
+    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {}),
+    ...(input.codeIntelligence ? { codeIntelligence: input.codeIntelligence } : {})
   });
 }
 

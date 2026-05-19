@@ -1,4 +1,4 @@
-import type { BackgroundTaskManager, BackgroundTaskOutput, BackgroundTaskSummary, ModelCredentialProvider, ModelProviderTransport, PolicyDecision, PolicyEngine, PolicyRequest, RuntimeDependencies } from "@deepseek/platform-contracts";
+import type { BackgroundTaskManager, BackgroundTaskOutput, BackgroundTaskSummary, ModelCredentialProvider, ModelProviderTransport, PlatformRuntime, PolicyDecision, PolicyEngine, PolicyRequest, RuntimeDependencies } from "@deepseek/platform-contracts";
 import { InMemoryAgentManager } from "@deepseek/agent-management";
 import { InMemoryCapabilityRegistry } from "@deepseek/capability-registry";
 import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
@@ -102,7 +102,11 @@ export class FakeBackgroundTaskManager implements BackgroundTaskManager {
   }
 }
 
-export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
+export interface DeterministicRuntimeDependencyOptions {
+  readonly platform?: PlatformRuntime;
+}
+
+export function createDeterministicRuntimeDependencies(options: DeterministicRuntimeDependencyOptions = {}): RuntimeDependencies {
   const runtimePlaceholder = async () => ({
     envelope: {} as never,
     ok: false,
@@ -114,7 +118,7 @@ export function createDeterministicRuntimeDependencies(): RuntimeDependencies {
     }
   });
 
-  const platform = new FakePlatformRuntime();
+  const platform = options.platform ?? new FakePlatformRuntime();
   const cache = new InMemoryCacheManager();
   const codeIntelligence = new DeterministicCodeIntelligenceService(platform);
   const dependencies: RuntimeDependencies = {
@@ -170,8 +174,8 @@ export interface LiveCliDependencyOptions {
 }
 
 export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}): RuntimeDependencies {
-  const base = createDeterministicRuntimeDependencies();
   const platform = new NodePlatformRuntime();
+  const base = createDeterministicRuntimeDependencies({ platform });
   const modelOptions = {
     ...(options.credentials ? { credentials: options.credentials } : {}),
     ...(options.transport ? { transport: options.transport } : {}),
@@ -190,8 +194,6 @@ export function createLiveCliDependencies(options: LiveCliDependencyOptions = {}
   return {
     ...base,
     platform,
-    workspaceState: new InMemoryWorkspaceStateManager(platform),
-    codeIntelligence: new DeterministicCodeIntelligenceService(platform),
     losslessContext: new PersistentJsonlLosslessContextManager(platform, losslessContextDir),
     models: new DeepSeekOpenAIProvider(modelOptions),
     policy: options.allowWorkspaceWrites ? new WorkspaceWritePolicyEngine() : base.policy,

@@ -403,7 +403,8 @@ export class NodePlatformRuntime implements PlatformRuntime {
   async findFiles(pattern: string, root: string): Promise<readonly string[]> {
     const files: string[] = [];
     await walk(root, files);
-    return files.filter((file) => file.includes(pattern));
+    const normalizedPattern = normalizePathForSearch(pattern);
+    return files.filter((file) => normalizePathForSearch(file).includes(normalizedPattern));
   }
 
   async searchText(pattern: string, root: string): Promise<readonly SearchResult[]> {
@@ -815,7 +816,8 @@ export class FakePlatformRuntime extends NodePlatformRuntime {
 
   override async findFiles(pattern: string, root: string): Promise<readonly string[]> {
     const normalizedRoot = normalizeVirtualPath(root);
-    return [...this.files.keys()].filter((path) => path.startsWith(normalizedRoot) && path.includes(pattern));
+    const normalizedPattern = normalizePathForSearch(pattern);
+    return [...this.files.keys()].filter((path) => path.startsWith(normalizedRoot) && normalizePathForSearch(path).includes(normalizedPattern));
   }
 
   override async searchText(pattern: string, root: string): Promise<readonly SearchResult[]> {
@@ -960,6 +962,10 @@ function normalizeVirtualPath(path: string): string {
   if (driveMatch) return `${prefix}/${segments.join("/")}`.replace(/\/$/, "");
   if (prefix === "/") return `/${segments.join("/")}`.replace(/\/$/, "") || "/";
   return segments.join("/");
+}
+
+function normalizePathForSearch(path: string): string {
+  return path.replace(/\\/g, "/");
 }
 
 function isVirtualPathInside(root: string, target: string): boolean {

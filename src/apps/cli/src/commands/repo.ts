@@ -38,12 +38,12 @@ export async function resolveRepoNavigator(platform: PlatformRuntime, workspaceR
   }
   if (action === "files") {
     const files = [...await platform.findFiles(normalized, workspaceRoot)].sort(compareString).slice(0, 100);
-    const resultList = fileResultList(files);
+    const resultList = fileResultList(files, workspaceRoot);
     return repoResult(action, "completed", normalized, `files=${files.length}`, { provider: "platform.findFiles", itemCount: files.length, workspaceBoundary: "workspace-root" }, resultList);
   }
   if (action === "grep") {
     const matches = [...await platform.searchText(normalized, workspaceRoot)].sort(compareSearchResult).slice(0, 100);
-    const resultList = grepResultList(matches);
+    const resultList = grepResultList(matches, workspaceRoot);
     return repoResult(action, "completed", normalized, `matches=${matches.length}`, { provider: "platform.searchText", itemCount: matches.length, workspaceBoundary: "workspace-root" }, resultList);
   }
   return repoResult(
@@ -106,11 +106,11 @@ function repoResult(
   };
 }
 
-function fileResultList(files: readonly string[]): CliResultList {
+function fileResultList(files: readonly string[], workspaceRoot: string): CliResultList {
   const items = files.map((path, order): CliResultListItem => ({
     id: `repo-file:${stableId(path)}`,
-    target: { kind: "file", id: `file:${stableId(path)}`, label: normalizePath(path), path: normalizePath(path) },
-    label: normalizePath(path),
+    target: { kind: "file", id: `file:${stableId(path)}`, label: displayPath(path, workspaceRoot), path: normalizePath(path) },
+    label: displayPath(path, workspaceRoot),
     order,
     metadata: { source: "repo.navigator.files" }
   }));
@@ -134,9 +134,9 @@ function deferredResultList(action: RepoNavigatorAction, query: string): CliResu
   return { id: `result-list:repo.${action}`, kind: "code-intelligence", sourceCommand: `repo.${action}`, label: `Repo ${action}`, items: [item], activeItemId: item.id };
 }
 
-function grepResultList(matches: readonly SearchResult[]): CliResultList {
+function grepResultList(matches: readonly SearchResult[], workspaceRoot: string): CliResultList {
   const items = matches.map((match, order): CliResultListItem => {
-    const label = `${normalizePath(match.path)}:${match.line}: ${preview(match.text)}`;
+    const label = `${displayPath(match.path, workspaceRoot)}:${match.line}: ${preview(match.text)}`;
     return {
       id: `repo-grep:${stableId(label)}`,
       target: { kind: "file", id: `file:${stableId(match.path)}`, label, path: normalizePath(match.path), metadata: { line: match.line, preview: preview(match.text), engine: match.engine } },
@@ -176,6 +176,14 @@ function compareString(a: string, b: string): number {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
+}
+
+function displayPath(path: string, workspaceRoot: string): string {
+  const normalizedPath = normalizePath(path);
+  const normalizedRoot = normalizePath(workspaceRoot).replace(/\/+$/, "");
+  if (!normalizedRoot) return normalizedPath;
+  if (normalizedPath === normalizedRoot) return ".";
+  return normalizedPath.startsWith(`${normalizedRoot}/`) ? normalizedPath.slice(normalizedRoot.length + 1) : normalizedPath;
 }
 
 function preview(value: string): string {

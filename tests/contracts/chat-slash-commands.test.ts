@@ -292,6 +292,8 @@ describe("chat slash commands", () => {
     const lines = await runChatLines(harness, [
       "/repo files plugin-alias",
       "/palette state",
+      "/jump symbol pluginAliasNeedle",
+      "/palette state",
       "/git status",
       "/checks openspec",
       "/repo files",
@@ -304,7 +306,7 @@ describe("chat slash commands", () => {
         result?: { action?: string; status?: string; itemCount?: number };
         mode?: string;
         resultListId?: string;
-        item?: { target?: { kind?: string; path?: string } };
+        item?: { target?: { kind?: string; path?: string }; metadata?: { symbolName?: string } };
         diagnostic?: { code?: string };
       };
     });
@@ -313,6 +315,9 @@ describe("chat slash commands", () => {
     assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.summary" && record.record.result?.action === "files" && record.record.result.status === "completed"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.item" && record.record.item?.target?.path?.includes("src/plugin-alias.ts")), true);
     assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:repo.files"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.summary" && record.record.result?.action === "symbol" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.item" && record.record.item?.metadata?.symbolName === "pluginAliasNeedle" && record.record.item.target?.kind === "file"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:jump.symbol"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.git" && record.record?.kind === "git.review.summary" && record.record.result?.action === "status" && record.record.result.status === "completed"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.checks" && record.record?.kind === "dev.check.summary" && record.record.result?.action === "openspec" && record.record.result.status === "completed"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.repo" && record.record?.kind === "repo.navigator.diagnostic" && record.record.diagnostic?.code === "REPO_NAVIGATOR_QUERY_REQUIRED"), true);

@@ -445,13 +445,13 @@ describe("cli host adapter", () => {
     assert.equal([...textLines, ...jsonLines, ...jsonlLines, ...missingLines].join("\n").includes("agent.loop.started"), false);
   });
 
-  it("runs jump navigator CLI commands with text, JSON, JSONL, and deferred symbol output", async () => {
+  it("runs jump navigator CLI commands with text, JSON, JSONL, and symbol output", async () => {
     const textLines = await runWithSeededWorkspace(["jump", "file", "src", "--output", "text"]);
     const jsonLines = await runWithSeededWorkspace(["jump", "text", "needle", "--output", "json"]);
     const jsonlLines = await runWithSeededWorkspace(["jump", "symbol", "needle", "--output", "jsonl"]);
     const missingLines = await runWithSeededWorkspace(["jump", "text", "--output", "json"]);
     const text = JSON.parse(jsonLines[0] ?? "{}") as { readonly kind?: string; readonly action?: string; readonly status?: string; readonly resultList?: { readonly id?: string; readonly items?: readonly unknown[] }; readonly activeTarget?: { readonly kind?: string } };
-    const symbolRecords = jsonlLines.map((line) => JSON.parse(line) as { readonly kind?: string; readonly result?: { readonly status?: string }; readonly diagnostic?: { readonly code?: string } });
+    const symbolRecords = jsonlLines.map((line) => JSON.parse(line) as { readonly kind?: string; readonly result?: { readonly status?: string; readonly itemCount?: number }; readonly item?: { readonly target?: { readonly kind?: string; readonly path?: string }; readonly metadata?: { readonly symbolName?: string } }; readonly diagnostic?: { readonly code?: string } });
     const missing = JSON.parse(missingLines[0] ?? "{}") as { readonly status?: string; readonly diagnostics?: readonly { readonly code?: string }[] };
 
     assert.equal(textLines[0]?.startsWith("jump file: completed"), true);
@@ -463,11 +463,55 @@ describe("cli host adapter", () => {
     assert.equal(text.resultList?.items?.length, 2);
     assert.equal(text.activeTarget?.kind, "file");
     assert.equal(symbolRecords[0]?.kind, "jump.navigator.summary");
-    assert.equal(symbolRecords[0]?.result?.status, "deferred");
-    assert.equal(symbolRecords.some((record) => record.kind === "jump.navigator.diagnostic" && record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), true);
+    assert.equal(symbolRecords[0]?.result?.status, "completed");
+    assert.equal(symbolRecords[0]?.result?.itemCount, 1);
+    assert.equal(symbolRecords.some((record) => record.kind === "jump.navigator.item" && record.item?.target?.kind === "file" && record.item.metadata?.symbolName === "needle"), true);
+    assert.equal(symbolRecords.some((record) => record.kind === "jump.navigator.diagnostic" && record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), false);
     assert.equal(missing.status, "failed");
     assert.equal(missing.diagnostics?.[0]?.code, "JUMP_NAVIGATOR_QUERY_REQUIRED");
     assert.equal([...textLines, ...jsonLines, ...jsonlLines, ...missingLines].join("\n").includes("agent.loop.started"), false);
+  });
+
+  it("uses the real local workspace for default navigation commands", async () => {
+    await withTempCwd("deepseek-cli-local-navigation-", async () => {
+      await mkdir("src", { recursive: true });
+      await writeFile(join("src", "local.ts"), "export const LocalNavNeedle = true;\n", "utf8");
+
+      const fileLines: string[] = [];
+      await runCli(["file", "list", "src", "--output", "json"], (line: string) => {
+        fileLines.push(line);
+      }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+      const fileResult = JSON.parse(fileLines[0] ?? "{}") as {
+        readonly status?: string;
+        readonly resultList?: { readonly items?: readonly { readonly target?: { readonly path?: string } }[] };
+      };
+
+      const symbolLines: string[] = [];
+      await runCli(["jump", "symbol", "LocalNavNeedle", "--output", "json"], (line: string) => {
+        symbolLines.push(line);
+      }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+      const symbolResult = JSON.parse(symbolLines[0] ?? "{}") as {
+        readonly status?: string;
+        readonly resultList?: { readonly items?: readonly { readonly target?: { readonly path?: string }; readonly metadata?: { readonly symbolName?: string } }[] };
+      };
+
+      const repoLines: string[] = [];
+      await runCli(["repo", "files", "src/local", "--output", "json"], (line: string) => {
+        repoLines.push(line);
+      }, [], { stdinIsTTY: false, stdoutIsTTY: false });
+      const repoResult = JSON.parse(repoLines[0] ?? "{}") as {
+        readonly status?: string;
+        readonly resultList?: { readonly items?: readonly { readonly target?: { readonly path?: string } }[] };
+      };
+
+      assert.equal(fileResult.status, "completed");
+      assert.equal(fileResult.resultList?.items?.some((item) => item.target?.path?.endsWith("src/local.ts")), true);
+      assert.equal(symbolResult.status, "completed");
+      assert.equal(symbolResult.resultList?.items?.some((item) => item.target?.path?.endsWith("src/local.ts") && item.metadata?.symbolName === "LocalNavNeedle"), true);
+      assert.equal(repoResult.status, "completed");
+      assert.equal(repoResult.resultList?.items?.some((item) => item.target?.path?.endsWith("src/local.ts")), true);
+      assert.equal([...fileLines, ...symbolLines, ...repoLines].join("\n").includes("agent.loop.started"), false);
+    });
   });
 
   it("runs /file as a local chat navigation command and projects result lists", async () => {
@@ -498,7 +542,7 @@ describe("cli host adapter", () => {
     assert.equal(lines.join("\n").includes("\u001b["), false);
   });
 
-  it("runs /jump as a local chat navigation command and keeps symbol jump deferred", async () => {
+  it("runs /jump as a local chat navigation command and projects symbol results", async () => {
     const lines = await runWithSeededWorkspace(["chat", "--output", "jsonl"], [
       "/jump text needle\n/palette state\n/palette refs replace current\n/palette refs list\n/jump symbol needle\n/palette state\n/jump text\n/exit\n"
     ]);
@@ -518,8 +562,9 @@ describe("cli host adapter", () => {
     assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.item" && record.record.item?.target?.kind === "file"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state" && record.record.mode === "result-list" && record.record.resultListId === "result-list:jump.text"), true);
     assert.equal(records.some((record) => record.kind === "chat.command.palette-refs" && record.record?.kind === "palette.reference.item" && record.record.item?.target?.kind === "file"), true);
-    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.summary" && record.record.result?.action === "symbol" && record.record.result.status === "deferred"), true);
-    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.diagnostic" && record.record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.summary" && record.record.result?.action === "symbol" && record.record.result.status === "completed"), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.item" && record.record.item?.target?.path?.includes("src/index.ts")), true);
+    assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.diagnostic" && record.record.diagnostic?.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), false);
     assert.equal(records.filter((record) => record.kind === "chat.command.palette-state" && record.record?.kind === "palette.state").at(-1)?.record?.resultListId, "result-list:jump.symbol");
     assert.equal(records.some((record) => record.kind === "chat.command.jump" && record.record?.kind === "jump.navigator.diagnostic" && record.record.diagnostic?.code === "JUMP_NAVIGATOR_QUERY_REQUIRED"), true);
     assert.equal(records.some((record) => record.kind === "model.requested" || record.kind === "agent.loop.started"), false);

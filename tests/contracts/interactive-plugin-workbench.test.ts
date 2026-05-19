@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { JsonObject, ProcessResult, ProcessRunOptions } from "@deepseek/platform-contracts";
+import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createChatTuiState, executeChatTuiPluginRoute, renderChatTuiStatus } from "../../src/apps/cli/src/commands/chat-tui.js";
 import { createCliPaletteProjection, executePalettePluginRoute, resolvePaletteAction } from "../../src/apps/cli/src/commands/palette.js";
@@ -170,6 +171,31 @@ describe("interactive plugin workbench", () => {
     assert.equal(jumpShelfItem?.lastExecutionStatus, "completed");
     assert.equal(jumpShelfItem?.lastExecutionCommandId, "jump.navigator.text");
     assert.equal(jumpShelfItem?.resultListCount, 1);
+  });
+
+  it("attaches jump navigator symbol results as an executable TUI result list", async () => {
+    const platform = new RecordingPlatform();
+    await platform.writeFile("/workspace/src/index.ts", "export const needle = true;\n");
+    const codeIntelligence = new DeterministicCodeIntelligenceService(platform);
+    const state = createChatTuiState({ enabled: true, terminalProfile: interactiveProfile() });
+
+    const executed = await executeChatTuiPluginRoute(state, {
+      commandId: "jump.navigator.symbol",
+      platform,
+      workspaceRoot: "/workspace",
+      query: "needle",
+      codeIntelligence
+    });
+    const jumpShelfItem = executed.state.workbench.pluginShelf.items.find((item) => item.pluginId === "@deepseek/plugin-jump-navigator");
+
+    assert.equal(executed.execution.dispatchStatus, "completed");
+    assert.equal(executed.execution.routeStatus, "implemented");
+    assert.equal(executed.execution.resultList?.id, "result-list:jump.symbol");
+    assert.equal(executed.execution.resultList?.items[0]?.target.kind, "file");
+    assert.equal(executed.state.mode, "result-list");
+    assert.equal(executed.state.composition.activeTarget?.kind, "file");
+    assert.equal(jumpShelfItem?.lastExecutionStatus, "completed");
+    assert.equal(jumpShelfItem?.lastExecutionCommandId, "jump.navigator.symbol");
   });
 
   it("keeps deferred TUI plugin executions visible without result-list mutation", async () => {

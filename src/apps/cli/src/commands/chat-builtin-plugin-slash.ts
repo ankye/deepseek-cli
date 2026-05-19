@@ -69,6 +69,7 @@ export async function handleInjectedChatPluginSlashCommand(
     platform: state.workspaceDeps.platform,
     workspaceRoot: state.workspaceRoot,
     ...(state.workspaceDeps.losslessContext ? { losslessContext: state.workspaceDeps.losslessContext } : {}),
+    codeIntelligence: state.workspaceDeps.codeIntelligence,
     ...dispatchInputFor(command)
   });
   const result = jsonObject(dispatch.result);

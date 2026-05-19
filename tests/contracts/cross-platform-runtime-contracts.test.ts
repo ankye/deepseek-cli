@@ -15,6 +15,8 @@ describe("cross-platform runtime contracts", () => {
     await platform.writeFile("C:/repo/src/index.ts", "const needle = true;\n");
     const descriptor = await platform.descriptor();
     const search = await platform.searchText("needle", "C:/repo");
+    const slashFiles = await platform.findFiles("src/index", "C:/repo");
+    const backslashFiles = await platform.findFiles("src\\index", "C:/repo");
 
     assert.equal(descriptor.os, "windows");
     assert.equal(descriptor.environmentKind, "local");
@@ -22,6 +24,8 @@ describe("cross-platform runtime contracts", () => {
     assert.equal(descriptor.secureStorage.status, "available");
     assert.equal(descriptor.redaction.class, "internal");
     assert.equal(search.length, 1);
+    assert.equal(slashFiles.length, 1);
+    assert.equal(backslashFiles.length, 1);
     assert.equal(search.every((result) => result.metadata?.selectedProvider === "select-string"), true);
   });
 

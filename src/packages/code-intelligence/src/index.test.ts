@@ -69,6 +69,20 @@ describe("deterministic code intelligence service", () => {
     assert.equal((await service.diagnostics(workspaceRoot)).length, 0);
   });
 
+  it("prioritizes workspace source paths before generated paths under the file limit", async () => {
+    const platform = new FakePlatformRuntime("fake", workspaceRoot);
+    await platform.writeFile(`${workspaceRoot}/dist/generated.ts`, "export function generatedOnly() {}\n");
+    await platform.writeFile(`${workspaceRoot}/docs/guide.md`, "# docs\n");
+    await platform.writeFile(`${workspaceRoot}/src/feature.ts`, "export function prioritizedSource() {}\n");
+    const service = new DeterministicCodeIntelligenceService(platform, { maxFiles: 1 });
+    const indexed = await service.index(workspaceRoot);
+
+    assert.equal(indexed.ok, true);
+    assert.equal(indexed.value?.metadata.provider.truncated, true);
+    assert.equal((await service.symbols("prioritizedSource")).length, 1);
+    assert.equal((await service.symbols("generatedOnly")).length, 0);
+  });
+
   it("keeps null provider deterministic and unavailable", async () => {
     const service = new NullCodeIntelligenceService();
     assert.equal((await service.status()).status, "unavailable");

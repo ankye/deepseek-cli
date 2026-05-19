@@ -24,7 +24,7 @@ export async function createCliAgentRuntime(options: CliRuntimeFactoryOptions, r
         timeoutMs: 90_000,
         allowWorkspaceWrites: options.toolProjection === "read-write" || options.toolProjection === "all"
       }))
-    : createCliSessionDependenciesBase();
+    : createCliSessionDependenciesBase(platform);
   await loadUserHooks(options.workspaceRoot, deps, platform).catch((error: unknown) => {
     console.warn(`deepseek: user hook loading failed: ${error instanceof Error ? error.message : String(error)}`);
   });
@@ -46,11 +46,11 @@ async function createCliSessionDependencies(workspaceRoot = process.cwd()): Prom
   return deps;
 }
 
-function createCliSessionDependenciesBase(): RuntimeDependencies {
-  const deps = createDeterministicRuntimeDependencies();
+function createCliSessionDependenciesBase(platform = new NodePlatformRuntime()): RuntimeDependencies {
+  const deps = createDeterministicRuntimeDependencies({ platform });
   const persistentSessionsDirectory = userSessionsDirectory();
-  const persistentLosslessContextDirectory = deps.platform.resolvePath(deps.platform.userConfigPath("deepseek"), "..", "lossless-context");
-  const losslessContext = new PersistentJsonlLosslessContextManager(deps.platform, persistentLosslessContextDirectory);
+  const persistentLosslessContextDirectory = platform.resolvePath(platform.userConfigPath("deepseek"), "..", "lossless-context");
+  const losslessContext = new PersistentJsonlLosslessContextManager(platform, persistentLosslessContextDirectory);
   const permanentMemory = createPersistentPermanentMemoryProvider();
   try {
     const persistentSessions = new PersistentFilesystemSessionStore(persistentSessionsDirectory);

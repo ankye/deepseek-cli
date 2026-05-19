@@ -20,6 +20,7 @@ import type {
   SessionId
 } from "@deepseek/platform-contracts";
 import { asId } from "@deepseek/platform-contracts";
+import { DeterministicCodeIntelligenceService } from "@deepseek/code-intelligence";
 import { firstPartyPluginCommandContributions, listFirstPartyDevPluginManifests } from "@deepseek/first-party-dev-plugins";
 import { FakePlatformRuntime } from "@deepseek/platform-abstraction";
 import { createExtensionManagementRecord } from "../../src/apps/cli/src/commands/extension.js";
@@ -45,8 +46,8 @@ describe("built-in plugin owner routes", () => {
     assert.equal(routes.length, 26);
     assert.deepEqual(routes.map((route) => route.commandId).sort(), commandIds);
     assert.equal(new Set(routes.map((route) => route.routeId)).size, routes.length);
-    assert.equal(routes.filter((route) => route.status === "implemented").length, 23);
-    assert.equal(routes.filter((route) => route.status === "deferred").length, 3);
+    assert.equal(routes.filter((route) => route.status === "implemented").length, 24);
+    assert.equal(routes.filter((route) => route.status === "deferred").length, 2);
     assert.equal(routes.filter((route) => route.status === "unsupported").length, 0);
     assert.equal(routes.every((route) => route.permissions.length > 0), true);
     assert.equal(routes.every((route) => route.sideEffects.length === 1), true);
@@ -144,10 +145,11 @@ describe("built-in plugin owner routes", () => {
     assert.equal(jsonObject(references.result).referenceTargets instanceof Array, true);
   });
 
-  it("dispatches jump navigator file/text routes and keeps symbol jump deferred", async () => {
+  it("dispatches jump navigator file/text/symbol routes through host adapters", async () => {
     const platform = new RecordingPlatform();
     await platform.writeFile("/workspace/src/index.ts", "export const needle = true;\n");
     await platform.writeFile("/workspace/docs/usage.md", "needle docs\n");
+    const codeIntelligence = new DeterministicCodeIntelligenceService(platform);
 
     const file = await dispatchBuiltInPluginOwnerRoute({
       commandId: "jump.navigator.file",
@@ -165,7 +167,8 @@ describe("built-in plugin owner routes", () => {
       commandId: "jump.navigator.symbol",
       platform,
       workspaceRoot: "/workspace",
-      query: "needle"
+      query: "needle",
+      codeIntelligence
     });
 
     assert.equal(file.status, "completed");
@@ -175,13 +178,15 @@ describe("built-in plugin owner routes", () => {
     assert.equal(text.status, "completed");
     assert.equal(jsonObject(jsonObject(text.result).data).itemCount, 2);
     assert.equal(jsonObject(jsonObject(text.result).resultList).id, "result-list:jump.text");
-    assert.equal(symbol.status, "deferred");
-    assert.equal(symbol.route.status, "deferred");
-    assert.equal(symbol.route.dispatchAvailable, false);
-    assert.equal(jsonObject(symbol.result).status, "deferred");
+    assert.equal(symbol.status, "completed");
+    assert.equal(symbol.route.status, "implemented");
+    assert.equal(symbol.route.dispatchAvailable, true);
+    assert.equal(jsonObject(symbol.result).status, "completed");
+    assert.equal(jsonObject(jsonObject(symbol.result).data).itemCount, 1);
     assert.equal(jsonObject(jsonObject(symbol.result).resultList).id, "result-list:jump.symbol");
-    assert.equal(symbol.diagnostics.some((entry) => entry.code === "BUILTIN_PLUGIN_OWNER_ROUTE_DEFERRED"), true);
-    assert.equal(symbol.diagnostics.some((entry) => entry.code === "JUMP_NAVIGATOR_SYMBOL_DEFERRED"), true);
+    assert.equal(jsonObject(jsonObject(symbol.result).activeTarget).kind, "file");
+    assert.equal(symbol.diagnostics.some((entry) => entry.code === "BUILTIN_PLUGIN_OWNER_ROUTE_DEFERRED"), false);
+    assert.equal(JSON.stringify(symbol).includes("handler"), false);
     assert.equal(platform.runs.length, 0);
   });
 
@@ -293,18 +298,19 @@ describe("built-in plugin owner routes", () => {
     assert.equal(filePreview?.metadata?.ownerRouteStatus, "implemented");
     assert.equal(filePreview?.metadata?.dispatchAvailable, true);
     assert.equal(jsonObject(fileKeymap?.metadata?.ownerRouteSummary).implemented, 3);
-    assert.equal(jumpSymbol?.metadata?.ownerRouteStatus, "deferred");
-    assert.equal(jumpSymbol?.metadata?.dispatchAvailable, false);
-    assert.equal(jsonObject(jumpKeymap?.metadata?.ownerRouteSummary).deferred, 1);
+    assert.equal(jumpSymbol?.metadata?.ownerRouteStatus, "implemented");
+    assert.equal(jumpSymbol?.metadata?.dispatchAvailable, true);
+    assert.equal(jsonObject(jumpKeymap?.metadata?.ownerRouteSummary).deferred, 0);
+    assert.equal(jsonObject(jumpKeymap?.metadata?.ownerRouteSummary).implemented, 3);
     assert.equal(explanation?.governance.ownerRouteStatus, "deferred");
     assert.equal(explanation?.governance.dispatchAvailable, false);
     assert.equal(jsonObject(paletteRecall?.metadata.recordMetadata).ownerRouteStatus, "deferred");
     assert.equal(jsonObject(jsonObject(paletteRecall?.target.metadata).recordMetadata).dispatchAvailable, false);
-    assert.equal(jsonObject(paletteJumpSymbol?.metadata.recordMetadata).ownerRouteStatus, "deferred");
+    assert.equal(jsonObject(paletteJumpSymbol?.metadata.recordMetadata).ownerRouteStatus, "implemented");
     assert.equal(extensionRecall?.summary.includes("route=deferred"), true);
     assert.equal(jsonObject(extensionRecall?.provenance).ownerRouteStatus, "deferred");
-    assert.equal(extensionJumpSymbol?.summary.includes("route=deferred"), true);
-    assert.equal(jsonObject(extensionJumpSymbol?.provenance).ownerRouteStatus, "deferred");
+    assert.equal(extensionJumpSymbol?.summary.includes("route=implemented"), true);
+    assert.equal(jsonObject(extensionJumpSymbol?.provenance).ownerRouteStatus, "implemented");
     assert.equal(extension.lifecycle.some((entry) => entry.step === "builtin-plugin-owner-routes.project" && jsonObject(entry.metadata).routeCount === 26), true);
   });
 });

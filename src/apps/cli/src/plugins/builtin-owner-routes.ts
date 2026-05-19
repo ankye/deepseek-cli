@@ -1,6 +1,7 @@
 import type {
   CliInteractionContribution,
   JsonObject,
+  CodeIntelligenceService,
   LosslessContextManager,
   PlatformRuntime,
   PluginManifest,
@@ -63,6 +64,7 @@ export interface BuiltInPluginOwnerRouteDispatchInput {
   readonly query?: string;
   readonly target?: string;
   readonly losslessContext?: LosslessContextManager;
+  readonly codeIntelligence?: CodeIntelligenceService;
 }
 
 export interface BuiltInPluginOwnerRouteDispatchResult extends JsonObject {
@@ -114,9 +116,7 @@ const routeDefinitions: Readonly<Record<string, RouteDefinition>> = {
   "git.review.summary": route("implemented", "git", "review", "Git review", "deepseek git review"),
   "jump.navigator.file": route("implemented", "jump", "file", "Jump file", "deepseek jump file <query>"),
   "jump.navigator.text": route("implemented", "jump", "text", "Jump text", "deepseek jump text <query>"),
-  "jump.navigator.symbol": route("deferred", "jump", "symbol", "Jump symbol", "deepseek jump symbol <query>", [
-    diagnostic("BUILTIN_PLUGIN_OWNER_ROUTE_DEFERRED", "Jump symbol is recognized but deferred to code-intelligence owner route wiring.")
-  ])
+  "jump.navigator.symbol": route("implemented", "jump", "symbol", "Jump symbol", "deepseek jump symbol <query>")
 };
 
 export function listBuiltInPluginOwnerRoutes(manifests: readonly PluginManifest[] = listFirstPartyDevPluginManifests()): readonly BuiltInPluginOwnerRouteDescriptor[] {
@@ -195,7 +195,7 @@ export async function dispatchBuiltInPluginOwnerRoute(input: BuiltInPluginOwnerR
     return dispatchResult(routeDescriptor, result.status, result, routeDescriptor.diagnostics);
   }
   if (routeDescriptor.family === "jump") {
-    const result = await resolveJumpNavigator(input.platform, input.workspaceRoot, routeDescriptor.action as JumpNavigatorAction, input.query ?? input.target ?? input.args?.join(" ") ?? "");
+    const result = await resolveJumpNavigator(input.platform, input.workspaceRoot, routeDescriptor.action as JumpNavigatorAction, input.query ?? input.target ?? input.args?.join(" ") ?? "", input.codeIntelligence);
     return dispatchResult(routeDescriptor, result.status, result, routeDescriptor.diagnostics);
   }
   if (routeDescriptor.family === "git") {

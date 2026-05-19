@@ -15,5 +15,5 @@ export const jumpNavigatorPlugin = defineBundledPlugin({
   keymaps,
   rendererHints,
   reasoningContributions,
-  metadata: { releaseScope: "R1", symbolRoute: "deferred" }
+  metadata: { releaseScope: "R1", symbolRoute: "implemented" }
 });

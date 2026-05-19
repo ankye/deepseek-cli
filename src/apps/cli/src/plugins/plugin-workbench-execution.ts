@@ -1,6 +1,7 @@
 import type {
   CliResultList,
   CliTargetRef,
+  CodeIntelligenceService,
   JsonObject,
   LosslessContextManager,
   PlatformRuntime,
@@ -26,6 +27,7 @@ export interface PluginWorkbenchExecutionInput {
   readonly target?: string;
   readonly args?: readonly string[];
   readonly losslessContext?: LosslessContextManager;
+  readonly codeIntelligence?: CodeIntelligenceService;
   readonly executionId?: string;
   readonly createdAt?: string;
   readonly durationMs?: number;
@@ -72,7 +74,8 @@ export async function executeBuiltInPluginWorkbenchRoute(input: PluginWorkbenchE
     ...(normalizedArgs.length > 0 ? { args: normalizedArgs } : {}),
     ...(input.query ? { query: input.query } : {}),
     ...(input.target ? { target: input.target } : {}),
-    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {})
+    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {}),
+    ...(input.codeIntelligence ? { codeIntelligence: input.codeIntelligence } : {})
   });
   return executionRecord(input, dispatch, durationMs(input.durationMs, startedAt));
 }

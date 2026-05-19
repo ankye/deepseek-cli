@@ -19,6 +19,7 @@ export { createCodeIntelligenceFamilyCapabilities } from "./capabilities.js";
 export type { CodeIntelligenceFamilyCapabilityOptions } from "./capabilities.js";
 
 const deterministicTime = new Date(0).toISOString();
+const defaultMaxFiles = 1_000;
 const supportedExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".md"] as const;
 
 export class NullCodeIntelligenceService implements CodeIntelligenceService {
@@ -78,7 +79,7 @@ export class DeterministicCodeIntelligenceService implements CodeIntelligenceSer
     private readonly platform: PlatformRuntime,
     options: DeterministicCodeIntelligenceOptions = {}
   ) {
-    this.maxFiles = options.maxFiles ?? 200;
+    this.maxFiles = options.maxFiles ?? defaultMaxFiles;
     this.maxFileBytes = options.maxFileBytes ?? 80_000;
   }
 
@@ -105,18 +106,19 @@ export class DeterministicCodeIntelligenceService implements CodeIntelligenceSer
 
     const allFiles = (await this.platform.findFiles("", root))
       .filter((path) => supportedExtensions.some((extension) => path.endsWith(extension)))
-      .sort();
+      .sort(compareIndexCandidatePaths);
     const truncated = allFiles.length > this.maxFiles;
     const files = allFiles.slice(0, this.maxFiles);
     const providerDiagnostics = truncated ? [diagnostic("CODE_INTELLIGENCE_FILE_LIMIT", "Code intelligence indexed a bounded subset of files.")] : [];
     const diagnostics: Diagnostic[] = [];
     const symbols: SymbolReference[] = [];
-    const references: SymbolReference[] = [];
     const dependencyFingerprints: string[] = [];
+    const fileContents = new Map<string, string>();
 
     for (const path of files) {
       const content = await this.platform.readFile(path).catch(() => "");
       const bounded = content.slice(0, this.maxFileBytes);
+      fileContents.set(path, bounded);
       const fileTruncated = content.length > bounded.length;
       if (fileTruncated) diagnostics.push(codeDiagnostic(path, "warning", "CODE_INTELLIGENCE_FILE_TRUNCATED", "File exceeded code intelligence byte limit.", 1));
       dependencyFingerprints.push(`${path}:${stableHash(bounded)}`);
@@ -124,9 +126,7 @@ export class DeterministicCodeIntelligenceService implements CodeIntelligenceSer
       diagnostics.push(...extractDiagnostics(path, lines));
       symbols.push(...extractSymbols(path, lines));
     }
-    for (const symbol of symbols) {
-      references.push(...extractReferences(symbol, files, await readFiles(this.platform, files)));
-    }
+    const references = extractReferences(symbols, fileContents);
 
     const provider = providerMetadata("local-analyzer", providerDiagnostics.length > 0 ? "degraded" : "available", files.length, truncated, providerDiagnostics);
     const metadata = indexMetadata(root, files, [...this.invalidatedPaths].sort(), provider, dependencyFingerprints);
@@ -230,6 +230,32 @@ function extractDiagnostics(path: string, lines: readonly string[]): readonly Di
   return diagnostics;
 }
 
+function compareIndexCandidatePaths(a: string, b: string): number {
+  return indexCandidatePriority(a) - indexCandidatePriority(b) || a.localeCompare(b, "en");
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
+function indexCandidatePriority(path: string): number {
+  const normalized = normalizePath(path).toLowerCase();
+  if (isGeneratedPath(normalized)) return 50;
+  if (normalized.includes("/src/")) return 0;
+  if (normalized.includes("/tests/") || normalized.includes("/test/")) return 1;
+  if (normalized.includes("/scripts/")) return 2;
+  if (normalized.includes("/openspec/")) return 6;
+  return 4;
+}
+
+function isGeneratedPath(path: string): boolean {
+  return path.includes("/dist/")
+    || path.includes("/coverage/")
+    || path.includes("/.codex/")
+    || path.includes("/.agents/")
+    || path.includes("/tmp/");
+}
+
 function extractSymbols(path: string, lines: readonly string[]): readonly SymbolReference[] {
   const symbols: SymbolReference[] = [];
   const pattern = /\b(?:export\s+)?(?:async\s+)?(function|class|interface|type|const|let|var)\s+([A-Za-z_$][\w$]*)/;
@@ -241,24 +267,22 @@ function extractSymbols(path: string, lines: readonly string[]): readonly Symbol
   return symbols;
 }
 
-function extractReferences(symbol: SymbolReference, paths: readonly string[], files: ReadonlyMap<string, string>): readonly SymbolReference[] {
+function extractReferences(symbols: readonly SymbolReference[], files: ReadonlyMap<string, string>): readonly SymbolReference[] {
   const references: SymbolReference[] = [];
-  for (const path of paths) {
-    const content = files.get(path) ?? "";
+  const symbolsByName = new Map<string, SymbolReference>();
+  for (const symbol of symbols) {
+    if (!symbolsByName.has(symbol.name)) symbolsByName.set(symbol.name, symbol);
+  }
+  for (const [path, content] of files.entries()) {
     content.split(/\r?\n/).forEach((line, index) => {
-      if (!line.includes(symbol.name)) return;
-      references.push(symbolReference(symbol.name, path, index + 1, symbol.kind ?? "unknown", "reference"));
+      const referencedNames = new Set([...line.matchAll(/[A-Za-z_$][\w$]*/g)].map((match) => match[0] ?? "").filter((name) => symbolsByName.has(name)));
+      for (const name of referencedNames) {
+        const symbol = symbolsByName.get(name);
+        references.push(symbolReference(name, path, index + 1, symbol?.kind ?? "unknown", "reference"));
+      }
     });
   }
   return references;
-}
-
-async function readFiles(platform: PlatformRuntime, paths: readonly string[]): Promise<ReadonlyMap<string, string>> {
-  const result = new Map<string, string>();
-  for (const path of paths) {
-    result.set(path, await platform.readFile(path).catch(() => ""));
-  }
-  return result;
 }
 
 function codeDiagnostic(path: string, severity: Diagnostic["severity"], code: string, message: string, line: number): Diagnostic {

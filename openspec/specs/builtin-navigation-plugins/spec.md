@@ -14,14 +14,19 @@ Built-in plugin pack 必须包含一个只读 file manager plugin，通过声明
 - **中文** 当 `file.manager.list`、`file.manager.preview` 或 `file.manager.references` 通过 owner route 执行时，结果必须包含 typed file targets、适用时的 result-list metadata、reference targets、diagnostics 与 redaction metadata，且不得使用 plugin-private handlers。
 
 ### Requirement: Jump navigator built-in plugin
-The built-in plugin pack SHALL include a jump navigator plugin that contributes quick file and text jumps and exposes symbol jump as a deferred code-intelligence route.
+The built-in plugin pack SHALL include a jump navigator plugin that contributes quick file, text, and symbol jumps through declarative plugin metadata and host-owned execution.
 
-Built-in plugin pack 必须包含 jump navigator plugin，贡献快速 file/text jumps，并将 symbol jump 暴露为 deferred code-intelligence route。
+Built-in plugin pack 必须包含 jump navigator plugin，通过声明式 plugin metadata 与 host-owned execution 贡献 file、text 与 symbol jumps。
 
 #### Scenario: Jump navigator routes are explicit
 - **WHEN** jump navigator command routes are inspected
-- **THEN** file and text routes are dispatchable, symbol routes are marked deferred, and all routes carry fallback guidance
-- **中文** 当 jump navigator command routes 被检查时，file 与 text routes 必须可 dispatch，symbol routes 必须标记为 deferred，并且所有 routes 都携带 fallback guidance。
+- **THEN** file, text, and symbol routes are dispatchable, carry fallback guidance where applicable, and remain free of plugin-private handlers
+- **中文** 当 jump navigator command routes 被检查时，file、text 与 symbol routes 必须可 dispatch，按需携带 fallback guidance，并保持不包含 plugin-private handlers。
+
+#### Scenario: Symbol jump returns code-intelligence targets
+- **WHEN** `jump.navigator.symbol` executes through an owner route with a symbol query
+- **THEN** the result includes a code-intelligence result list with typed file targets, line metadata, provider metadata, active target, diagnostics, and redaction metadata
+- **中文** 当 `jump.navigator.symbol` 带 symbol query 通过 owner route 执行时，结果必须包含 code-intelligence result list，带 typed file targets、line metadata、provider metadata、active target、diagnostics 与 redaction metadata。
 
 ### Requirement: Navigation plugins stay native in the workbench
 File manager and jump navigator plugin executions SHALL appear in palette, TUI workbench, plugin shelf, activity feed, and extension inspection surfaces like other built-in plugins.
@@ -45,8 +50,8 @@ File manager 与 jump navigator built-in plugins 必须暴露顶层 CLI commands
 
 #### Scenario: Jump navigator CLI commands return structured results
 - **WHEN** a user runs `deepseek jump file <query>`, `deepseek jump text <query>`, or `deepseek jump symbol <query>`
-- **THEN** file and text jumps return active file result lists, while symbol jump returns deferred code-intelligence diagnostics
-- **中文** 当用户运行 `deepseek jump file <query>`、`deepseek jump text <query>` 或 `deepseek jump symbol <query>` 时，file 与 text jumps 必须返回 active file result lists，而 symbol jump 必须返回 deferred code-intelligence diagnostics。
+- **THEN** file, text, and symbol jumps return active result lists in text, JSON, or JSONL output without submitting text to the agent model
+- **中文** 当用户运行 `deepseek jump file <query>`、`deepseek jump text <query>` 或 `deepseek jump symbol <query>` 时，file、text 与 symbol jumps 必须以 text、JSON 或 JSONL 返回 active result lists，且不得把文本提交给 agent model。
 
 #### Scenario: Missing query remains typed
 - **WHEN** a user omits the required query for a file or jump command
@@ -65,8 +70,8 @@ File manager 与 jump navigator built-in plugins 必须暴露 chat slash command
 
 #### Scenario: Jump slash command returns jump navigator results
 - **WHEN** a user enters `/jump file <query>`, `/jump text <query>`, or `/jump symbol <query>` in chat
-- **THEN** file and text jumps return active result lists while symbol jump returns the same deferred code-intelligence diagnostics as the CLI command
-- **中文** 当用户在 chat 中输入 `/jump file <query>`、`/jump text <query>` 或 `/jump symbol <query>` 时，file 与 text jumps 必须返回 active result lists，而 symbol jump 必须返回与 CLI command 相同的 deferred code-intelligence diagnostics。
+- **THEN** file, text, and symbol jumps return active result lists through local host-owned execution without submitting the slash text to the agent model
+- **中文** 当用户在 chat 中输入 `/jump file <query>`、`/jump text <query>` 或 `/jump symbol <query>` 时，file、text 与 symbol jumps 必须通过本地 host-owned execution 返回 active result lists，且不得将 slash 文本提交给 agent model。
 
 #### Scenario: Navigation slash missing query is typed
 - **WHEN** a user omits the required query for `/file` or `/jump`

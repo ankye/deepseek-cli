@@ -1,4 +1,4 @@
-import type { LosslessContextManager, PlatformRuntime } from "@deepseek/platform-contracts";
+import type { CodeIntelligenceService, LosslessContextManager, PlatformRuntime } from "@deepseek/platform-contracts";
 import { executeBuiltInPluginWorkbenchRoute, type PluginWorkbenchExecutionRecord } from "../plugins/plugin-workbench-execution.js";
 import { createChatTuiWorkbench, type ChatTuiCommandBarState, type ChatTuiFocusState } from "./chat-tui-workbench.js";
 import type { ChatTuiStateSnapshot } from "./chat-tui.js";
@@ -46,6 +46,7 @@ export async function executeChatTuiPluginRoute(
     readonly target?: string;
     readonly args?: readonly string[];
     readonly losslessContext?: LosslessContextManager;
+    readonly codeIntelligence?: CodeIntelligenceService;
   }
 ): Promise<{ readonly execution: PluginWorkbenchExecutionRecord; readonly state: ChatTuiStateSnapshot }> {
   const execution = await executeBuiltInPluginWorkbenchRoute({
@@ -56,7 +57,8 @@ export async function executeChatTuiPluginRoute(
     ...(input.query ? { query: input.query } : {}),
     ...(input.target ? { target: input.target } : {}),
     ...(input.args ? { args: input.args } : {}),
-    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {})
+    ...(input.losslessContext ? { losslessContext: input.losslessContext } : {}),
+    ...(input.codeIntelligence ? { codeIntelligence: input.codeIntelligence } : {})
   });
   return {
     execution,
