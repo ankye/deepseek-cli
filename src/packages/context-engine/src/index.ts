@@ -1,6 +1,13 @@
 import type {
   CacheManager,
   CodeIntelligenceService,
+  ContextBlock,
+  ContextPipelineDiagnostic,
+  ContextPipelineLayer,
+  ContextPipelineLayerId,
+  ContextPipelineManifest,
+  ContextPipelineManifestComparison,
+  ContextPrefixHash,
   ContextEngine,
   ContextGraphNode,
   ContextNode,
@@ -19,7 +26,16 @@ import type {
   RedactionMetadata,
   SessionId
 } from "@deepseek/platform-contracts";
-import { CONTEXT_PROJECTION_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import {
+  CONTEXT_PIPELINE_COMPATIBILITY,
+  CONTEXT_PIPELINE_LAYER_ORDER,
+  CONTEXT_PIPELINE_SCHEMA_VERSION,
+  CONTEXT_PROJECTION_SCHEMA_VERSION,
+  asId,
+  contextPipelineBlockStableId,
+  contextPipelineLayerOrder,
+  contextPipelinePrefixStableId
+} from "@deepseek/platform-contracts";
 import { PROJECTION_CACHE_NAMESPACE, createProjectionCacheEntry, projectionCacheKey } from "@deepseek/memory-cache-management";
 import type { ProjectionCacheInput } from "@deepseek/memory-cache-management";
 import { createSecretRedactionDecision, redactSecretText } from "@deepseek/policy-sandbox";
@@ -154,6 +170,25 @@ export class InMemoryContextEngine implements ContextEngine {
         strategy: "priority-recency-stable",
         tieBreak: ["priority", "createdAt", "id"]
       },
+      ...(request.pipeline?.enabled ? { pipeline: deriveContextPipelineManifest({
+        schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION,
+        status,
+        sessionId: request.sessionId,
+        ...(request.turnId ? { turnId: request.turnId } : {}),
+        prompt: selected.map((node) => node.content).join("\n"),
+        selectedNodes: selected,
+        excludedNodes: excluded,
+        estimatedTokens: selectedTokens,
+        budget: rejectedByBudget ? { ...budget, status: "rejected", reason: "hard-budget-exceeded" } : budget,
+        redaction,
+        cache,
+        ordering: {
+          strategy: "priority-recency-stable",
+          tieBreak: ["priority", "createdAt", "id"]
+        },
+        replayFingerprint: replayFingerprint(request, selected, excluded),
+        ...(rejectedByBudget ? { error: projectionError("CONTEXT_PROJECTION_BUDGET_EXCEEDED", "Context projection exceeded hard budget") } : {})
+      }) } : {}),
       replayFingerprint: replayFingerprint(request, selected, excluded),
       ...(rejectedByBudget ? { error: projectionError("CONTEXT_PROJECTION_BUDGET_EXCEEDED", "Context projection exceeded hard budget") } : {})
     };
@@ -263,6 +298,133 @@ export interface ProjectIndexDocumentInput {
   readonly content: string;
   readonly language?: string;
   readonly redactionClass?: RedactionClass;
+}
+
+export interface DeriveContextPipelineManifestOptions {
+  readonly maxStableToolResultTokens?: number;
+  readonly maxSessionBlocksBeforeCompaction?: number;
+}
+
+const DEFAULT_STABLE_TOOL_RESULT_TOKENS = 96;
+
+export function deriveContextPipelineManifest(
+  projection: ContextProjectionResult,
+  options: DeriveContextPipelineManifestOptions = {}
+): ContextPipelineManifest {
+  const maxStableToolResultTokens = Math.max(1, options.maxStableToolResultTokens ?? DEFAULT_STABLE_TOOL_RESULT_TOKENS);
+  const blocks: ContextBlock[] = [];
+  const excludedBlocks = projection.excludedNodes.map((node) => ({
+    id: `context-excluded:${node.id}:${node.reason}`,
+    sourceNodeId: node.id,
+    layer: layerForProjectedLike(node),
+    reason: node.reason,
+    estimatedTokens: node.estimatedTokens,
+    dependencyFingerprints: [],
+    redaction: node.redaction
+  }));
+  const diagnostics = diagnosticsForExcludedNodes(projection.excludedNodes, excludedBlocks);
+
+  let order = 0;
+  for (const node of projection.selectedNodes) {
+    const layer = layerForProjectedNode(node);
+    if (isOversizedToolResult(node, maxStableToolResultTokens) && layer !== "current-turn") {
+      const summary = summaryBlockFor(node, order, maxStableToolResultTokens, projection.replayFingerprint);
+      order += 1;
+      const raw = blockForProjectedNode(node, "current-turn", order, projection.replayFingerprint, {
+        cachePolicy: "ephemeral",
+        provenance: {
+          ...node.provenance,
+          volatileTailFor: String(node.id)
+        }
+      });
+      order += 1;
+      blocks.push(summary, raw);
+      continue;
+    }
+    blocks.push(blockForProjectedNode(node, layer, order, projection.replayFingerprint));
+    order += 1;
+  }
+
+  const layerOrderedBlocks = [...blocks].sort((left, right) => {
+    const layerDelta = contextPipelineLayerOrder(left.layer) - contextPipelineLayerOrder(right.layer);
+    return layerDelta !== 0 ? layerDelta : left.order - right.order;
+  });
+  const orderedBlocks = compactSessionBlocks(layerOrderedBlocks, projection.replayFingerprint, options.maxSessionBlocksBeforeCompaction);
+  const layers = buildPipelineLayers(orderedBlocks);
+  const prefixHashes = layers.map((layer) => prefixHashForLayer(layer));
+  const cacheHintSummary = summarizeCacheHints(orderedBlocks);
+  const pipelineFingerprint = `pipeline:${stableHash(JSON.stringify(prefixHashes.map((entry) => [entry.layer, entry.prefixHash])))}`;
+  return Object.freeze({
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    manifestId: `context-pipeline:${pipelineFingerprint}`,
+    sessionId: projection.sessionId,
+    ...(projection.turnId ? { turnId: projection.turnId } : {}),
+    layers,
+    blocks: orderedBlocks,
+    excludedBlocks,
+    prefixHashes,
+    tokenTotals: {
+      selectedTokens: projection.budget.selectedTokens,
+      excludedTokens: projection.budget.excludedTokens,
+      hardLimitTokens: projection.budget.hardLimitTokens,
+      ...(projection.budget.softLimitTokens !== undefined ? { softLimitTokens: projection.budget.softLimitTokens } : {})
+    },
+    cacheHintSummary,
+    pipelineFingerprint,
+    diagnostics,
+    redaction: { class: "internal" as const, fields: ["blocks.content", "blocks.contentPreview", "excludedBlocks"] },
+    compatibility: CONTEXT_PIPELINE_COMPATIBILITY
+  });
+}
+
+export function compareContextPipelineManifests(
+  previous: ContextPipelineManifest,
+  current: ContextPipelineManifest
+): ContextPipelineManifestComparison {
+  let firstChangedLayer: ContextPipelineLayerId | undefined;
+  let firstChangedBlockId: string | undefined;
+  let affectedTokens = 0;
+  let stableLayerCount = 0;
+  let changedLayerCount = 0;
+  const diagnostics: ContextPipelineDiagnostic[] = [];
+  for (const layerId of CONTEXT_PIPELINE_LAYER_ORDER) {
+    const previousLayer = previous.layers.find((layer) => layer.id === layerId);
+    const currentLayer = current.layers.find((layer) => layer.id === layerId);
+    if (previousLayer?.prefixHash === currentLayer?.prefixHash) {
+      stableLayerCount += 1;
+      continue;
+    }
+    changedLayerCount += 1;
+    if (!firstChangedLayer) {
+      firstChangedLayer = layerId;
+      affectedTokens = currentLayer?.estimatedTokens ?? 0;
+      firstChangedBlockId = firstChangedBlock(previousLayer, currentLayer);
+    }
+    const changedBlockId = firstChangedBlock(previousLayer, currentLayer);
+    diagnostics.push({
+      code: "CONTEXT_PIPELINE_PREFIX_CHANGED",
+      message: "Context pipeline prefix hash changed for this layer.",
+      layer: layerId,
+      ...(changedBlockId ? { blockId: changedBlockId } : {}),
+      affectedTokens: currentLayer?.estimatedTokens ?? 0,
+      redaction: { class: "internal", fields: ["message", "blockId"] }
+    });
+  }
+  return {
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    status: changedLayerCount > 0 ? "changed" : "stable",
+    previousFingerprint: previous.pipelineFingerprint,
+    currentFingerprint: current.pipelineFingerprint,
+    ...(firstChangedLayer ? { firstChangedLayer } : {}),
+    ...(firstChangedBlockId ? { firstChangedBlockId } : {}),
+    affectedTokens,
+    stableLayerCount,
+    changedLayerCount,
+    rawContentInspected: false,
+    diagnostics,
+    redaction: { class: "internal", fields: ["previousFingerprint", "currentFingerprint"] },
+    compatibility: CONTEXT_PIPELINE_COMPATIBILITY
+  };
 }
 
 export interface ProjectIndexRefreshRequest {
@@ -391,6 +553,246 @@ export class DeterministicProjectIndex {
       redaction: { class: "internal", fields: ["workspaceRoot", "entries.path", "entries.excerpt", "contextNodes.content"] }
     };
   }
+}
+
+function layerForProjectedNode(node: ProjectedContextNode): ContextPipelineLayerId {
+  return layerForProjectedLike(node);
+}
+
+function layerForProjectedLike(node: Pick<ProjectedContextNode, "id" | "kind" | "source"> & { readonly provenance?: JsonObject }): ContextPipelineLayerId {
+  const provenance = node.provenance ?? {};
+  const hinted = stringValue(provenance.pipelineLayer);
+  if (isPipelineLayer(hinted)) return hinted;
+  const lifecycle = stringValue(provenance.lifecycle);
+  if (lifecycle === "global") return "kernel";
+  if (lifecycle === "project") return "project";
+  if (lifecycle === "turn") return "current-turn";
+  if (String(node.id).startsWith("context-current-") || node.source === "user") return "current-turn";
+  if (node.source === "system" && (node.kind === "rule" || node.kind === "summary")) return "kernel";
+  if (node.source === "workspace" || node.kind === "file" || node.kind === "rule") return "project";
+  if (node.source === "memory" && (provenance.scope === "project" || provenance.memoryScope === "project")) return "project";
+  if (node.source === "tool" || node.kind === "tool-result") return "current-turn";
+  return "session";
+}
+
+function blockForProjectedNode(
+  node: ProjectedContextNode,
+  layer: ContextPipelineLayerId,
+  order: number,
+  projectionFingerprint: string,
+  overrides: {
+    readonly cachePolicy?: ContextBlock["cacheHint"]["policy"];
+    readonly provenance?: JsonObject;
+    readonly content?: string;
+    readonly estimatedTokens?: number;
+  } = {}
+): ContextBlock {
+  const cacheHint = {
+    policy: overrides.cachePolicy ?? cachePolicyForLayer(layer),
+    freshness: freshnessForLayer(layer)
+  } satisfies ContextBlock["cacheHint"];
+  const content = overrides.content ?? node.content;
+  const estimatedTokens = overrides.estimatedTokens ?? node.estimatedTokens;
+  const provenance = overrides.provenance ?? node.provenance;
+  const hash = `block:${stableHash(JSON.stringify({
+    layer,
+    kind: node.kind,
+    source: node.source,
+    content,
+    dependencyFingerprints: [...node.dependencyFingerprints].sort(),
+    redaction: node.redaction,
+    cacheHint,
+    provenance
+  }))}`;
+  return Object.freeze({
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    id: contextPipelineBlockStableId(layer, String(node.id), hash),
+    layer,
+    order,
+    sourceNodeId: node.id,
+    kind: node.kind,
+    source: node.source,
+    hash,
+    content,
+    contentPreview: firstWords(content, 24),
+    estimatedTokens,
+    dependencyFingerprints: [...node.dependencyFingerprints].sort(),
+    provenance,
+    cacheHint,
+    replay: {
+      fingerprint: `context-block-replay:${stableHash(`${projectionFingerprint}:${hash}`)}`,
+      sourceProjectionFingerprint: projectionFingerprint
+    },
+    redaction: { class: node.redaction.class, fields: ["content", "contentPreview"] },
+    compatibility: CONTEXT_PIPELINE_COMPATIBILITY
+  });
+}
+
+function summaryBlockFor(
+  node: ProjectedContextNode,
+  order: number,
+  maxTokens: number,
+  projectionFingerprint: string
+): ContextBlock {
+  const summaryContent = [
+    "Tool result summary:",
+    firstWords(node.content, maxTokens),
+    `[raw output kept in current-turn tail; source=${String(node.id)}]`
+  ].join(" ");
+  return blockForProjectedNode(node, "session", order, projectionFingerprint, {
+    cachePolicy: "stable",
+    content: summaryContent,
+    estimatedTokens: countTokens(summaryContent),
+    provenance: {
+      ...node.provenance,
+      summaryOf: String(node.id),
+      boundedSummary: true
+    }
+  });
+}
+
+function compactSessionBlocks(
+  blocks: readonly ContextBlock[],
+  projectionFingerprint: string,
+  maxSessionBlocksBeforeCompaction: number | undefined
+): readonly ContextBlock[] {
+  if (maxSessionBlocksBeforeCompaction === undefined || maxSessionBlocksBeforeCompaction <= 0) return blocks;
+  const sessionBlocks = blocks.filter((block) => block.layer === "session");
+  if (sessionBlocks.length <= maxSessionBlocksBeforeCompaction) return blocks;
+  const sourceBlockHashes = sessionBlocks.map((block) => block.hash);
+  const order = sessionBlocks[0]?.order ?? 0;
+  const content = `Session compaction summary: ${sessionBlocks.length} contiguous session blocks compacted. Source block hashes are recorded in replay metadata.`;
+  const hash = `block:${stableHash(JSON.stringify({
+    layer: "session",
+    kind: "summary",
+    source: "system",
+    content,
+    sourceBlockHashes
+  }))}`;
+  const compacted: ContextBlock = Object.freeze({
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    id: contextPipelineBlockStableId("session", `session-compaction-${stableHash(sourceBlockHashes.join("|"))}`, hash),
+    layer: "session",
+    order,
+    kind: "summary",
+    source: "system",
+    hash,
+    content,
+    contentPreview: firstWords(content, 24),
+    estimatedTokens: countTokens(content),
+    dependencyFingerprints: sourceBlockHashes,
+    provenance: {
+      compactedRange: `session:0-${sessionBlocks.length - 1}`,
+      sourceBlockCount: sessionBlocks.length
+    },
+    cacheHint: {
+      policy: "stable" as const,
+      freshness: "session" as const
+    },
+    replay: {
+      fingerprint: `context-block-replay:${stableHash(`${projectionFingerprint}:${hash}`)}`,
+      sourceProjectionFingerprint: projectionFingerprint,
+      sourceBlockHashes
+    },
+    redaction: { class: "internal" as const, fields: ["content", "contentPreview", "replay.sourceBlockHashes"] },
+    compatibility: CONTEXT_PIPELINE_COMPATIBILITY
+  });
+  const firstSessionIndex = blocks.findIndex((block) => block.layer === "session");
+  const withoutSession = blocks.filter((block) => block.layer !== "session");
+  return [
+    ...withoutSession.slice(0, firstSessionIndex),
+    compacted,
+    ...withoutSession.slice(firstSessionIndex)
+  ];
+}
+
+function buildPipelineLayers(blocks: readonly ContextBlock[]): readonly ContextPipelineLayer[] {
+  let cumulative = "";
+  return CONTEXT_PIPELINE_LAYER_ORDER.map((layerId, order) => {
+    const layerBlocks = blocks.filter((block) => block.layer === layerId);
+    const blockHashes = layerBlocks.map((block) => block.hash);
+    const layerHash = `layer:${stableHash(blockHashes.join("|"))}`;
+    cumulative = `prefix:${stableHash(`${cumulative}|${layerId}|${layerHash}`)}`;
+    return Object.freeze({
+      id: layerId,
+      order,
+      blockIds: layerBlocks.map((block) => block.id),
+      blockHashes,
+      layerHash,
+      prefixHash: cumulative,
+      estimatedTokens: layerBlocks.reduce((total, block) => total + block.estimatedTokens, 0)
+    });
+  });
+}
+
+function prefixHashForLayer(layer: ContextPipelineLayer): ContextPrefixHash {
+  return Object.freeze({
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    id: contextPipelinePrefixStableId(layer.id, layer.prefixHash),
+    layer: layer.id,
+    order: layer.order,
+    blockIds: layer.blockIds,
+    blockHashes: layer.blockHashes,
+    layerHash: layer.layerHash,
+    prefixHash: layer.prefixHash,
+    estimatedTokens: layer.estimatedTokens,
+    redaction: { class: "internal" as const, fields: ["blockIds", "blockHashes"] },
+    compatibility: CONTEXT_PIPELINE_COMPATIBILITY
+  });
+}
+
+function summarizeCacheHints(blocks: readonly ContextBlock[]): ContextPipelineManifest["cacheHintSummary"] {
+  return {
+    stable: blocks.filter((block) => block.cacheHint.policy === "stable").length,
+    ephemeral: blocks.filter((block) => block.cacheHint.policy === "ephemeral").length,
+    noStore: blocks.filter((block) => block.cacheHint.policy === "no-store").length,
+    ttlBound: blocks.filter((block) => block.cacheHint.policy === "ttl").length
+  };
+}
+
+function diagnosticsForExcludedNodes(
+  excludedNodes: readonly ExcludedContextNode[],
+  excludedBlocks: readonly { readonly id: string; readonly layer?: ContextPipelineLayerId; readonly estimatedTokens: number }[]
+): readonly ContextPipelineDiagnostic[] {
+  return excludedNodes.flatMap((node, index) => {
+    if (node.priority < 900) return [];
+    const block = excludedBlocks[index];
+    return [{
+      code: "CONTEXT_PIPELINE_HIGH_PRIORITY_BLOCK_EXCLUDED",
+      message: "High-priority context evidence was excluded from the pipeline manifest.",
+      ...(block?.layer ? { layer: block.layer } : {}),
+      ...(block?.id ? { blockId: block.id } : {}),
+      affectedTokens: block?.estimatedTokens ?? node.estimatedTokens,
+      redaction: { class: "internal", fields: ["message", "blockId"] }
+    }];
+  });
+}
+
+function firstChangedBlock(previous: ContextPipelineLayer | undefined, current: ContextPipelineLayer | undefined): string | undefined {
+  const max = Math.max(previous?.blockHashes.length ?? 0, current?.blockHashes.length ?? 0);
+  for (let index = 0; index < max; index += 1) {
+    if (previous?.blockHashes[index] !== current?.blockHashes[index]) return current?.blockIds[index] ?? previous?.blockIds[index];
+  }
+  return current?.blockIds[0] ?? previous?.blockIds[0];
+}
+
+function cachePolicyForLayer(layer: ContextPipelineLayerId): ContextBlock["cacheHint"]["policy"] {
+  return layer === "current-turn" ? "ephemeral" : "stable";
+}
+
+function freshnessForLayer(layer: ContextPipelineLayerId): NonNullable<ContextBlock["cacheHint"]["freshness"]> {
+  if (layer === "kernel") return "static";
+  if (layer === "project") return "session";
+  if (layer === "session") return "session";
+  return "volatile";
+}
+
+function isOversizedToolResult(node: ProjectedContextNode, maxStableToolResultTokens: number): boolean {
+  return (node.kind === "tool-result" || node.source === "tool") && node.estimatedTokens > maxStableToolResultTokens;
+}
+
+function isPipelineLayer(value: string | undefined): value is ContextPipelineLayerId {
+  return value === "kernel" || value === "project" || value === "session" || value === "current-turn";
 }
 
 function normalizeStoredNode(sessionId: SessionId, node: ContextNode): ContextGraphNode {
@@ -675,6 +1077,10 @@ function isJsonObject(value: unknown): value is JsonObject {
 function stringField(metadata: JsonObject, key: string, fallback: string): string {
   const value = metadata[key];
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function numberField(metadata: JsonObject, key: string, fallback: number): number {

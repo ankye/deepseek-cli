@@ -1,7 +1,10 @@
 # tool-family-scorecards Specification
 
 ## Purpose
-TBD - created by archiving change formalize-tool-family-capability-catalog. Update Purpose after archive.
+Define tool family scorecard requirements for measuring live, fake, replay, and readiness evidence across tool families.
+
+定义 tool family scorecards 对跨 tool families 的 live、fake、replay 与 readiness evidence 衡量要求。
+
 ## Requirements
 ### Requirement: Strict Tool Family Scoring / 严格工具家族评分
 The system SHALL compute tool family scorecards where `pass` contributes `1`, and `partial`, `fail`, `not_assessed`, `planned`, `absent`, and `unavailable` contribute `0`; only explicit `not_applicable` is excluded from denominators.

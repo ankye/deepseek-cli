@@ -1,7 +1,10 @@
 # policy-sandbox Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define policy sandbox requirements for policy decisions, approvals, sandbox gates, bypass prevention, audit records, and risk classification.
+
+定义 policy sandbox 对 policy decisions、approvals、sandbox gates、bypass prevention、audit records 与 risk classification 的要求。
+
 ## Requirements
 ### Requirement: Pure Policy Decision
 
@@ -240,3 +243,82 @@ shell parser fallback、wrapper、compound command、PowerShell、parser-unavail
 - **WHEN** shell analysis is unavailable, degraded, manually reviewable, or detects compound/wrapped syntax
 - **THEN** policy returns reject, ask, require-sandbox, or another non-silent decision with shell risk evidence citing `pit.shell-parser.fallback-risk`
 - **中文** 当 shell analysis 不可用、降级、需要人工复核，或检测到 compound/wrapped syntax 时，policy 必须返回 reject、ask、require-sandbox 或其他非静默 decision，并带引用 `pit.shell-parser.fallback-risk` 的 shell risk evidence。
+
+### Requirement: Mandatory Policy Gate / 强制 Policy 门禁
+
+Policy-sandbox SHALL act as an LSM-style mandatory gate for risky capability, file, shell, MCP, plugin, credential, remote, sandbox, and workspace mutation operations.
+
+Policy-sandbox 必须作为 LSM 风格强制门禁，覆盖有风险 capability、file、shell、MCP、plugin、credential、remote、sandbox 与 workspace mutation operations。
+
+#### Scenario: Execution cannot bypass policy / 执行不能绕过 Policy
+
+- **WHEN** any package initiates a risky operation
+- **THEN** the operation is routed through policy decision records before scheduling or execution, and architecture lint rejects direct bypass paths
+- **中文** 当任何 package 发起有风险 operation 时，该 operation 必须在 scheduling 或 execution 前经过 policy decision records，architecture lint 必须拒绝直接绕过路径。
+
+#### Scenario: Policy decision is replayable / Policy Decision 可 Replay
+
+- **WHEN** policy allows, denies, degrades, or requires approval for an operation
+- **THEN** the decision includes subject, resource, action, risk class, redaction metadata, trace context, and replay fingerprint
+- **中文** 当 policy 对 operation 作出 allow、deny、degrade 或 require approval 决策时，decision 必须包含 subject、resource、action、risk class、redaction metadata、trace context 与 replay fingerprint。
+
+### Requirement: Hooks Observe Policy, Not Override It / Hooks 观察 Policy 而非覆盖 Policy
+
+Hooks, plugins, skills, MCP servers, and extensions SHALL NOT override mandatory policy decisions through private side channels.
+
+Hooks、plugins、skills、MCP servers 与 extensions 不得通过私有 side channels 覆盖强制 policy decisions。
+
+#### Scenario: Extension cannot self-authorize / Extension 不能自授权
+
+- **WHEN** an extension or plugin requests a risky operation
+- **THEN** policy-sandbox evaluates the request using declared permissions and host/user policy, regardless of extension-provided recommendations
+- **中文** 当 extension 或 plugin 请求有风险 operation 时，policy-sandbox 必须基于声明权限与 host/user policy 评估该请求，而不受 extension-provided recommendations 自行授权影响。
+
+### Requirement: Mandatory Policy Gate / 强制 Policy Gate
+
+Risky operations SHALL pass through policy-sandbox before execution.
+
+有风险操作执行前必须经过 policy-sandbox。
+
+#### Scenario: Risky operation requests decision / 风险操作请求 Decision
+
+- **WHEN** runtime, tool execution, MCP, plugin, credential access, remote connectivity, shell, file mutation, or workspace mutation wants to execute
+- **THEN** it obtains a policy decision before performing the operation
+- **中文** 当 runtime、tool execution、MCP、plugin、credential access、remote connectivity、shell、file mutation 或 workspace mutation 要执行时，必须先获得 policy decision。
+
+### Requirement: Auditable Policy Decision Records / 可审计 Policy Decision Records
+
+Policy decisions SHALL include actor, operation, scope, decision, reason, redaction metadata, audit id, and replay behavior.
+
+Policy decisions 必须包含 actor、operation、scope、decision、reason、redaction metadata、audit id 与 replay behavior。
+
+#### Scenario: Denied operation is stable / Denied Operation 稳定
+
+- **WHEN** policy denies an operation
+- **THEN** runtime receives a stable denial reason and emits a redacted audit record suitable for replay
+- **中文** 当 policy 拒绝操作时，runtime 必须收到稳定 denial reason，并发出适合 replay 的脱敏 audit record。
+
+### Requirement: Policy Bypass Fails Product Readiness / Policy Bypass 阻止产品就绪
+
+Product-ready claims SHALL fail when risky operations can bypass policy-sandbox.
+
+当有风险操作可绕过 policy-sandbox 时，产品就绪声明必须失败。
+
+#### Scenario: Readiness detects bypass path / Readiness 检测到 Bypass 路径
+
+- **WHEN** diagnostics identifies a file, shell, MCP, plugin, credential, remote, or mutation path without policy handoff
+- **THEN** readiness reports a release-blocking finding for product surfaces depending on that path
+- **中文** 当 diagnostics 识别到没有 policy handoff 的 file、shell、MCP、plugin、credential、remote 或 mutation 路径时，readiness 必须为依赖该路径的产品表面报告 release-blocking finding。
+
+### Requirement: Module Permission Policy / Module Permission Policy
+
+Policy-sandbox SHALL evaluate module permissions before risky plugin, extension, MCP, hook, or skill behavior executes.
+
+Policy-sandbox 必须在有风险 plugin、extension、MCP、hook 或 skill 行为执行前评估 module permissions。
+
+#### Scenario: Module permission is missing / Module Permission 缺失
+
+- **WHEN** a module attempts a risky operation not declared in its manifest permissions
+- **THEN** policy denies or prompts according to configured policy and emits an audit record
+- **中文** 当 module 尝试未在 manifest permissions 中声明的风险操作时，policy 必须按配置 deny 或 prompt，并发出 audit record。
+

@@ -1,7 +1,10 @@
 # credential-auth-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define credential and authentication management requirements for provider credentials, redaction, storage references, and host-safe access.
+
+定义 credential and authentication management 对 provider credentials、redaction、storage references 与 host-safe access 的要求。
+
 ## Requirements
 ### Requirement: Credential and Auth Boundary
 

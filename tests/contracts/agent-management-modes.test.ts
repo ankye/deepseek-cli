@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { InMemoryAgentManager } from "@deepseek/agent-management";
+import { createAgentScopeGovernanceFixtures, InMemoryAgentManager } from "@deepseek/agent-management";
 import { AGENT_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import type { AgentDefinition } from "@deepseek/platform-contracts";
 
@@ -123,5 +123,44 @@ describe("agent management modes", () => {
     assert.equal(verifierScope.capabilities.includes("file.write"), false);
     assert.equal(verifierScope.commands.includes("shell.run"), true);
     assert.equal(verifierScope.policy.includes("verification"), true);
+  });
+
+  it("projects namespaces, quotas, lineage, and scoped write decisions", async () => {
+    const manager = new InMemoryAgentManager();
+    const definition = customAgent();
+    await manager.register(definition);
+
+    const namespace = await manager.projectNamespace(definition.id, "worker", {
+      parentAgentId: asId<"agent">("agent-parent"),
+      parentAgentInstanceId: asId<"agentInstance">("agent-instance-parent"),
+      parentSessionId: asId<"session">("session-parent"),
+      childSessionId: asId<"session">("session-child"),
+      workOrderId: "work-order:namespace",
+      delegatedPaths: ["src/allowed.ts"],
+      delegatedTools: ["file.read", "file.edit", "test.run"]
+    });
+    const allowed = await manager.evaluateScope({ namespace, operation: "file.write", path: "src/allowed.ts" });
+    const denied = await manager.evaluateScope({ namespace, operation: "file.write", path: "src/denied.ts" });
+    const quota = await manager.evaluateScope({ namespace, operation: "quota.consume", quotaKind: "file-mutations", requested: 99 });
+
+    assert.equal(namespace.lineage.parentAgentId, asId<"agent">("agent-parent"));
+    assert.equal(namespace.lineage.parentAgentInstanceId, asId<"agentInstance">("agent-instance-parent"));
+    assert.equal(namespace.lineage.workOrderId, "work-order:namespace");
+    assert.equal(namespace.quotas.some((entry) => entry.kind === "file-mutations" && entry.limit > 0), true);
+    assert.equal(allowed.status, "allowed");
+    assert.equal(denied.status, "denied");
+    assert.equal(denied.diagnostics[0]?.code, "AGENT_SCOPE_PATH_DENIED");
+    assert.equal(quota.status, "quota-exhausted");
+    assert.equal(quota.diagnostics[0]?.code, "AGENT_QUOTA_EXHAUSTED");
+  });
+
+  it("declares deterministic governance fixtures for agent scope rollout gates", () => {
+    const fixtures = createAgentScopeGovernanceFixtures();
+    const scenarios = fixtures.map((fixture) => fixture.scenario);
+
+    assert.deepEqual(scenarios.sort(), ["allowed-write", "cancellation", "denied-write", "quota-exhaustion", "repair-scope"].sort());
+    assert.equal(fixtures.some((fixture) => fixture.result.status === "denied"), true);
+    assert.equal(fixtures.some((fixture) => fixture.result.status === "quota-exhausted"), true);
+    assert.equal(JSON.stringify(fixtures).includes("sk-live"), false);
   });
 });

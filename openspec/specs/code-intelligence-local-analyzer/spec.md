@@ -1,7 +1,10 @@
 # code-intelligence-local-analyzer Specification
 
 ## Purpose
-TBD - created by archiving change implement-code-intelligence-v1. Update Purpose after archive.
+Define local analyzer requirements for deterministic code intelligence without depending on live IDE or external LSP services by default.
+
+定义 local analyzer 要求，使 code intelligence 默认不依赖 live IDE 或外部 LSP services 也能确定性运行。
+
 ## Requirements
 ### Requirement: Deterministic Local Analyzer / 确定性本地分析器
 

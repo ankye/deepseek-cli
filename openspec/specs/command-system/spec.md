@@ -1,7 +1,10 @@
 # command-system Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define command system requirements for manifests, routing, palette projection, permission metadata, and inert inspection.
+
+定义 command system 对 manifests、routing、palette projection、permission metadata 与 inert inspection 的要求。
+
 ## Requirements
 ### Requirement: Typed Command System
 

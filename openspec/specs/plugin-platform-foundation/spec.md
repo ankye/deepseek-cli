@@ -1,7 +1,10 @@
 # plugin-platform-foundation Specification
 
 ## Purpose
-TBD - created by archiving change complete-plugin-platform-foundation. Update Purpose after archive.
+Define plugin platform foundation requirements for lifecycle, API levels, contributions, hooks, health, rollback, and governance boundaries.
+
+定义 plugin platform foundation 对 lifecycle、API levels、contributions、hooks、health、rollback 与 governance boundaries 的要求。
+
 ## Requirements
 ### Requirement: Platform-Owned Plugin Catalog / 平台拥有的插件能力目录
 

@@ -1,7 +1,9 @@
 # testing-regression Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define testing regression requirements for deterministic fakes, contracts, integration, golden, matrix, e2e, live opt-in, and governance evidence.
+
+定义 testing regression 对 deterministic fakes、contracts、integration、golden、matrix、e2e、live opt-in 与 governance evidence 的要求。
 ## Requirements
 ### Requirement: Deterministic Test Infrastructure
 
@@ -1874,4 +1876,208 @@ Plugin projection tests 必须覆盖 CLI text、TUI inspector、JSON、JSONL、d
 - **WHEN** plugin inspector tests render plugin details
 - **THEN** they assert lifecycle state, API levels, source, trust, version, integrity, permissions, credentials, dependencies, conflicts, health, audit links, contribution list, and owner execution routes
 - **中文** 当 plugin inspector tests 渲染 plugin details 时，必须断言 lifecycle state、API levels、source、trust、version、integrity、permissions、credentials、dependencies、conflicts、health、audit links、contribution list 与 owner execution routes。
+
+### Requirement: Package Evidence Matrix / 包级证据矩阵
+
+The regression suite SHALL produce or validate a package-level evidence matrix that separates lint, contract, integration, golden, matrix, e2e, live smoke, and acceptance evidence.
+
+回归套件必须生成或校验包级证据矩阵，分别记录 lint、contract、integration、golden、matrix、e2e、live smoke 与 acceptance evidence。
+
+#### Scenario: Evidence matrix distinguishes coverage types / 证据矩阵区分覆盖类型
+
+- **WHEN** tests or acceptance tooling summarize package readiness
+- **THEN** the matrix records which evidence types exist for each risk-bearing package and does not treat contract-only coverage as product readiness
+- **中文** 当测试或验收工具汇总 package readiness 时，矩阵必须记录每个有风险 package 具备哪些证据类型，且不得把仅有 contract coverage 当作产品就绪。
+
+#### Scenario: Sparse product coverage is visible / 稀疏产品覆盖可见
+
+- **WHEN** e2e or live smoke coverage is sparse compared with package count or host surface claims
+- **THEN** the evidence matrix reports a warning or release-blocking governance finding according to the configured launch gate
+- **中文** 当 e2e 或 live smoke 覆盖相对 package 数量或 host surface 声明偏稀疏时，证据矩阵必须根据配置的 launch gate 报告 warning 或 release-blocking 治理发现。
+
+### Requirement: Governance Fixture Coverage / 治理 Fixture 覆盖
+
+Regression coverage SHALL include deterministic fixtures for ghost aliases, placeholder claims, deferred providers, rollout-gated modes, and host promotion gates.
+
+回归覆盖必须包含关于幽灵 alias、占位声明、deferred providers、rollout-gated modes 与 host promotion gates 的确定性 fixtures。
+
+#### Scenario: Ghost alias fixture fails lint / 幽灵 Alias Fixture 触发 Lint
+
+- **WHEN** a fixture contains a `@deepseek/*` alias whose package target is missing and has no retired/merged governance record
+- **THEN** the lint or regression test reports a stable governance diagnostic id
+- **中文** 当 fixture 包含指向缺失 package 且没有 retired/merged 治理记录的 `@deepseek/*` alias 时，lint 或 regression test 必须报告稳定 governance diagnostic id。
+
+#### Scenario: Placeholder claim fixture fails readiness / 占位声明 Fixture 触发 Readiness 失败
+
+- **WHEN** a fixture claims remote, update, semantic indexing, or host promotion capability is product-ready while only placeholder or deferred evidence exists
+- **THEN** readiness reports a release-blocking governance diagnostic
+- **中文** 当 fixture 声称 remote、update、semantic indexing 或 host promotion 能力产品就绪，但只有 placeholder 或 deferred 证据时，readiness 必须报告 release-blocking governance diagnostic。
+
+### Requirement: Governance Evidence Is Replay-Safe / 治理证据可 Replay
+
+Governance findings SHALL be deterministic, redaction-aware, and suitable for golden replay and acceptance evidence.
+
+治理发现必须确定性、具备 redaction，并适合 golden replay 与 acceptance evidence。
+
+#### Scenario: Governance output is stable / 治理输出稳定
+
+- **WHEN** the same repository state is evaluated twice
+- **THEN** governance finding ids, maturity states, severities, and evidence references are stable except for explicitly allowed timestamps or environment metadata
+- **中文** 当同一仓库状态被评估两次时，治理 finding id、成熟度状态、严重度和 evidence references 必须稳定，除非是显式允许的时间戳或环境元数据。
+
+### Requirement: Kernel Governance Regression Fixtures / 内核治理回归 Fixtures
+
+Regression coverage SHALL include deterministic fixtures for runtime kernel boundary violations, UAPI breaking changes, policy bypass attempts, unscoped agent writes, module private-object access, central-file growth, and context prefix instability.
+
+回归覆盖必须包含 runtime kernel boundary violations、UAPI breaking changes、policy bypass attempts、unscoped agent writes、module private-object access、central-file growth 与 context prefix instability 的确定性 fixtures。
+
+#### Scenario: Policy bypass fixture fails / Policy 绕过 Fixture 失败
+
+- **WHEN** a fixture package attempts to execute file, shell, credential, plugin, MCP, or remote work without a policy decision record
+- **THEN** regression tests produce a stable governance diagnostic and fail the readiness gate for the fixture
+- **中文** 当 fixture package 尝试在没有 policy decision record 的情况下执行 file、shell、credential、plugin、MCP 或 remote work 时，回归测试必须产生稳定 governance diagnostic，并使该 fixture 的 readiness gate 失败。
+
+#### Scenario: Unscoped agent fixture fails / 未限定 Scope 的 Agent Fixture 失败
+
+- **WHEN** a fixture proposes write-capable worker execution without path, tool, budget, scratchpad, checkpoint, and lineage scopes
+- **THEN** regression tests report missing agent namespace/quota evidence
+- **中文** 当 fixture 在缺少 path、tool、budget、scratchpad、checkpoint 与 lineage scopes 时提议可写 worker execution，回归测试必须报告缺失 agent namespace/quota evidence。
+
+### Requirement: Package-Level Evidence Matrix / 包级 Evidence Matrix
+
+The regression system SHALL produce or validate a package-level evidence matrix for risk-bearing packages and host surfaces.
+
+回归系统必须为有风险 packages 与 host surfaces 生成或校验包级 evidence matrix。
+
+#### Scenario: Matrix distinguishes evidence types / 矩阵区分证据类型
+
+- **WHEN** evidence is reported for a package or capability
+- **THEN** the matrix distinguishes contract, integration, golden, matrix, e2e, live smoke, acceptance, and readiness evidence
+- **中文** 当为 package 或 capability 报告 evidence 时，矩阵必须区分 contract、integration、golden、matrix、e2e、live smoke、acceptance 与 readiness evidence。
+
+### Requirement: Risk-Based Evidence Thresholds / 基于风险的证据阈值
+
+Evidence requirements SHALL vary by package risk tier, capability maturity, and host surface.
+
+证据要求必须根据 package risk tier、capability maturity 与 host surface 变化。
+
+#### Scenario: Contract-only evidence is not product readiness / Contract-only 不等于产品就绪
+
+- **WHEN** a risk-bearing capability has only contract tests
+- **THEN** the matrix marks product readiness as gated unless required integration, acceptance, e2e, live smoke, or readiness evidence is attached
+- **中文** 当有风险能力只有 contract tests 时，矩阵必须将产品就绪标记为 gated，除非附加了必需的 integration、acceptance、e2e、live smoke 或 readiness evidence。
+
+### Requirement: Stable Evidence Output / 稳定 Evidence 输出
+
+Evidence matrix output SHALL be deterministic, redacted, and suitable for acceptance fixtures.
+
+Evidence matrix 输出必须确定性、脱敏，并适合 acceptance fixtures。
+
+#### Scenario: Matrix output is fixture-friendly / 矩阵输出适合 Fixture
+
+- **WHEN** the matrix emits JSON or JSONL
+- **THEN** records include stable ids, package, capability, evidence type, status, missing evidence, severity, and next action
+- **中文** 当矩阵输出 JSON 或 JSONL 时，records 必须包含 stable ids、package、capability、evidence type、status、missing evidence、severity 与 next action。
+
+### Requirement: Test-First Implementation Gate / 测试先行实现门禁
+
+Non-documentation implementation work SHALL add or update focused behavior coverage before implementation code is changed.
+
+非文档实现工作必须在修改实现代码前，先增加或更新聚焦的行为覆盖。
+
+#### Scenario: Implementation starts with coverage / 实现从覆盖开始
+
+- **WHEN** a change modifies implementation code under `src/**`
+- **THEN** the change first adds or updates unit, contract, regression, golden, matrix, integration, or e2e coverage for the behavior
+- **中文** 当变更修改 `src/**` 下的实现代码时，变更必须先增加或更新该行为的 unit、contract、regression、golden、matrix、integration 或 e2e 覆盖。
+
+#### Scenario: Untestable implementation records exception / 无法先测的实现记录例外
+
+- **WHEN** no practical test can be written before implementation
+- **THEN** the OpenSpec task or design records the reason, risk, and substitute verification before implementation begins
+- **中文** 当确实无法在实现前编写实用测试时，OpenSpec task 或 design 必须先记录原因、风险和替代验证方式，然后才能开始实现。
+
+### Requirement: Prefix Stability Regression Coverage / 前缀稳定性回归覆盖
+
+The regression suite SHALL cover deterministic prefix stability, cache opportunity preservation, cache opportunity loss, compaction, and replay for context pipeline manifests.
+
+回归套件必须覆盖 context pipeline manifests 的确定性 prefix stability、cache opportunity preservation、cache opportunity loss、compaction 与 replay。
+
+#### Scenario: Stable layers produce same prefix hash / 稳定层产生相同 Prefix Hash
+
+- **WHEN** two deterministic turns differ only in current user input
+- **THEN** regression tests assert that kernel and project prefix hashes remain unchanged and current-turn hashes differ
+- **中文** 当两个确定性 turn 仅当前用户输入不同，回归测试必须断言 kernel 与 project prefix hashes 保持不变，current-turn hashes 发生变化。
+
+#### Scenario: Project change invalidates project prefix / 项目变化使 Project Prefix 失效
+
+- **WHEN** a project rule, package map, or project memory block changes
+- **THEN** regression tests assert that project prefix hash changes while kernel prefix hash remains unchanged
+- **中文** 当 project rule、package map 或 project memory block 变化时，回归测试必须断言 project prefix hash 变化，而 kernel prefix hash 保持不变。
+
+### Requirement: Pipeline Backpressure Fixtures / 管道 Backpressure Fixtures
+
+The regression suite SHALL include fixtures for bounded context streams and backpressure behavior.
+
+回归套件必须包含有界 context streams 与 backpressure 行为的 fixtures。
+
+#### Scenario: Oversized tool result is summarized / 超大工具结果被摘要
+
+- **WHEN** a fixture tool result exceeds the stable session-layer threshold
+- **THEN** tests assert that only bounded summary/reference blocks enter the session layer and raw content remains out of stable prefix evidence
+- **中文** 当 fixture tool result 超过稳定 session-layer 阈值时，测试必须断言只有有界 summary/reference blocks 进入 session layer，raw content 不进入稳定 prefix evidence。
+
+### Requirement: Provider Cache Metrics Fixtures / Provider 缓存指标 Fixtures
+
+The regression suite SHALL cover provider cache metric normalization without requiring live provider access by default.
+
+回归套件必须覆盖 provider cache metric normalization，默认不需要 live provider access。
+
+#### Scenario: Mock provider returns cache usage / Mock Provider 返回缓存用量
+
+- **WHEN** a deterministic provider fixture returns cache hit and miss token counts
+- **THEN** tests assert that model-gateway records normalized cache usage and attaches it to the pipeline fingerprint
+- **中文** 当确定性 provider fixture 返回 cache hit 与 miss token counts 时，测试必须断言 model-gateway 记录 normalized cache usage，并将其绑定到 pipeline fingerprint。
+
+### Requirement: Test-First Lint Gate Regression / 测试先行 Lint 门禁回归
+
+The regression suite SHALL include deterministic tests for the repository test-first lint gate and its allowed pass/fail cases.
+
+回归套件必须包含仓库 test-first lint gate 及其允许通过/失败场景的确定性测试。
+
+#### Scenario: Regression catches missing coverage / 回归捕获缺失覆盖
+
+- **WHEN** a fixture repository changes a non-test implementation file under `src/**` without changing tests
+- **THEN** the regression test asserts the test-first gate fails with a stable rule id or diagnostic marker
+- **中文** 当 fixture repository 修改 `src/**` 下非测试实现文件但没有修改测试时，回归测试必须断言 test-first gate 以稳定 rule id 或 diagnostic marker 失败。
+
+#### Scenario: Regression accepts changed tests / 回归接受测试变更
+
+- **WHEN** a fixture repository changes implementation code and focused test files in the same change set
+- **THEN** the regression test asserts the test-first gate passes
+- **中文** 当 fixture repository 在同一变更集中修改实现代码与聚焦测试文件时，回归测试必须断言 test-first gate 通过。
+
+#### Scenario: Regression accepts documented exception / 回归接受已记录例外
+
+- **WHEN** a fixture repository changes implementation code without tests but has an active OpenSpec artifact containing `Test-first exception` and `Substitute verification`
+- **THEN** the regression test asserts the test-first gate passes through the explicit exception path
+- **中文** 当 fixture repository 修改实现代码但没有测试，同时 active OpenSpec artifact 包含 `Test-first exception` 与 `Substitute verification` 时，回归测试必须断言 test-first gate 通过明确例外路径。
+
+### Requirement: OpenSpec Purpose Hygiene Regression / OpenSpec Purpose 卫生回归
+
+The regression suite SHALL detect generated archive placeholder Purpose text in canonical OpenSpec specs.
+
+回归套件必须检测 canonical OpenSpec specs 中的归档生成 Purpose 占位文本。
+
+#### Scenario: Placeholder purpose fails contract test / 占位 Purpose 触发 Contract Test 失败
+
+- **WHEN** a canonical spec under `openspec/specs/**/spec.md` contains `TBD - created by archiving change`
+- **THEN** the contract test reports the spec path and fails
+- **中文** 当 `openspec/specs/**/spec.md` 下的 canonical spec 包含 `TBD - created by archiving change` 时，contract test 必须报告 spec path 并失败。
+
+#### Scenario: Bilingual purpose passes contract test / 双语 Purpose 通过 Contract Test
+
+- **WHEN** every canonical spec Purpose has non-placeholder English and Chinese text
+- **THEN** the contract test passes without requiring runtime or provider access
+- **中文** 当每个 canonical spec Purpose 都具备非占位英文和中文文本时，contract test 必须在不需要 runtime 或 provider access 的情况下通过。
 

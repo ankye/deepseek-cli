@@ -1,7 +1,10 @@
 # interactive-plugin-workbench Specification
 
 ## Purpose
-TBD - created by archiving change complete-interactive-plugin-workbench. Update Purpose after archive.
+Define interactive plugin workbench requirements for inspecting plugin contributions, readiness, execution routes, and safe TUI interaction.
+
+定义 interactive plugin workbench 对 plugin contributions、readiness、execution routes 与安全 TUI interaction 的检查要求。
+
 ## Requirements
 ### Requirement: Host-owned plugin executions
 The CLI host SHALL execute interactive built-in plugin actions through owner routes and record every execution as a structured plugin workbench execution record.

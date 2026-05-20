@@ -61,7 +61,7 @@ import { readCliChatPrompts } from "../input/chat-input.js";
 import { enterCliRawInputSession } from "../input/raw-keys.js";
 import { accumulateChatUsage } from "./chat-usage.js";
 import { applyRevert, parseRevertApplyArgs, parseRevertPreviewArgs, previewRevert, renderRevertApply, renderRevertPreview } from "./revert.js";
-import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint, visibleReasoningProjectionFromEvents } from "../renderers/runtime-events.js";
+import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint, statusTelemetryFromEvents, visibleReasoningProjectionFromEvents } from "../renderers/runtime-events.js";
 import type { ChatHistoryEntry, ChatRevertReviewEntry, ChatSessionState } from "./chat-state.js";
 import { createBasicChatTui, renderChatTuiFullscreenFrame } from "./chat-tui.js";
 import { dispatchRawInputToTui } from "./chat-raw-input.js";
@@ -94,7 +94,8 @@ export async function runChatCommand(
     pendingExit: false,
     pendingExitTimer: undefined,
     modeControls: createInitialChatModeControlState(options.sessionId),
-    visibleReasoning: undefined
+    visibleReasoning: undefined,
+    statusTelemetry: undefined
   };
   const basicTui = createBasicChatTui(options, terminalProfile, write, writeInline);
   const slashRouter = createChatSlashRouter({
@@ -158,6 +159,7 @@ export async function runChatCommand(
       accumulateChatUsage(state.usage, events);
       state.modeControls = updateChatModeControlState(state.modeControls, events);
       state.visibleReasoning = visibleReasoningProjectionFromEvents(events, terminal);
+      state.statusTelemetry = statusTelemetryFromEvents(events);
       await renderFinalJsonIfNeeded(options.output, events, write);
       state.activeController = undefined;
       if (state.pendingExit) break;

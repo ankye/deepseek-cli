@@ -34,6 +34,7 @@ export function defineAgentContinueTool(deps: AgentContinueToolDeps | undefined)
       toolProjection: { type: "string" },
       toolScope: { type: "object" },
       contextScope: { type: "object" },
+      namespace: { type: "object" },
       timeoutMs: { type: "number" },
       maxIterations: { type: "number" },
       contextOverlapScore: { type: "number" },
@@ -96,6 +97,7 @@ async function agentContinueTool(input: JsonObject, context: CapabilityExecution
       status: result.terminalStatus === "completed" ? "completed" : "failed"
     });
   } catch (error) {
-    return failure("agent.continue", "AGENT_CONTINUE_FAILED", error instanceof Error ? error.message : "Agent continue failed.", []);
+    const scoped = error as { readonly code?: string; readonly diagnostics?: readonly import("@deepseek/platform-contracts").CoreToolDiagnostic[] };
+    return failure("agent.continue", scoped.code ?? "AGENT_CONTINUE_FAILED", error instanceof Error ? error.message : "Agent continue failed.", [], scoped.diagnostics ? { diagnostics: scoped.diagnostics as unknown as JsonObject } : {});
   }
 }

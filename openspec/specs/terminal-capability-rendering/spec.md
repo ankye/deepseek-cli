@@ -1,7 +1,10 @@
 # terminal-capability-rendering Specification
 
 ## Purpose
-TBD - created by archiving change split-cli-host-and-architecture-scale-guardrails. Update Purpose after archive.
+Define terminal capability rendering requirements for adaptive output, fallbacks, status surfaces, and non-polluting structured output.
+
+定义 terminal capability rendering 对 adaptive output、fallbacks、status surfaces 与不污染 structured output 的要求。
+
 ## Requirements
 ### Requirement: Terminal Capability Profile / 终端能力 Profile
 

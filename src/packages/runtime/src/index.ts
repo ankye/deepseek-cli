@@ -31,5 +31,5 @@ export { LAZY_DELEGATION_PATTERNS, validateWorkOrderCompleteness, createDelegati
 export { createPendingVerifierResult } from "./modes/verifier-policy.js";
 export { collectRuntimeEvents } from "./events.js";
 export { projectReasoningForOutput, recordVisibleReasoning, recordVisibleReasoningProjection, visibleReasoningEvidence } from "./visible-reasoning.js";
-export { createAgentSpawner } from "./agent-spawner.js";
+export { createAgentSpawner, isAgentScopeEnforcementError } from "./agent-spawner.js";
 export { loadUserHooks } from "./user-hooks.js";

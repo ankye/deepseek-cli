@@ -1,7 +1,10 @@
 # permanent-memory Specification
 
 ## Purpose
-TBD - created by archiving change add-permanent-memory-layer. Update Purpose after archive.
+Define permanent memory requirements for durable recall, consent, provenance, redaction, scope, and runtime-safe memory use.
+
+定义 permanent memory 对 durable recall、consent、provenance、redaction、scope 与 runtime-safe memory use 的要求。
+
 ## Requirements
 ### Requirement: Permanent Memory Is Separate From Recall / 永久记忆独立于 Recall
 

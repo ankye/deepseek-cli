@@ -10,6 +10,7 @@ export interface ModelProviderConfig extends JsonObject {
   readonly baseUrl: string;
   readonly defaultHeaders?: JsonObject;
   readonly credentialRef?: CredentialRef;
+  readonly cacheHints?: ModelCacheHintCapabilityMetadata;
 }
 
 export interface ModelProfile extends JsonObject {
@@ -17,7 +18,14 @@ export interface ModelProfile extends JsonObject {
   readonly providerId: ModelProviderId;
   readonly model: string;
   readonly temperature?: number;
+  readonly cacheHints?: ModelCacheHintCapabilityMetadata;
   readonly providerOptions?: JsonObject;
+}
+
+export interface ModelCacheHintCapabilityMetadata extends JsonObject {
+  readonly explicitPrefixCacheHints: boolean;
+  readonly supportedPolicies?: readonly ("stable" | "ephemeral" | "no-store" | "ttl")[];
+  readonly maxCacheHintBlocks?: number;
 }
 
 export type ModelReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -116,8 +124,11 @@ export interface ModelProviderEventMetadata extends JsonObject {
 }
 
 export interface ModelUsageCacheMetadata extends JsonObject {
+  readonly status?: "available" | "unavailable";
   readonly hitTokens?: number;
   readonly missTokens?: number;
+  readonly hitRate?: number;
+  readonly pipelineFingerprint?: string;
 }
 
 export type ModelMetadataCatalogSource = "remote" | "last-known-good" | "pinned" | "user-config";

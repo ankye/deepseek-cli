@@ -1,7 +1,10 @@
 # future-capability-landings Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define future capability landing requirements so planned hosts, servers, SDKs, remote runtime, and enterprise features remain gated by evidence.
+
+定义 future capability landings 要求，确保 planned hosts、servers、SDKs、remote runtime 与 enterprise features 受 evidence 门禁约束。
+
 ## Requirements
 ### Requirement: Future Capability Landing Map
 

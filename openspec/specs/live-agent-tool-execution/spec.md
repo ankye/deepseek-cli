@@ -1,7 +1,10 @@
 # live-agent-tool-execution Specification
 
 ## Purpose
-TBD - created by archiving change enable-live-agent-tool-execution. Update Purpose after archive.
+Define live agent tool execution requirements for opt-in provider-backed tool loops, bounded feedback, redaction, and replay evidence.
+
+定义 live agent tool execution 对显式启用的 provider-backed tool loops、有界 feedback、redaction 与 replay evidence 的要求。
+
 ## Requirements
 ### Requirement: Live Agent Tool Execution Loop / Live Agent 工具执行循环
 

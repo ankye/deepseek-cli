@@ -1,7 +1,10 @@
 # local-readiness Specification
 
 ## Purpose
-TBD - created by archiving change implement-local-readiness-commands. Update Purpose after archive.
+Define local readiness requirements for doctor, diagnostics, credentials, filesystem, platform, and CLI environment checks.
+
+定义 local readiness 对 doctor、diagnostics、credentials、filesystem、platform 与 CLI environment checks 的要求。
+
 ## Requirements
 ### Requirement: R1 Local Readiness Commands / R1 本地可用性命令
 

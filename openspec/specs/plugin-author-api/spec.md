@@ -1,7 +1,10 @@
 # plugin-author-api Specification
 
 ## Purpose
-TBD - created by archiving change modularize-builtin-plugin-system. Update Purpose after archive.
+Define plugin author API requirements for public extension contracts, permissions, manifests, forbidden imports, and safe contribution points.
+
+定义 plugin author API 对 public extension contracts、permissions、manifests、forbidden imports 与安全 contribution points 的要求。
+
 ## Requirements
 ### Requirement: Declarative Plugin Author API / 声明式插件作者 API
 

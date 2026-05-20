@@ -1,7 +1,10 @@
 # capability-execution-governance Specification
 
 ## Purpose
-TBD - created by archiving change design-unified-capability-orchestration. Update Purpose after archive.
+Define capability execution governance requirements for routing exposed work through contracts, policy, evidence, and bounded execution paths.
+
+定义 capability execution governance 要求，确保暴露的工作通过 contracts、policy、evidence 与有界 execution paths 路由。
+
 ## Requirements
 ### Requirement: Capability Execution Levels
 

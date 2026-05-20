@@ -9,6 +9,38 @@ export const DIAGNOSTICS_READINESS_SCHEMA_VERSION = "1.0.0";
 export type ReadinessStatus = "pass" | "warn" | "fail";
 export type ReleaseVerificationSummaryStatus = "ready" | "warn" | "blocked";
 export type AcceptanceEvidenceRefreshMode = "default" | "full";
+export type GovernanceDiagnosticsSectionId =
+  | "governance.kernel-boundary"
+  | "governance.uapi-compatibility"
+  | "governance.context-cache-health"
+  | "governance.bus-pressure"
+  | "governance.policy-gates"
+  | "governance.agent-scopes"
+  | "governance.module-status"
+  | "governance.roadmap-drift"
+  | "governance.evidence-matrix";
+export type GovernanceFindingSeverity = "info" | "warning" | "release-blocking";
+export type GovernanceMaturityState =
+  | "implemented"
+  | "partial"
+  | "rollout-gated"
+  | "deferred"
+  | "placeholder"
+  | "evidence-missing"
+  | "unsupported"
+  | "product-ready";
+export type GovernanceEvidenceType =
+  | "contract"
+  | "integration"
+  | "golden"
+  | "matrix"
+  | "e2e"
+  | "live-smoke"
+  | "acceptance"
+  | "readiness";
+export type GovernanceEvidenceRiskTier = "critical" | "product" | "platform" | "extension" | "support";
+export type GovernanceEvidenceStatus = "present" | "missing" | "not-required";
+export type GovernanceEvidenceProductReadinessStatus = "ready" | "gated" | "not-product-scope";
 
 export type ReadinessCommandName = "init" | "config" | "auth" | "doctor" | "privacy" | "verify-install";
 export type DiagnosticsCommandName = "bundle" | "release" | "doctor" | "verify" | "refresh" | "evaluate";
@@ -126,7 +158,104 @@ export interface DiagnosticsReleaseReadinessEvidence extends JsonObject {
   readonly supportBundle: SupportBundlePolicyEvidence;
   readonly firstPartyPluginPack?: FirstPartyPluginPackReadinessEvidence;
   readonly packageScorecardAdvisory?: PackageScorecardReleaseAdvisory;
+  readonly governanceEvidenceMatrix?: GovernanceEvidenceMatrixSummary;
+  readonly governanceDiagnostics?: GovernanceDiagnosticsSummary;
   readonly checks: readonly ReadinessCheck[];
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceProductReadyClaim extends JsonObject {
+  readonly capability: string;
+  readonly ownerPackage?: string;
+  readonly claimedState: "product-ready";
+  readonly evidenceIds?: readonly string[];
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceDiagnosticsFilter extends JsonObject {
+  readonly severities?: readonly GovernanceFindingSeverity[];
+  readonly ownerPackages?: readonly string[];
+  readonly capabilities?: readonly string[];
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceDiagnosticFinding extends JsonObject {
+  readonly id: string;
+  readonly sectionId: GovernanceDiagnosticsSectionId;
+  readonly capability: string;
+  readonly ownerPackage: string;
+  readonly affectedPackages: readonly string[];
+  readonly affectedCapabilities: readonly string[];
+  readonly severity: GovernanceFindingSeverity;
+  readonly maturityState: GovernanceMaturityState;
+  readonly status: ReadinessStatus;
+  readonly message: string;
+  readonly evidenceIds: readonly string[];
+  readonly sourceCheckId?: string;
+  readonly nextAction: string;
+  readonly releaseBlocking: boolean;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceDiagnosticsSection extends JsonObject {
+  readonly sectionId: GovernanceDiagnosticsSectionId;
+  readonly label: string;
+  readonly ownerPackage: string;
+  readonly capability: string;
+  readonly status: ReadinessStatus;
+  readonly maturityState: GovernanceMaturityState;
+  readonly findings: readonly GovernanceDiagnosticFinding[];
+  readonly summary: string;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceDiagnosticsSummary extends JsonObject {
+  readonly schemaVersion: string;
+  readonly status: ReadinessStatus;
+  readonly sections: readonly GovernanceDiagnosticsSection[];
+  readonly findings: readonly GovernanceDiagnosticFinding[];
+  readonly filters?: GovernanceDiagnosticsFilter;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceEvidenceItem extends JsonObject {
+  readonly type: GovernanceEvidenceType;
+  readonly status: GovernanceEvidenceStatus;
+  readonly evidenceIds: readonly string[];
+  readonly required: boolean;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceEvidenceMatrixRecord extends JsonObject {
+  readonly id: string;
+  readonly packageName: string;
+  readonly capability: string;
+  readonly ownerPackage: string;
+  readonly riskTier: GovernanceEvidenceRiskTier;
+  readonly maturityState: GovernanceMaturityState;
+  readonly hostSurface?: "cli" | "vscode" | "server" | "api" | "browser" | "native" | "none";
+  readonly productReadiness: GovernanceEvidenceProductReadinessStatus;
+  readonly requiredEvidenceTypes: readonly GovernanceEvidenceType[];
+  readonly evidence: readonly GovernanceEvidenceItem[];
+  readonly missingEvidenceTypes: readonly GovernanceEvidenceType[];
+  readonly severity: GovernanceFindingSeverity;
+  readonly promotionBlocker: boolean;
+  readonly nextAction: string;
+  readonly redaction: RedactionMetadata;
+}
+
+export interface GovernanceEvidenceMatrixSummary extends JsonObject {
+  readonly schemaVersion: string;
+  readonly kind: "governance.evidence-matrix";
+  readonly status: ReadinessStatus;
+  readonly records: readonly GovernanceEvidenceMatrixRecord[];
+  readonly recordCount: number;
+  readonly readyCount: number;
+  readonly gatedCount: number;
+  readonly promotionBlockerCount: number;
+  readonly evidenceTypes: readonly GovernanceEvidenceType[];
+  readonly riskTiers: readonly GovernanceEvidenceRiskTier[];
+  readonly findings: readonly GovernanceDiagnosticFinding[];
   readonly redaction: RedactionMetadata;
 }
 

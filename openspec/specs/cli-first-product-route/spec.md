@@ -1,7 +1,10 @@
 # cli-first-product-route Specification
 
 ## Purpose
-TBD - created by archiving change prioritize-cli-first-product-route. Update Purpose after archive.
+Define the CLI-first product route that keeps CLI behavior, protocol evidence, and local runtime workflows ahead of future hosts.
+
+定义 CLI-first product route，确保 CLI behavior、protocol evidence 与本地 runtime workflows 先于未来 hosts 成熟。
+
 ## Requirements
 ### Requirement: CLI-First Product Route / CLI 优先产品路线
 

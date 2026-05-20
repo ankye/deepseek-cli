@@ -1,7 +1,10 @@
 # deepseek-api-alignment Specification
 
 ## Purpose
-TBD - created by archiving change align-deepseek-api-capabilities. Update Purpose after archive.
+Define DeepSeek API alignment requirements for provider request construction, streaming normalization, cache metrics, and error handling.
+
+定义 DeepSeek API alignment 对 provider request construction、streaming normalization、cache metrics 与 error handling 的要求。
+
 ## Requirements
 ### Requirement: Thinking Mode Serialization Matches DeepSeek Provider Values / 思考模式序列化匹配 DeepSeek Provider Values
 

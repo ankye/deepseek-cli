@@ -1,7 +1,10 @@
 # checkpoint-undo Specification
 
 ## Purpose
-TBD - created by archiving change implement-checkpoint-undo. Update Purpose after archive.
+Define checkpoint and undo requirements for recording reversible work, scoped changes, rollback metadata, and user-facing recovery controls.
+
+定义 checkpoint 与 undo 对可逆工作、scoped changes、rollback metadata 与用户可见恢复控制的要求。
+
 ## Requirements
 ### Requirement: Checkpoint Records / Checkpoint 记录
 

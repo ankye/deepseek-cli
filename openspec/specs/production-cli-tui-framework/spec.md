@@ -1,7 +1,10 @@
 # production-cli-tui-framework Specification
 
 ## Purpose
-TBD - created by archiving change ship-production-cli-tui-framework. Update Purpose after archive.
+Define production CLI TUI framework requirements for rendering, input, layouts, statusline, terminal capability handling, and resilient interaction.
+
+定义 production CLI TUI framework 对 rendering、input、layouts、statusline、terminal capability handling 与 resilient interaction 的要求。
+
 ## Requirements
 ### Requirement: Framework-Backed Chat TUI Shell / 框架支撑的 Chat TUI Shell
 

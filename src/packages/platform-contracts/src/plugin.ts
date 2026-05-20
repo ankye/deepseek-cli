@@ -1,5 +1,6 @@
 import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadata, TraceContext } from "./common.js";
 import type { AuditId, PluginId, SessionId, WorkspaceId } from "./ids.js";
+import type { PolicyDecisionRecord, PolicyRequest, RiskyOperationFamily } from "./policy.js";
 import type {
   ExtensionAuthReadinessEvidence,
   ExtensionCredentialAuthorizationResult,
@@ -12,6 +13,7 @@ import type {
 import type { TrustStatus } from "./capability.js";
 
 export const PLUGIN_PLATFORM_SCHEMA_VERSION = "1.0.0";
+export const GOVERNED_MODULE_SCHEMA_VERSION = "1.0.0";
 
 export interface PermissionDiff extends JsonObject {
   readonly added: readonly string[];
@@ -125,6 +127,195 @@ export type PluginForbiddenApiKind =
   | "host-layout-mutation"
   | "undeclared-owner-route"
   | "private-execution";
+
+export type GovernedModuleKind =
+  | "plugin"
+  | "extension"
+  | "mcp-bridge"
+  | "skill"
+  | "hook"
+  | "ui-contribution";
+
+export type GovernedModuleLifecycleState =
+  | "declared"
+  | "validated"
+  | "enabled"
+  | "activated"
+  | "disabled"
+  | "unloaded"
+  | "cleanup-completed"
+  | "failed"
+  | "rejected"
+  | "quarantined";
+
+export type GovernedModuleLifecycleTrigger =
+  | "declare"
+  | "validate"
+  | "enable"
+  | "activate"
+  | "disable"
+  | "unload"
+  | "cleanup"
+  | "fail"
+  | "reject"
+  | "quarantine";
+
+export type GovernedModuleContractPathKind =
+  | "command"
+  | "hook"
+  | "tool"
+  | "mcp-bridge"
+  | "ui"
+  | "event-stream"
+  | "capability-api"
+  | "diagnostics"
+  | "policy"
+  | "lifecycle";
+
+export type GovernedModulePermissionRisk =
+  | "none"
+  | "read"
+  | "write"
+  | "network"
+  | "process"
+  | "model"
+  | "credential"
+  | "host-render"
+  | "mixed"
+  | "private-runtime";
+
+export type GovernedModuleDiagnosticSeverity = "info" | "warning" | "release-blocking";
+
+export interface GovernedModuleCompatibility extends CompatibilityMetadata {
+  readonly moduleApiVersion: string;
+  readonly minPlatformVersion?: string;
+  readonly hostCompatibility?: JsonObject;
+  readonly failClosedReaderRequired: boolean;
+}
+
+export interface GovernedModulePermission extends JsonObject {
+  readonly id: string;
+  readonly risk: GovernedModulePermissionRisk;
+  readonly required: boolean;
+  readonly reason: string;
+  readonly policyFamily?: RiskyOperationFamily;
+}
+
+export interface GovernedModuleContractPath extends JsonObject {
+  readonly pathId: string;
+  readonly kind: GovernedModuleContractPathKind;
+  readonly ownerPackage: string;
+  readonly publicApi: string;
+  readonly allowedEntrypoints: readonly string[];
+  readonly forbiddenEntrypoints: readonly string[];
+  readonly lifecycleStates: readonly GovernedModuleLifecycleState[];
+  readonly policyFamily?: RiskyOperationFamily;
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface GovernedModuleContributionDescriptor extends JsonObject {
+  readonly contributionId: string;
+  readonly kind: PluginContributionKind;
+  readonly ownerSubsystem: string;
+  readonly contractPathId: string;
+  readonly apiLevel: PluginApiLevel;
+  readonly permissions: readonly string[];
+  readonly requiredPermissions: readonly string[];
+  readonly sideEffect: PluginContributionSideEffect;
+  readonly policyRequired: boolean;
+  readonly publicContractOnly: boolean;
+  readonly projectionHosts: readonly PluginProjectionHost[];
+  readonly diagnostics: readonly RedactedError[];
+}
+
+export interface GovernedModuleLifecyclePolicy extends JsonObject {
+  readonly initialState: GovernedModuleLifecycleState;
+  readonly allowedStates: readonly GovernedModuleLifecycleState[];
+  readonly disableSupported: boolean;
+  readonly unloadSupported: boolean;
+  readonly cleanupRequired: boolean;
+  readonly cleanupTimeoutMs: number;
+}
+
+export interface GovernedModuleManifest extends JsonObject {
+  readonly schemaVersion: string;
+  readonly moduleId: string;
+  readonly moduleKind: GovernedModuleKind;
+  readonly displayName: string;
+  readonly version: string;
+  readonly source: PluginSourceKind;
+  readonly integrity?: string;
+  readonly permissions: readonly GovernedModulePermission[];
+  readonly contributions: readonly GovernedModuleContributionDescriptor[];
+  readonly contractPaths: readonly GovernedModuleContractPath[];
+  readonly compatibility: GovernedModuleCompatibility;
+  readonly lifecycle: GovernedModuleLifecyclePolicy;
+  readonly diagnostics: readonly GovernedModuleDiagnostic[];
+  readonly redaction: RedactionMetadata;
+  readonly replayFingerprint: string;
+}
+
+export interface GovernedModuleDiagnostic extends RedactedError {
+  readonly severity: GovernedModuleDiagnosticSeverity;
+  readonly moduleId: string;
+  readonly moduleKind?: GovernedModuleKind;
+  readonly contributionId?: string;
+  readonly category: "manifest" | "permission" | "private-access" | "lifecycle" | "contract-path" | "policy";
+  readonly releaseBlocking: boolean;
+}
+
+export interface GovernedModulePolicyEvaluation extends JsonObject {
+  readonly schemaVersion: string;
+  readonly moduleId: string;
+  readonly moduleKind: GovernedModuleKind;
+  readonly contributionId: string;
+  readonly contributionKind: PluginContributionKind;
+  readonly sideEffect: PluginContributionSideEffect;
+  readonly policyFamily: RiskyOperationFamily;
+  readonly policyRequired: boolean;
+  readonly declaredPermissions: readonly string[];
+  readonly requiredPermissions: readonly string[];
+  readonly missingPermissions: readonly string[];
+  readonly decision: "allow" | "deny" | "prompt" | "require-sandbox";
+  readonly reason: string;
+  readonly policyRequest: PolicyRequest;
+  readonly policyRecord?: PolicyDecisionRecord;
+  readonly diagnostics: readonly GovernedModuleDiagnostic[];
+  readonly redaction: RedactionMetadata;
+  readonly replayFingerprint: string;
+}
+
+export interface GovernedModuleLifecycleRecord extends JsonObject {
+  readonly schemaVersion: string;
+  readonly moduleId: string;
+  readonly moduleKind: GovernedModuleKind;
+  readonly previousState?: GovernedModuleLifecycleState;
+  readonly nextState: GovernedModuleLifecycleState;
+  readonly trigger: GovernedModuleLifecycleTrigger;
+  readonly cleanupRequired: boolean;
+  readonly cleanupCompleted: boolean;
+  readonly disableReason?: string;
+  readonly diagnostics: readonly GovernedModuleDiagnostic[];
+  readonly policyDecision?: PluginPolicyDecisionSummary;
+  readonly redaction: RedactionMetadata;
+  readonly replayFingerprint: string;
+}
+
+export interface GovernedModuleGovernanceFixture extends JsonObject {
+  readonly fixtureId: string;
+  readonly scenario:
+    | "valid-module"
+    | "missing-permission"
+    | "private-object-access"
+    | "disabled-module"
+    | "unloaded-module";
+  readonly module: GovernedModuleManifest;
+  readonly diagnostics: readonly GovernedModuleDiagnostic[];
+  readonly policyEvaluations: readonly GovernedModulePolicyEvaluation[];
+  readonly lifecycleRecords: readonly GovernedModuleLifecycleRecord[];
+  readonly expectedStatus: "pass" | "fail";
+  readonly redaction: RedactionMetadata;
+}
 
 export interface PluginApiCompatibilityMetadata extends CompatibilityMetadata {
   readonly status: PluginApiAvailability;

@@ -15,12 +15,14 @@ async function writeFixtureFile(root: string, path: string, content: string): Pr
 function lintScript(root: string): string {
   const frameworkUrl = pathToFileURL(resolve("scripts/lint-framework/index.mjs")).href;
   const sourceRoot = join(root, "src");
+  const tsconfigPath = join(root, "tsconfig.base.json");
   return `
 import { runArchitectureLint } from ${JSON.stringify(frameworkUrl)};
 
 const conventions = {
   sourceRoots: [${JSON.stringify(sourceRoot)}],
   metadataRoots: [${JSON.stringify(sourceRoot)}],
+  metadataFiles: [${JSON.stringify(tsconfigPath)}],
   ignoredDirectoryNames: new Set(["node_modules", ".git", "dist", "coverage", ".cache", "\\u53c2\\u8003"]),
   typescriptExtensions: [".ts"],
   packageManifestNames: ["package.json"],
@@ -62,6 +64,34 @@ const conventions = {
     runtime: {
       forbiddenImports: new Set(["@deepseek/testing-regression"])
     }
+  },
+  platformContractsUapi: {
+    appPackageNames: new Set(["deepseek-agent-cli", "@deepseek/vscode-extension"]),
+    providerSdkModules: new Set(["openai", "@anthropic-ai/sdk"]),
+    forbiddenWorkspacePackages: new Set(["@deepseek/testing-regression"]),
+    privateImportSegments: ["/src", "/dist", "/internal"],
+    ownerPackage: "platform-contracts",
+    suggestedOwner: "owner implementation package"
+  },
+  runtimeKernel: {
+    appPackageNames: new Set(["deepseek-agent-cli", "@deepseek/vscode-extension"]),
+    providerSdkModules: new Set(["openai", "@anthropic-ai/sdk"]),
+    privateImportSegments: ["/src", "/dist", "/internal"],
+    centralFiles: new Map([
+      ["src/packages/runtime/src/kernel.ts", { maxLines: 20, ownerPackage: "runtime", extractionTargets: ["policy-sandbox"] }]
+    ]),
+    compatibilityShims: [
+      {
+        id: "runtime.test-compat",
+        ownerPackage: "runtime",
+        file: "src/packages/runtime/src/agent-loop.ts",
+        reason: "fixture",
+        extractionTarget: "runtime-event-loop",
+        expirationTrigger: "fixture complete",
+        diagnosticId: "RUNTIME_TEST_COMPAT",
+        severity: "warning"
+      }
+    ]
   },
   governedExecution: {
     approvedPackages: new Set(["runtime"]),
@@ -140,6 +170,36 @@ const conventions = {
     maxCentralFileLines: 20,
     maxPackageIndexLines: 10,
     plannedOversizedFiles: new Set(["src/packages/platform-abstraction/src/index.ts"])
+  },
+  architectureDrift: {
+    aliasGovernanceRecords: new Map([
+      ["@deepseek/retired-thing", {
+        status: "retired",
+        ownerPackage: "platform-governance",
+        severity: "warning",
+        allowedConsumers: ["none"],
+        blockedProductClaims: ["retired-thing"],
+        replacementTrigger: "Remove the alias after compatibility fixtures no longer import it.",
+        evidenceIds: ["tests/fixtures/retired-alias.md"]
+      }],
+      ["@deepseek/placeholder-thing", {
+        status: "placeholder",
+        ownerPackage: "platform-abstraction",
+        severity: "warning",
+        allowedConsumers: ["runtime diagnostics"],
+        blockedProductClaims: ["placeholder-thing"],
+        replacementTrigger: "Create a real workspace package before product promotion.",
+        evidenceIds: ["tests/fixtures/placeholder-alias.md"]
+      }],
+      ["@deepseek/incomplete-placeholder", {
+        status: "placeholder",
+        ownerPackage: "platform-abstraction",
+        severity: "warning",
+        allowedConsumers: [],
+        blockedProductClaims: [],
+        evidenceIds: []
+      }]
+    ])
   }
 };
 
@@ -246,9 +306,32 @@ describe("architecture lint framework", () => {
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
 
       assert.equal(ruleIds.has("contracts/platform-contracts-are-pure"), true);
+      assert.equal(ruleIds.has("contracts/platform-contracts-uapi-boundary"), true);
       assert.equal(ruleIds.has("runtime/no-testing-regression-dependency"), true);
       assert.equal(ruleIds.has("imports/no-app-to-app-imports"), true);
       assert.equal(ruleIds.has("package/package-json-boundaries"), true);
+    });
+  });
+
+  it("rejects platform contracts UAPI imports from hosts providers tests apps and private internals", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/platform-contracts/src/index.ts",
+        [
+          "import { readFileSync } from \"node:fs\";",
+          "import OpenAI from \"openai\";",
+          "import { privateRuntime } from \"@deepseek/runtime/src/private\";",
+          "import { runCli } from \"deepseek-agent-cli\";",
+          "import { createDeterministicRuntimeDependencies } from \"@deepseek/testing-regression\";",
+          "export { readFileSync, OpenAI, privateRuntime, runCli, createDeterministicRuntimeDependencies };"
+        ].join("\n")
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("contracts/platform-contracts-uapi-boundary"), true);
     });
   });
 
@@ -351,6 +434,43 @@ describe("architecture lint framework", () => {
       assert.equal(result.status, 2, result.stderr || result.stdout);
       const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
       assert.equal(ruleIds.has("runtime/no-legacy-direct-execution"), true);
+    });
+  });
+
+  it("rejects runtime kernel imports that couple to apps hosts providers tests or private internals", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/runtime/src/kernel.ts",
+        [
+          "import { readFileSync } from \"node:fs\";",
+          "import OpenAI from \"openai\";",
+          "import { privateProvider } from \"@deepseek/model-gateway/src/private\";",
+          "import { runCli } from \"deepseek-agent-cli\";",
+          "import { createDeterministicRuntimeDependencies } from \"@deepseek/testing-regression\";",
+          "export { readFileSync, OpenAI, privateProvider, runCli, createDeterministicRuntimeDependencies };"
+        ].join("\n")
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("runtime/kernel-boundary-imports"), true);
+    });
+  });
+
+  it("reports runtime kernel central file pressure with a stable rule id", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "src/packages/runtime/src/kernel.ts",
+        Array.from({ length: 25 }, (_, index) => `export const kernelLine${index} = ${index};`).join("\n")
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("runtime/kernel-central-file-pressure"), true);
     });
   });
 
@@ -471,6 +591,69 @@ describe("architecture lint framework", () => {
       const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr || result.stdout);
       assert.deepEqual(JSON.parse(result.stdout), []);
+    });
+  });
+
+  it("rejects ghost path aliases without governance records", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "tsconfig.base.json",
+        JSON.stringify({
+          compilerOptions: {
+            paths: {
+              "@deepseek/missing-system": ["src/packages/missing-system/src/index.ts"]
+            }
+          }
+        }, null, 2)
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("architecture/ghost-alias-drift"), true);
+    });
+  });
+
+  it("allows retired or placeholder aliases only with complete governance metadata", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "tsconfig.base.json",
+        JSON.stringify({
+          compilerOptions: {
+            paths: {
+              "@deepseek/retired-thing": ["src/packages/retired-thing/src/index.ts"],
+              "@deepseek/placeholder-thing": ["src/packages/placeholder-thing/src/index.ts"]
+            }
+          }
+        }, null, 2)
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.deepEqual(JSON.parse(result.stdout), []);
+    });
+  });
+
+  it("rejects placeholder alias records missing promotion-gate metadata", async () => {
+    await withFixture(async (root) => {
+      await writeFixtureFile(
+        root,
+        "tsconfig.base.json",
+        JSON.stringify({
+          compilerOptions: {
+            paths: {
+              "@deepseek/incomplete-placeholder": ["src/packages/incomplete-placeholder/src/index.ts"]
+            }
+          }
+        }, null, 2)
+      );
+
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", lintScript(root)], { encoding: "utf8" });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      const ruleIds = new Set(JSON.parse(result.stdout) as string[]);
+      assert.equal(ruleIds.has("architecture/ghost-alias-drift"), true);
     });
   });
 });

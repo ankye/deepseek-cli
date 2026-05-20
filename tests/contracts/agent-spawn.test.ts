@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { asId } from "@deepseek/platform-contracts";
-import type { AgentSpawner, CapabilityExecutionContext, JsonObject } from "@deepseek/platform-contracts";
+import type { AgentSpawner, CapabilityExecutionContext, JsonObject, PolicyDecision } from "@deepseek/platform-contracts";
+import { createPolicyDecisionRecord } from "@deepseek/policy-sandbox";
 import { createDefaultRuntimeKernel, createAgentSpawner, registerRuntimeCoreTools } from "@deepseek/runtime";
 import { createDeterministicRuntimeDependencies } from "@deepseek/testing-regression";
 import { defineAgentContinueTool } from "../../src/packages/core-coding-tools/src/families/agents-tasks/agent-message-continue/index.js";
@@ -150,6 +151,118 @@ describe("core.agent.spawn tool", () => {
     assert.equal(metadata?.workOrderId, "work-order:implementer");
     assert.equal(metadata?.agentMode, "implementer");
     assert.equal((metadata?.workerResult as { evidenceIds?: readonly string[] } | undefined)?.evidenceIds?.includes("evidence:readme"), true);
+  });
+
+  it("rejects out-of-namespace writes before launching worker work", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await registerRuntimeCoreTools(deps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const spawner = createAgentSpawner(deps, kernel, "/workspace");
+    const definition = await deps.agents.getDefault();
+    const namespace = await deps.agents.projectNamespace(definition.id, "worker", {
+      parentAgentId: asId<"agent">("agent-parent"),
+      parentSessionId: asId<"session">("session-parent"),
+      childSessionId: asId<"session">("session-child-denied"),
+      delegatedPaths: ["src/allowed.ts"],
+      delegatedTools: ["file.read", "file.edit"]
+    });
+    const tool = defineAgentSpawnTool({ platform: deps.platform, workspaceState: deps.workspaceState, workspaceRoot: "/workspace", agentSpawner: spawner });
+    const result = await tool.execute({
+      prompt: "write outside delegated path",
+      agentMode: "worker",
+      toolProjection: "read-write",
+      namespace,
+      workOrder: {
+        schemaVersion: "1.0.0",
+        workOrderId: "work-order:denied-scope",
+        parentSessionId: asId<"session">("session-parent"),
+        mode: "worker",
+        purpose: "Attempt a write outside delegated scope.",
+        originalUserGoal: "write outside delegated path",
+        taskSummary: "Try to edit README outside src/allowed.ts.",
+        evidenceIds: [],
+        targets: [{ kind: "file", id: "readme", path: "README.md" }],
+        allowedTools: ["file.read", "file.edit"],
+        permissionScope: { toolProjection: "read-write", writeScope: ["README.md"] },
+        doneCriteria: ["Must not launch when out of scope."],
+        verificationExpectations: ["Parent sees a stable scope denial."],
+        redaction: { class: "internal" },
+        compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" }
+      }
+    } as JsonObject, context());
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, "AGENT_SCOPE_PATH_DENIED");
+    const parentEvents = await deps.sessions.events(asId<"session">("session-parent"));
+    assert.equal(parentEvents.some((event) => event.kind === "agent.scope.denied"), true);
+    assert.equal(parentEvents.some((event) => event.kind === "agent.worker.launched"), false);
+  });
+
+  it("requires policy handoff when child namespace expands parent authority", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    await registerRuntimeCoreTools(deps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const spawner = createAgentSpawner(deps, kernel, "/workspace");
+    const definition = await deps.agents.getDefault();
+    const parentNamespace = await deps.agents.projectNamespace(definition.id, "worker", {
+      parentAgentId: asId<"agent">("agent-parent"),
+      parentSessionId: asId<"session">("session-parent"),
+      childSessionId: asId<"session">("session-parent-worker"),
+      delegatedPaths: ["src/allowed.ts"],
+      delegatedTools: ["file.read"]
+    });
+    const parent = await deps.agents.createInstance(definition.id, asId<"session">("session-parent-worker"), {
+      mode: "worker",
+      parentAgentId: asId<"agent">("agent-parent"),
+      parentSessionId: asId<"session">("session-parent"),
+      namespace: parentNamespace
+    });
+    const childNamespace = await deps.agents.projectNamespace(definition.id, "worker", {
+      parentAgentId: asId<"agent">("agent-parent"),
+      parentAgentInstanceId: parent.id,
+      parentSessionId: asId<"session">("session-parent"),
+      childSessionId: asId<"session">("session-expanded-worker"),
+      delegatedPaths: ["src/allowed.ts", "src/expanded.ts"],
+      delegatedTools: ["file.read", "file.edit"]
+    });
+    deps.policy.decide = async (request) => {
+      const decision: PolicyDecision = {
+        action: "deny",
+        reason: "Namespace expansion denied by policy."
+      };
+      return { ...decision, record: createPolicyDecisionRecord(request, decision, "sandbox") };
+    };
+    const tool = defineAgentSpawnTool({ platform: deps.platform, workspaceState: deps.workspaceState, workspaceRoot: "/workspace", agentSpawner: spawner });
+    const result = await tool.execute({
+      prompt: "expand child write scope",
+      agentMode: "worker",
+      parentAgentInstanceId: parent.id,
+      toolProjection: "read-write",
+      namespace: childNamespace,
+      workOrder: {
+        schemaVersion: "1.0.0",
+        workOrderId: "work-order:expanded-scope",
+        parentSessionId: asId<"session">("session-parent"),
+        mode: "worker",
+        purpose: "Request broader delegated scope.",
+        originalUserGoal: "expand child write scope",
+        taskSummary: "Write to expanded path not delegated to parent worker.",
+        evidenceIds: [],
+        targets: [{ kind: "file", id: "expanded", path: "src/expanded.ts" }],
+        allowedTools: ["file.read", "file.edit"],
+        permissionScope: { toolProjection: "read-write", writeScope: ["src/expanded.ts"] },
+        doneCriteria: ["Policy must decide expansion before launch."],
+        verificationExpectations: ["Parent receives policy-denied scope event."],
+        redaction: { class: "internal" },
+        compatibility: { schemaVersion: "1.0.0", minReaderVersion: "1.0.0" }
+      }
+    } as JsonObject, context());
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, "AGENT_NAMESPACE_POLICY_DENIED");
+    const parentEvents = await deps.sessions.events(asId<"session">("session-parent"));
+    assert.equal(parentEvents.some((event) => event.kind === "agent.scope.denied"), true);
+    assert.equal(parentEvents.some((event) => event.kind === "agent.worker.launched"), false);
   });
 
   it("continues and stops workers through governed lifecycle tools", async () => {

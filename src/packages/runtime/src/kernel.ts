@@ -24,6 +24,7 @@ import type { PlatformExecutionContext } from "@deepseek/platform-contracts";
 import {
   analyzeResourceScope,
   createSandboxRequirement,
+  createPolicyDecisionRecord,
   redactJsonSecrets
 } from "@deepseek/policy-sandbox";
 import { DeterministicClock, DeterministicIdFactory, NoopRuntimeKernelLogger } from "./deterministic.js";
@@ -143,19 +144,29 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
     }
 
     const platform = envelope.policyContext.platform as PlatformExecutionContext | undefined;
-    const policyDecision = await this.deps.policy.decide({
+    const policyRequest = {
       subject: request.caller,
       action: `execute:${String(binding.manifest.id)}`,
       resource: String(binding.manifest.id),
-      metadata: {
-        ...policyMetadataFor(envelope, request.input)
-      },
+      metadata: policyMetadataFor(envelope, request.input),
       ...(platform ? { platform } : {}),
       secret: envelope.secretExposure,
       resourceScope: envelope.resourceScope,
       sandbox: envelope.sandboxRequirements,
       auditEvidence: envelope.audit
-    });
+    };
+    let policyDecision: PolicyDecision;
+    try {
+      const decision = await this.deps.policy.decide(policyRequest);
+      policyDecision = decision.record ? decision : { ...decision, record: createPolicyDecisionRecord(policyRequest, decision) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Policy evaluation failed.";
+      const rejected = this.event("execution.rejected", sessionId, trace, { envelopeId: invocationId, policy: { action: "deny", reason: "Policy decision is missing because policy evaluation failed.", error: message } }, request.agentId, workflow.taskId, kernelError("KERNEL_POLICY_DECISION_MISSING", "Policy decision is required before execution."));
+      await this.recordEvent(rejected);
+      yield rejected;
+      yield await this.closeWorkflow(workflow, "rejected", { envelopeId: invocationId, policy: "missing" });
+      return;
+    }
     for (const event of await this.policyEvents(policyDecision, sessionId, trace, envelope, request.agentId, workflow.taskId)) {
       await this.recordEvent(event);
       yield event;
@@ -366,7 +377,8 @@ export class InProcessRuntimeKernel implements RuntimeKernel {
       envelopeId: envelope.invocationId,
       action: decision.action,
       reason: decision.reason,
-      audit: decision.audit ?? {}
+      audit: decision.audit ?? {},
+      record: decision.record ?? {}
     }, agentId, taskId);
     const sandbox = this.event("sandbox.selected", sessionId, trace, {
       envelopeId: envelope.invocationId,

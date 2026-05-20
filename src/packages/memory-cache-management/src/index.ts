@@ -2,6 +2,8 @@ import type {
   CacheEntry,
   CacheKey,
   CacheManager,
+  ContextBlock,
+  ContextPipelineManifest,
   ContextProjectionResult,
   JsonObject,
   MemoryId,
@@ -17,6 +19,8 @@ import { asId } from "@deepseek/platform-contracts";
 
 export const PROJECTION_CACHE_NAMESPACE = "context.projection";
 export const TOOL_RESULT_EVIDENCE_CACHE_NAMESPACE = "turn.tool-result-evidence";
+export const CONTEXT_PIPELINE_BLOCK_CACHE_NAMESPACE = "context.pipeline.block";
+export const CONTEXT_PIPELINE_MANIFEST_CACHE_NAMESPACE = "context.pipeline.manifest";
 
 export interface ProjectionCacheInput {
   readonly requestFingerprint: string;
@@ -34,6 +38,46 @@ export function createProjectionCacheEntry(input: ProjectionCacheInput, value: C
     value,
     createdAt,
     invalidation: [...input.dependencyFingerprints].sort()
+  };
+}
+
+export function contextBlockCacheKey(block: ContextBlock): CacheKey {
+  return asId<"cacheKey">(`${CONTEXT_PIPELINE_BLOCK_CACHE_NAMESPACE}:${stableHash(JSON.stringify({
+    hash: block.hash,
+    layer: block.layer,
+    dependencyFingerprints: [...block.dependencyFingerprints].sort(),
+    cacheHint: block.cacheHint
+  }))}`);
+}
+
+export function createContextBlockCacheEntry(block: ContextBlock, createdAt = new Date(0).toISOString()): CacheEntry<ContextBlock> {
+  return {
+    key: contextBlockCacheKey(block),
+    namespace: CONTEXT_PIPELINE_BLOCK_CACHE_NAMESPACE,
+    value: block,
+    createdAt,
+    invalidation: [...new Set([...block.dependencyFingerprints, `context-block:${block.hash}`])].sort()
+  };
+}
+
+export function createContextPipelineManifestCacheEntry(
+  manifest: ContextPipelineManifest,
+  createdAt = new Date(0).toISOString()
+): CacheEntry<ContextPipelineManifest> {
+  return {
+    key: asId<"cacheKey">(`${CONTEXT_PIPELINE_MANIFEST_CACHE_NAMESPACE}:${stableHash(JSON.stringify({
+      sessionId: manifest.sessionId,
+      turnId: manifest.turnId ?? "",
+      pipelineFingerprint: manifest.pipelineFingerprint
+    }))}`),
+    namespace: CONTEXT_PIPELINE_MANIFEST_CACHE_NAMESPACE,
+    value: manifest,
+    createdAt,
+    invalidation: [
+      `session:${manifest.sessionId}`,
+      ...(manifest.turnId ? [`turn:${manifest.turnId}`] : []),
+      `pipeline:${manifest.pipelineFingerprint}`
+    ]
   };
 }
 

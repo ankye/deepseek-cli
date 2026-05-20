@@ -1,7 +1,10 @@
 # capability-registry Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define capability registry requirements for manifesting, resolving, projecting, and executing governed capabilities through stable contracts.
+
+定义 capability registry 对 manifest、resolve、projection 与通过稳定 contracts 执行受治理 capabilities 的要求。
+
 ## Requirements
 ### Requirement: Capability Manifest
 

@@ -1,7 +1,10 @@
 # usage-budget-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define usage and budget management requirements for token, cost, quota, rate, cache, and runtime budget accounting.
+
+定义 usage and budget management 对 token、cost、quota、rate、cache 与 runtime budget accounting 的要求。
+
 ## Requirements
 ### Requirement: Usage and Budget Service
 

@@ -1,7 +1,10 @@
 # cli-extension-auth-management Specification
 
 ## Purpose
-TBD - created by archiving change implement-cli-extension-auth-and-management. Update Purpose after archive.
+Define CLI extension authentication and management requirements for trusted extension workflows, credentials, and governed enablement.
+
+定义 CLI extension authentication and management 对可信 extension workflows、credentials 与受治理启用流程的要求。
+
 ## Requirements
 ### Requirement: CLI Extension Management Command Surface / CLI 扩展管理命令表面
 

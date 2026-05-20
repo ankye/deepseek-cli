@@ -264,7 +264,17 @@ function pluginShelfText(shelf: ChatTuiPluginShelf): string {
 }
 
 function statusLine(workbench: ChatTuiWorkbench): string {
-  return `DeepSeek | ${workbench.layout} | focus=${workbench.focus.activePanel} | ${workbench.commandBar.open ? "command" : "ready"} | plugins=${workbench.pluginShelf.readiness}`;
+  const telemetry = workbench.statusTelemetry
+    ? ` | model=${workbench.statusTelemetry.modelId} cache=${cacheText(workbench.statusTelemetry)} ctx=${workbench.statusTelemetry.context.selectedTokens}/${workbench.statusTelemetry.context.hardLimitTokens}`
+    : "";
+  return `DeepSeek | ${workbench.layout} | focus=${workbench.focus.activePanel} | ${workbench.commandBar.open ? "command" : "ready"} | plugins=${workbench.pluginShelf.readiness}${telemetry}`;
+}
+
+function cacheText(telemetry: NonNullable<ChatTuiWorkbench["statusTelemetry"]>): string {
+  if (telemetry.cache.status === "available" && telemetry.cache.hitRate !== undefined) {
+    return `${Math.round(telemetry.cache.hitRate * 100)}%`;
+  }
+  return telemetry.cache.status;
 }
 
 function keyLine(workbench: ChatTuiWorkbench, columns: number): string {

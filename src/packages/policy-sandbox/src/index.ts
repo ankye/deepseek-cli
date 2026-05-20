@@ -11,8 +11,14 @@ import type {
   JsonObject,
   PolicyAction,
   PolicyDecision,
+  PolicyDecisionRecord,
   PolicyEngine,
+  PolicyGateCoverageRecord,
+  PolicyGateDecision,
+  PolicyGateDiagnostic,
   PolicyRequest,
+  RiskyOperationFamily,
+  RiskyOperationTaxonomyEntry,
   RedactedError,
   RedactionMetadata,
   ResourceScope,
@@ -30,7 +36,7 @@ import type {
   SideEffectLevel,
   TraceContext
 } from "@deepseek/platform-contracts";
-import { APPROVAL_SCHEMA_VERSION, SECRET_SANDBOX_SCHEMA_VERSION } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, POLICY_GATE_SCHEMA_VERSION, RISKY_OPERATION_TAXONOMY, SECRET_SANDBOX_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 
 export const SECRET_REDACTION_TOKEN = "[REDACTED:secret]";
 
@@ -215,6 +221,79 @@ export function createSandboxAuditEvidence(input: {
   };
 }
 
+export function listRiskyOperationTaxonomy(): readonly RiskyOperationTaxonomyEntry[] {
+  return RISKY_OPERATION_TAXONOMY;
+}
+
+export function createPolicyDecisionRecord(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  operationFamily: RiskyOperationFamily = operationFamilyFromPolicyRequest(request)
+): PolicyDecisionRecord {
+  const reasonCodes = policyRecordReasonCodes(request, decision);
+  const bypassAttempted = hasBypassMetadata(request);
+  const gateDecision = policyGateDecisionFor(request, decision, bypassAttempted);
+  const scope = request.resourceScope ?? resourceScopeFromMetadata(request.metadata, sideEffectFrom(request.metadata));
+  const fingerprint = stableFingerprint(JSON.stringify({
+    actor: request.subject,
+    operation: request.action,
+    resource: request.resource,
+    operationFamily,
+    decision: gateDecision,
+    reasonCodes
+  })) ?? "unknown";
+  const sandboxProfile = decision.sandboxProfile ?? decision.sandbox?.profile;
+  return {
+    schemaVersion: POLICY_GATE_SCHEMA_VERSION,
+    recordId: `policy-decision:${fingerprint}`,
+    actor: redactSecretText(request.subject),
+    operation: request.action,
+    operationFamily,
+    scope,
+    decision: gateDecision,
+    reason: redactSecretText(decision.reason),
+    reasonCodes,
+    auditId: asId<"audit">(`audit:${fingerprint}`),
+    replayBehavior: replayBehaviorFor(gateDecision),
+    ...(sandboxProfile ? { sandboxProfile } : {}),
+    bypassAttempted,
+    redaction: { class: "internal", fields: ["actor", "scope", "reason"] }
+  };
+}
+
+export function withPolicyDecisionRecord(request: PolicyRequest, decision: PolicyDecision): PolicyDecision {
+  return decision.record ? decision : { ...decision, record: createPolicyDecisionRecord(request, decision) };
+}
+
+export function collectPolicyGateCoverageRecords(): readonly PolicyGateCoverageRecord[] {
+  return POLICY_GATE_COVERAGE_RECORDS;
+}
+
+export function createPolicyGateFixtureRecords(): readonly PolicyDecisionRecord[] {
+  const base = {
+    subject: "fixture",
+    resource: "policy.fixture",
+    resourceScope: analyzeResourceScope({ path: "fixture.txt", workspaceRoot: "/workspace" }, "read"),
+    sandbox: undefined,
+    auditEvidence: undefined
+  };
+  const fixtures: readonly { readonly action: string; readonly metadata: JsonObject; readonly decision: PolicyDecision }[] = [
+    { action: "execute:file.read", metadata: { sideEffect: "read" }, decision: { action: "allow", reason: "Allowed fixture." } },
+    { action: "execute:file.write", metadata: { sideEffect: "write" }, decision: { action: "deny", reason: "Denied fixture." } },
+    { action: "execute:plugin", metadata: { sideEffect: "process" }, decision: { action: "ask", reason: "Prompt fixture." } },
+    { action: "execute:credential", metadata: { sideEffect: "none", prompt: "sk-live-1234567890" }, decision: { action: "rewrite", reason: "Secret fixture." } },
+    { action: "inspect:mcp.resource", metadata: { sideEffect: "read", auditOnly: true }, decision: { action: "allow", reason: "Audit fixture." } },
+    { action: "execute:shell", metadata: { sideEffect: "process", permissionMode: "bypass", breakGlass: true }, decision: { action: "deny", reason: "Bypass fixture." } }
+  ];
+  return fixtures.map((fixture) => createPolicyDecisionRecord({
+    subject: base.subject,
+    action: fixture.action,
+    resource: base.resource,
+    metadata: fixture.metadata,
+    resourceScope: base.resourceScope
+  }, fixture.decision));
+}
+
 export function selectSandboxDecision(request: PolicyRequest): SandboxDecision {
   const sideEffect = sideEffectFrom(request.metadata);
   const capabilities = request.platform?.sandboxCapabilities ?? request.platform?.descriptor.sandbox ?? fallbackCapabilities(request.platform?.descriptor.degradedReasons ?? []);
@@ -241,6 +320,17 @@ export function selectSandboxDecision(request: PolicyRequest): SandboxDecision {
   };
 }
 
+const POLICY_GATE_COVERAGE_RECORDS: readonly PolicyGateCoverageRecord[] = [
+  coverageRecord("file.mutation", "file", "core-coding-tools", ["core.file.write", "checkpoint.restore"], "covered", "release-blocking", ["tests/integration/secret-sandbox-policy-runtime.test.ts", "tests/contracts/runtime-kernel-contract.test.ts"]),
+  coverageRecord("shell.execution", "shell", "core-coding-tools", ["core.shell.run", "core.test.run", "deepseek checks"], "covered", "release-blocking", ["tests/integration/secret-sandbox-policy-runtime.test.ts", "tests/golden/secret-sandbox-audit-replay.test.ts"]),
+  coverageRecord("mcp.invocation", "mcp", "mcp-gateway", ["mcp.tool.call", "mcp.resource.read"], "covered", "release-blocking", ["tests/contracts/mcp-gateway-contracts.test.ts", "tests/integration/mcp-gateway-invocation.test.ts"]),
+  coverageRecord("plugin.execution", "plugin", "plugin-system", ["plugin.command", "plugin.lifecycle", "module.permission.evaluate"], "covered", "release-blocking", ["tests/contracts/plugin-platform-foundation.test.ts", "tests/contracts/plugin-manager.test.ts"]),
+  coverageRecord("credential.access", "credential", "credential-auth-management", ["credentialRef", "secure-storage"], "covered", "release-blocking", ["tests/contracts/extension-auth-boundaries.test.ts", "src/packages/policy-sandbox/src/index.test.ts"]),
+  coverageRecord("remote.operation", "remote", "remote-runtime-connectivity", ["remote-runtime-connectivity"], "deferred", "warning", ["openspec/changes/enforce-policy-sandbox-gates"], [policyGateDiagnostic("POLICY_GATE_REMOTE_DEFERRED", "warning", "remote.operation", "remote", "Remote runtime is not product-ready; policy gate remains a release gate before promotion.", false)]),
+  coverageRecord("sandbox.selection", "sandbox", "policy-sandbox", ["sandbox.profile", "platform-capability"], "covered", "release-blocking", ["src/packages/policy-sandbox/src/index.test.ts", "tests/golden/secret-sandbox-audit-replay.test.ts"]),
+  coverageRecord("workspace.mutation", "workspace-mutation", "workspace-state-management", ["workspace.edit", "session.checkpoint"], "covered", "release-blocking", ["tests/integration/checkpoint-undo-runtime.test.ts", "tests/integration/secret-sandbox-policy-runtime.test.ts"])
+];
+
 export class DefaultPolicyEngine implements PolicyEngine {
   async decide(request: PolicyRequest): Promise<PolicyDecision> {
     const secret = request.secret ?? secretDecisionFromMetadata(request.metadata);
@@ -263,9 +353,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         platform: request.platform?.descriptor
       }
     });
+    const finalize = (decision: PolicyDecision): PolicyDecision => withPolicyDecisionRecord(request, decision);
 
     if (secret.action === "deny" || secret.action === "rewrite" || secret.action === "exclude") {
-      return withApprovalEvidence(request, {
+      return finalize(withApprovalEvidence(request, {
         action: secret.action === "rewrite" ? "rewrite" : "deny",
         reason: `Secret exposure rejected by policy: ${secret.reasonCode}`,
         rewritten: { redacted: secret.redactedText ?? SECRET_REDACTION_TOKEN },
@@ -274,11 +365,11 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox,
         auditEvidence
-      });
+      }));
     }
 
     if (sandbox.action === "deny" || sandbox.action === "rewrite" || sandbox.action === "require-sandbox") {
-      return withApprovalEvidence(request, {
+      return finalize(withApprovalEvidence(request, {
         action: sandbox.action,
         reason: `Sandbox policy ${sandbox.action}: ${sandbox.reasonCodes.join(", ")}`,
         audit: auditEvidence,
@@ -286,13 +377,13 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox,
         auditEvidence
-      });
+      }));
     }
 
     const sideEffect = sideEffectFrom(request.metadata);
     const permissions = permissionsFrom(request.metadata);
     if (sideEffect === "process" && permissions.includes("process:test")) {
-      return {
+      return finalize({
         action: "allow",
         reason: "Deterministic policy allows declared test execution",
         audit: auditEvidence,
@@ -300,10 +391,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, profile: "development-test" },
         auditEvidence: { ...auditEvidence, sandboxProfile: "development-test" }
-      };
+      });
     }
     if (sideEffect === "write" || sideEffect === "network" || sideEffect === "process") {
-      return withApprovalEvidence(request, {
+      return finalize(withApprovalEvidence(request, {
         action: "deny",
         reason: `Side effect ${String(sideEffect)} is not allowed by deterministic policy`,
         audit: auditEvidence,
@@ -311,10 +402,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "deny", profile: "development-denied", reasonCodes: [...sandbox.reasonCodes, "policy.side-effect.denied"] },
         auditEvidence: { ...auditEvidence, decision: "deny", reasonCode: "policy.side-effect.denied", sandboxProfile: "development-denied" }
-      });
+      }));
     }
     if (request.action.includes("delete") || request.action.includes("secret")) {
-      return withApprovalEvidence(request, {
+      return finalize(withApprovalEvidence(request, {
         action: "ask",
         reason: "Potentially sensitive action requires approval",
         audit: auditEvidence,
@@ -322,10 +413,10 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "ask" },
         auditEvidence
-      });
+      }));
     }
     if (request.resource.includes("untrusted")) {
-      return withApprovalEvidence(request, {
+      return finalize(withApprovalEvidence(request, {
         action: "quarantine",
         reason: "Untrusted resource",
         audit: auditEvidence,
@@ -333,9 +424,9 @@ export class DefaultPolicyEngine implements PolicyEngine {
         secret,
         sandbox: { ...sandbox, action: "quarantine", profile: "development-quarantine" },
         auditEvidence
-      });
+      }));
     }
-    return {
+    return finalize({
       action: "allow",
       reason: "Default development policy",
       audit: auditEvidence,
@@ -343,7 +434,7 @@ export class DefaultPolicyEngine implements PolicyEngine {
       secret,
       sandbox,
       auditEvidence
-    };
+    });
   }
 }
 
@@ -422,6 +513,102 @@ export class DevelopmentSandboxRuntime implements SandboxRuntime {
       }) as JsonObject
     };
   }
+}
+
+function coverageRecord(
+  operationId: string,
+  operationFamily: RiskyOperationFamily,
+  ownerPackage: string,
+  entrypoints: readonly string[],
+  coverage: PolicyGateCoverageRecord["coverage"],
+  releaseGate: PolicyGateCoverageRecord["releaseGate"],
+  evidenceIds: readonly string[],
+  diagnostics: readonly PolicyGateDiagnostic[] = []
+): PolicyGateCoverageRecord {
+  return {
+    schemaVersion: POLICY_GATE_SCHEMA_VERSION,
+    operationId,
+    operationFamily,
+    ownerPackage,
+    entrypoints,
+    coverage,
+    releaseGate,
+    evidenceIds,
+    diagnostics,
+    redaction: { class: "internal", fields: ["entrypoints", "evidenceIds", "diagnostics.message"] }
+  };
+}
+
+function policyGateDiagnostic(
+  code: string,
+  severity: PolicyGateDiagnostic["severity"],
+  operationId: string,
+  operationFamily: RiskyOperationFamily,
+  message: string,
+  releaseBlocking: boolean
+): PolicyGateDiagnostic {
+  return {
+    code,
+    severity,
+    operationId,
+    operationFamily,
+    message,
+    releaseBlocking,
+    redaction: { class: "internal", fields: ["message"] }
+  };
+}
+
+function policyGateDecisionFor(
+  request: PolicyRequest,
+  decision: PolicyDecision,
+  bypassAttempted: boolean
+): PolicyGateDecision {
+  if (bypassAttempted && decision.action !== "allow") return "bypass-detected";
+  if (request.metadata.auditOnly === true && decision.action === "allow") return "audit-only";
+  if (decision.action === "ask") return "prompt";
+  if (decision.action === "rewrite") return "redact";
+  return decision.action;
+}
+
+function replayBehaviorFor(decision: PolicyGateDecision): PolicyDecisionRecord["replayBehavior"] {
+  if (decision === "audit-only") return "audit-only";
+  if (decision === "redact") return "redacted-replay";
+  if (decision === "deny" || decision === "bypass-detected" || decision === "quarantine") return "fail-closed";
+  return "deterministic";
+}
+
+function operationFamilyFromPolicyRequest(request: PolicyRequest): RiskyOperationFamily {
+  const explicit = request.metadata.riskyOperationFamily;
+  if (isRiskyOperationFamily(explicit)) return explicit;
+  const haystack = `${request.action} ${request.resource} ${JSON.stringify(request.metadata)}`.toLowerCase();
+  if (haystack.includes("mcp")) return "mcp";
+  if (haystack.includes("plugin") || haystack.includes("extension")) return "plugin";
+  if (haystack.includes("credential") || haystack.includes("secure-storage") || haystack.includes("secret")) return "credential";
+  if (haystack.includes("remote")) return "remote";
+  if (haystack.includes("sandbox")) return "sandbox";
+  if (haystack.includes("workspace") && (haystack.includes("mutation") || haystack.includes("edit"))) return "workspace-mutation";
+  if (haystack.includes("shell") || haystack.includes("process") || haystack.includes("command") || sideEffectFrom(request.metadata) === "process") return "shell";
+  if (haystack.includes("file") || haystack.includes("checkpoint") || sideEffectFrom(request.metadata) === "write") return "file";
+  return "sandbox";
+}
+
+function isRiskyOperationFamily(value: unknown): value is RiskyOperationFamily {
+  return value === "file"
+    || value === "shell"
+    || value === "mcp"
+    || value === "plugin"
+    || value === "credential"
+    || value === "remote"
+    || value === "sandbox"
+    || value === "workspace-mutation";
+}
+
+function policyRecordReasonCodes(request: PolicyRequest, decision: PolicyDecision): readonly string[] {
+  const codes = new Set<string>(approvalReasonCodes(request, decision));
+  if (decision.action === "allow" && request.metadata.auditOnly === true) codes.add("policy.audit-only");
+  if (hasBypassMetadata(request)) codes.add("policy.bypass.detected");
+  if (codes.size === 0) codes.add(`policy.${decision.action}`);
+  return [...codes].sort();
 }
 
 function sandboxReasonCodes(

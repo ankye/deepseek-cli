@@ -12,13 +12,18 @@ import type {
   AgentManager,
   AgentModeBinding,
   AgentModeName,
+  AgentNamespaceProjectionOptions,
   AgentProductRole,
+  AgentScopeEvaluationRequest,
+  AgentScopeEvaluationResult,
   AgentScopes,
   CompatibilityMetadata,
   RedactedError,
   SessionId
 } from "@deepseek/platform-contracts";
 import { AGENT_COMPATIBILITY, AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, AGENT_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { evaluateAgentScope, projectAgentNamespace } from "./namespace.js";
+export { createAgentScopeGovernanceFixtures, evaluateAgentScope, isAgentNamespaceExpansion, projectAgentNamespace } from "./namespace.js";
 
 const agentDefinitionCompatibility: AgentDefinition["compatibility"] = {
   schemaVersion: AGENT_SCHEMA_VERSION,
@@ -214,6 +219,13 @@ export class InMemoryAgentManager implements AgentManager {
     }
 
     const scopes = options.scopeProjection ?? projectAgentScopes(definition, mode);
+    const namespace = options.namespace ?? projectAgentNamespace(definition, mode, {
+      ...(options.parentAgentId ? { parentAgentId: options.parentAgentId } : {}),
+      ...(options.parentAgentInstanceId ? { parentAgentInstanceId: options.parentAgentInstanceId } : {}),
+      ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      ...(options.childSessionId ? { childSessionId: options.childSessionId } : {}),
+      ...(options.workOrderId ? { workOrderId: options.workOrderId } : {})
+    });
     const lifecycleState = options.lifecycleState ?? "spawned";
     const status = statusForLifecycle(lifecycleState);
     const instanceId = asId<"agentInstance">(`agent-instance-${sessionId}-${this.instances.size + 1}`) as AgentInstanceId;
@@ -241,12 +253,14 @@ export class InMemoryAgentManager implements AgentManager {
       productRole: options.productRole ?? modeProductRoles[mode],
       modeBinding,
       ...(options.parentAgentId ? { parentAgentId: options.parentAgentId } : {}),
+      ...(options.parentAgentInstanceId ? { parentAgentInstanceId: options.parentAgentInstanceId } : {}),
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options.childSessionId ? { childSessionId: options.childSessionId } : {}),
       ...(options.workOrderId ? { workOrderId: options.workOrderId } : {}),
       ...(options.delegationDecisionId ? { delegationDecisionId: options.delegationDecisionId } : {}),
       ...(options.continuationOf ? { continuationOf: options.continuationOf } : {}),
       scopes,
+      namespace,
       lifecycleEvents,
       ...(options.metadata ? { metadata: options.metadata } : {}),
       redaction: { class: "internal" },
@@ -300,6 +314,21 @@ export class InMemoryAgentManager implements AgentManager {
       throw new Error(`Unsupported agent mode for ${definition.id}: ${mode}`);
     }
     return projectAgentScopes(definition, mode);
+  }
+
+  async projectNamespace(definitionId: AgentId, mode: AgentModeName, options: AgentNamespaceProjectionOptions = {}): Promise<import("@deepseek/platform-contracts").AgentNamespace> {
+    const definition = this.definitions.get(definitionId);
+    if (!definition) {
+      throw new Error(`Unknown agent definition: ${definitionId}`);
+    }
+    if (!isAgentModeSupported(definition, mode)) {
+      throw new Error(`Unsupported agent mode for ${definition.id}: ${mode}`);
+    }
+    return projectAgentNamespace(definition, mode, options);
+  }
+
+  async evaluateScope(request: AgentScopeEvaluationRequest): Promise<AgentScopeEvaluationResult> {
+    return evaluateAgentScope(request);
   }
 
   async transitionInstance(instanceId: AgentInstanceId, request: AgentLifecycleTransitionRequest): Promise<AgentInstance> {

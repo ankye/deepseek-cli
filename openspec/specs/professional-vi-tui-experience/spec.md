@@ -1,7 +1,10 @@
 # professional-vi-tui-experience Specification
 
 ## Purpose
-TBD - created by archiving change upgrade-professional-vi-tui-plugin-experience. Update Purpose after archive.
+Define professional vi-inspired TUI experience requirements for modal editing, keybindings, result navigation, command actions, and terminal ergonomics.
+
+定义 professional vi-inspired TUI experience 对 modal editing、keybindings、result navigation、command actions 与 terminal ergonomics 的要求。
+
 ## Requirements
 ### Requirement: Professional Vi Workbench Product Boundary / 专业 Vi Workbench 产品边界
 

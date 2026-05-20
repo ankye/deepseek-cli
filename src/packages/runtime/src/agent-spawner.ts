@@ -3,13 +3,18 @@ import type {
   AgentContinueResult,
   AgentDelegationDecision,
   AgentDelegationReasonCode,
+  AgentNamespace,
   AgentSpawnRequest,
   AgentSpawnResult,
   AgentSpawner,
   AgentStopRequest,
   AgentStopResult,
+  AgentScopeDiagnostic,
+  AgentScopeEvaluationResult,
   AgentWorkerLifecycleEvent,
   AgentWorkerResult,
+  JsonObject,
+  PolicyRequest,
   RuntimeDependencies,
   RuntimeEvent,
   RuntimeKernel
@@ -242,18 +247,40 @@ async function runWorkerRequest(input: {
   const selectedMode = definition.supportedAgentModes.includes(input.mode) ? input.mode : definition.defaultAgentMode;
   const scopeProjection = await input.deps.agents.projectScopes(definition.id, selectedMode);
   const sessionId = forkedSessionId ?? await input.deps.sessions.create({ caller: input.source, workspaceRoot: input.workspaceRoot });
+  const namespace = input.request.namespace ?? await input.deps.agents.projectNamespace(definition.id, selectedMode, {
+    ...(input.request.parentAgentId ? { parentAgentId: input.request.parentAgentId } : {}),
+    ...(input.request.parentAgentInstanceId ? { parentAgentInstanceId: input.request.parentAgentInstanceId } : {}),
+    ...(parentSessionId ? { parentSessionId } : {}),
+    childSessionId: sessionId,
+    ...(input.workOrderId ? { workOrderId: input.workOrderId } : {}),
+    delegatedPaths: delegatedPathsFrom(input.request),
+    delegatedTools: delegatedToolsFrom(input.request)
+  });
+  const scopeEvaluation = await enforceAgentScopeHandoff({
+    deps: input.deps,
+    source: input.source,
+    sessionId,
+    parentSessionId,
+    parentAgentId: input.request.parentAgentId,
+    request: input.request,
+    namespace
+  });
   const instance = await input.deps.agents.createInstance(definition.id, sessionId, {
     mode: selectedMode,
     ...(input.request.parentAgentId ? { parentAgentId: input.request.parentAgentId } : {}),
+    ...(input.request.parentAgentInstanceId ? { parentAgentInstanceId: input.request.parentAgentInstanceId } : {}),
     ...(parentSessionId ? { parentSessionId } : {}),
     childSessionId: sessionId,
     ...(input.workOrderId ? { workOrderId: input.workOrderId } : {}),
     ...(input.request.delegationDecisionId ? { delegationDecisionId: input.request.delegationDecisionId } : {}),
     ...(input.continuationOf ? { continuationOf: input.continuationOf } : {}),
     scopeProjection,
+    namespace,
     metadata: {
       source: input.source,
       toolProjection: input.request.toolProjection ?? "read-only",
+      namespaceId: namespace.namespaceId,
+      scopeEvaluation,
       ...(input.request.toolScope ? { toolScope: input.request.toolScope } : {}),
       ...(input.request.contextScope ? { contextScope: input.request.contextScope } : {}),
       delegationDecision: input.delegationDecision,
@@ -279,7 +306,9 @@ async function runWorkerRequest(input: {
 
   const limits = {
     ...defaultAgentLoopLimits,
-    maxModelIterations: Math.min(input.request.maxIterations ?? 8, defaultAgentLoopLimits.maxModelIterations * 2)
+    maxModelIterations: Math.min(input.request.maxIterations ?? 8, quotaLimit(namespace, "retries", defaultAgentLoopLimits.maxModelIterations * 2) + defaultAgentLoopLimits.maxModelIterations),
+    maxToolCalls: Math.min(defaultAgentLoopLimits.maxToolCalls, quotaLimit(namespace, "tool-calls", defaultAgentLoopLimits.maxToolCalls)),
+    turnTimeoutMs: Math.min(input.request.timeoutMs ?? defaultAgentLoopLimits.turnTimeoutMs, quotaLimit(namespace, "wall-clock-ms", defaultAgentLoopLimits.turnTimeoutMs))
   };
 
   const events: RuntimeEvent[] = [];
@@ -357,6 +386,206 @@ async function runWorkerRequest(input: {
 
 function workOrderIdFrom(request: AgentSpawnRequest): string | undefined {
   return request.workOrderId ?? request.workOrder?.workOrderId;
+}
+
+class AgentScopeEnforcementError extends Error {
+  readonly code: string;
+  readonly diagnostics: readonly AgentScopeDiagnostic[];
+  readonly result: AgentScopeEvaluationResult;
+
+  constructor(result: AgentScopeEvaluationResult) {
+    const diagnostic = result.diagnostics[0];
+    super(diagnostic?.message ?? `Agent scope enforcement failed: ${result.status}`);
+    this.name = "AgentScopeEnforcementError";
+    this.code = diagnostic?.code ?? "AGENT_SCOPE_DENIED";
+    this.diagnostics = result.diagnostics;
+    this.result = result;
+  }
+}
+
+export function isAgentScopeEnforcementError(error: unknown): error is AgentScopeEnforcementError {
+  return error instanceof AgentScopeEnforcementError;
+}
+
+async function enforceAgentScopeHandoff(input: {
+  readonly deps: RuntimeDependencies;
+  readonly source: string;
+  readonly sessionId: import("@deepseek/platform-contracts").SessionId;
+  readonly parentSessionId: import("@deepseek/platform-contracts").SessionId | undefined;
+  readonly parentAgentId: import("@deepseek/platform-contracts").AgentId | undefined;
+  readonly request: AgentSpawnRequest;
+  readonly namespace: AgentNamespace;
+}): Promise<AgentScopeEvaluationResult> {
+  let result = await input.deps.agents.evaluateScope({ namespace: input.namespace, operation: "namespace.expand" });
+  const parentInstance = input.request.parentAgentInstanceId ? await input.deps.agents.getInstance(input.request.parentAgentInstanceId) : undefined;
+
+  if (parentInstance?.namespace) {
+    const expansion = await input.deps.agents.evaluateScope({
+      namespace: input.namespace,
+      operation: "namespace.expand",
+      parentNamespace: parentInstance.namespace,
+      requestedNamespace: input.namespace
+    });
+    if (expansion.policyRequired) {
+      const policyRequest = agentNamespacePolicyRequest(input, parentInstance.namespace);
+      const policyDecision = await input.deps.policy.decide(policyRequest);
+      if (!policyDecision.record) {
+        result = {
+          ...expansion,
+          status: "denied",
+          allowed: false,
+          policyRequired: true,
+          diagnostics: [scopeDiagnostic("AGENT_NAMESPACE_POLICY_RECORD_MISSING", "release-blocking", "policy", "Policy decision for namespace expansion did not include an audit record.", input.namespace.namespaceId)]
+        };
+      } else {
+        result = await input.deps.agents.evaluateScope({
+          namespace: input.namespace,
+          operation: "namespace.expand",
+          parentNamespace: parentInstance.namespace,
+          requestedNamespace: input.namespace,
+          policyDecision: policyDecision.record
+        });
+      }
+      await emitAgentScopeResult(input, result);
+      if (!result.allowed) throw new AgentScopeEnforcementError(result);
+    } else {
+      result = expansion;
+      if (!result.allowed) {
+        await emitAgentScopeResult(input, result);
+        throw new AgentScopeEnforcementError(result);
+      }
+    }
+  }
+
+  const writePaths = requestedWritePaths(input.request);
+  if (writePaths.length > 0) {
+    result = await input.deps.agents.evaluateScope({
+      namespace: input.namespace,
+      operation: "quota.consume",
+      quotaKind: "file-mutations",
+      requested: writePaths.length
+    });
+    if (!result.allowed) {
+      await emitAgentScopeResult(input, result);
+      throw new AgentScopeEnforcementError(result);
+    }
+  }
+
+  for (const path of writePaths) {
+    result = await input.deps.agents.evaluateScope({ namespace: input.namespace, operation: "file.write", path });
+    if (!result.allowed) {
+      await emitAgentScopeResult(input, result);
+      throw new AgentScopeEnforcementError(result);
+    }
+  }
+
+  await emitAgentScopeResult(input, result);
+  return result;
+}
+
+async function emitAgentScopeResult(input: {
+  readonly deps: RuntimeDependencies;
+  readonly sessionId: import("@deepseek/platform-contracts").SessionId;
+  readonly parentSessionId: import("@deepseek/platform-contracts").SessionId | undefined;
+  readonly parentAgentId: import("@deepseek/platform-contracts").AgentId | undefined;
+  readonly namespace: AgentNamespace;
+}, result: AgentScopeEvaluationResult): Promise<void> {
+  const sessionId = input.parentSessionId ?? input.sessionId;
+  const trace = runtimeTrace(sessionId, `agent-scope-${result.status}`);
+  const kind = result.status === "quota-exhausted"
+    ? "agent.quota.exhausted"
+    : result.allowed ? "agent.scope.evaluated" : "agent.scope.denied";
+  const event = agentLoopEvent(kind, sessionId, asId<"turn">(`turn-${stableHash(`${input.namespace.namespaceId}:${result.operation}:${result.status}`)}`), trace, {
+    namespaceId: input.namespace.namespaceId,
+    operation: result.operation,
+    status: result.status,
+    policyRequired: result.policyRequired,
+    diagnostics: result.diagnostics,
+    result
+  }, input.parentAgentId, result.allowed ? undefined : {
+    code: result.diagnostics[0]?.code ?? "AGENT_SCOPE_DENIED",
+    message: result.diagnostics[0]?.message ?? "Agent scope denied.",
+    retryable: false,
+    redaction: { class: "internal" }
+  });
+  await recordRuntimeAdapterEvent(input.deps, event);
+}
+
+function agentNamespacePolicyRequest(input: {
+  readonly source: string;
+  readonly namespace: AgentNamespace;
+  readonly request: AgentSpawnRequest;
+}, parentNamespace: AgentNamespace): PolicyRequest {
+  return {
+    subject: input.source,
+    action: "agent.namespace.expand",
+    resource: input.namespace.namespaceId,
+    metadata: {
+      sideEffect: "none",
+      operationFamily: "sandbox",
+      parentNamespaceId: parentNamespace.namespaceId,
+      requestedNamespaceId: input.namespace.namespaceId,
+      workOrderId: input.request.workOrderId ?? input.request.workOrder?.workOrderId ?? "",
+      reason: input.request.reason ?? "child-agent-namespace-expansion"
+    }
+  };
+}
+
+function requestedWritePaths(request: AgentSpawnRequest): readonly string[] {
+  const projection = request.toolProjection ?? "read-only";
+  const workOrderProjection = stringValue(request.workOrder?.permissionScope.toolProjection);
+  const writeRequested = projection === "read-write" || projection === "all" || workOrderProjection === "read-write" || workOrderProjection === "all" || (request.workOrder?.allowedTools ?? []).some((tool) => tool === "file.write" || tool === "file.edit");
+  return writeRequested ? delegatedPathsFrom(request) : [];
+}
+
+function delegatedPathsFrom(request: AgentSpawnRequest): readonly string[] {
+  const scoped = stringArrayValue((request.toolScope as JsonObject | undefined)?.writeScope)
+    ?? stringArrayValue(request.workOrder?.permissionScope.writeScope)
+    ?? targetPathsFrom(request);
+  return scoped.length > 0 ? scoped : [];
+}
+
+function delegatedToolsFrom(request: AgentSpawnRequest): readonly string[] {
+  return request.workOrder?.allowedTools && request.workOrder.allowedTools.length > 0
+    ? request.workOrder.allowedTools
+    : request.toolProjection === "read-write" || request.toolProjection === "all"
+      ? ["file.read", "file.list", "search.text", "git.status", "git.diff", "file.edit", "file.write", "test.run"]
+      : ["file.read", "file.list", "search.text", "git.status", "git.diff"];
+}
+
+function targetPathsFrom(request: AgentSpawnRequest): readonly string[] {
+  return (request.workOrder?.targets ?? []).map((target) => target.path).filter((path): path is string => typeof path === "string" && path.length > 0);
+}
+
+function stringArrayValue(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function quotaLimit(namespace: AgentNamespace, kind: "tool-calls" | "wall-clock-ms" | "retries", fallback: number): number {
+  const quota = namespace.quotas.find((item) => item.kind === kind);
+  return quota && quota.limit > 0 ? quota.limit : fallback;
+}
+
+function scopeDiagnostic(
+  code: string,
+  severity: AgentScopeDiagnostic["severity"],
+  category: AgentScopeDiagnostic["category"],
+  message: string,
+  namespaceId: string
+): AgentScopeDiagnostic {
+  return {
+    code,
+    severity,
+    category,
+    message,
+    namespaceId,
+    releaseBlocking: severity === "release-blocking",
+    redaction: { class: "internal", fields: ["message"] }
+  };
 }
 
 function createDelegationDecision(input: {

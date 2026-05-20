@@ -34,6 +34,11 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
+const testFirstGate = spawnSync(process.execPath, ["scripts/check-test-first-governance.mjs"], { stdio: "inherit" });
+if (testFirstGate.status !== 0) {
+  process.exit(testFirstGate.status ?? 1);
+}
+
 const astLint = spawnSync(process.execPath, ["scripts/lint-ast.mjs"], { stdio: "inherit" });
 if (astLint.status !== 0) {
   process.exit(astLint.status ?? 1);

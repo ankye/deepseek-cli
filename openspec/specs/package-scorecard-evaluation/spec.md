@@ -1,7 +1,10 @@
 # package-scorecard-evaluation Specification
 
 ## Purpose
-TBD - created by archiving change add-package-scorecard-evaluation. Update Purpose after archive.
+Define package scorecard evaluation requirements for package readiness, evidence weighting, unfinished targets, and release diagnostics.
+
+定义 package scorecard evaluation 对 package readiness、evidence weighting、unfinished targets 与 release diagnostics 的要求。
+
 ## Requirements
 ### Requirement: Package Scorecard Catalog Defines Shared And Role Criteria / Package Scorecard Catalog 定义共享与角色标准
 The system SHALL provide a versioned package scorecard catalog that defines shared criteria for all workspace packages and role-specific criteria for selected package roles.

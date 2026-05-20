@@ -1,7 +1,10 @@
 # builtin-navigation-plugins Specification
 
 ## Purpose
-TBD - created by archiving change ship-file-manager-jump-navigator-plugins. Update Purpose after archive.
+Define requirements for first-party navigation plugins that expose file, symbol, jump, and repository movement through governed CLI and TUI surfaces.
+
+定义一方 navigation plugins 的要求，通过受治理的 CLI 与 TUI 表面暴露 file、symbol、jump 和 repository navigation。
+
 ## Requirements
 ### Requirement: File manager built-in plugin
 The built-in plugin pack SHALL include a read-only file manager plugin that contributes file list, file preview, and file reference workflows through declarative plugin metadata.

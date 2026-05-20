@@ -4591,6 +4591,9 @@ function acceptanceEvidenceFilesForTest(): readonly string[] {
     "dependency-boundaries.txt",
     "build-cli.txt",
     "release-verify.txt",
+    "uapi-compatibility.txt",
+    "architecture-drift-guardrails.json",
+    "governance-evidence-matrix.json",
     "smoke-headless.txt",
     "reference-hygiene.txt",
     "npm-publish-dry-run.txt",
@@ -4613,6 +4616,8 @@ function acceptanceEvidenceContentForTest(file: string): string {
   if (file === "live-doctor-smoke.txt") return liveDoctorSmokeEvidenceForTest();
   if (file === "live-tool-coverage.json") return JSON.stringify({ kind: "deepseek.live-tool-coverage", executionMode: "live", replayOnly: false, summary: { passedToolCount: 64, providerRequestMode: "live" } });
   if (file === "tool-family-delivery-capability-score.json") return JSON.stringify({ kind: "tool-family.delivery-capability-score.evidence", deliveryCapabilityPassed: true, fakeCoveredFamilyCount: 0, replayedCoveredFamilyCount: 0, liveCoveredFamilyCount: 64 });
+  if (file === "architecture-drift-guardrails.json") return JSON.stringify({ kind: "governance.architecture-drift", status: "pass", aliasCount: 4 });
+  if (file === "governance-evidence-matrix.json") return JSON.stringify({ kind: "governance.evidence-matrix", status: "pass", recordCount: 1 });
   if (file === "deepseek-provider-response-cache.json") return JSON.stringify({
     schemaVersion: "1.0.0",
     kind: "deepseek.provider-response-cache",

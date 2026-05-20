@@ -1,7 +1,10 @@
 # workspace-state-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define workspace state management requirements for project state, file snapshots, search/index views, worktree context, and host-neutral storage.
+
+定义 workspace state management 对 project state、file snapshots、search/index views、worktree context 与 host-neutral storage 的要求。
+
 ## Requirements
 ### Requirement: Workspace State Boundary
 

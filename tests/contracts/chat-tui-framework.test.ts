@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { CliCompositionSnapshot, CliInteractionContribution } from "@deepseek/platform-contracts";
+import type { CliCompositionSnapshot, CliInteractionContribution, ContextStatuslineTelemetry, RuntimeEvent } from "@deepseek/platform-contracts";
 import { asId, createVisibleReasoningRecord, projectVisibleReasoning } from "@deepseek/platform-contracts";
+import { statusTelemetryFromEvents } from "../../src/apps/cli/src/renderers/runtime-events.js";
 import {
   CHAT_TUI_FRAMEWORK_ID,
   createChatTuiContributionRegistry,
@@ -60,6 +61,86 @@ describe("chat TUI framework", () => {
     assert.equal(startup.some((line) => line.startsWith("Command |") && line.includes("/help")), true);
     assert.equal(startup.every((line) => line.length <= 100), true);
     assert.equal(status.some((line) => line.startsWith("Plugins |") && line.includes("governed-descriptors")), true);
+  });
+
+  it("renders bounded cache-aware statusline telemetry", () => {
+    const statusTelemetry: ContextStatuslineTelemetry = {
+      schemaVersion: "1.0.0",
+      modelId: "deepseek-v4-flash",
+      modelProfileId: "model-deepseek-default",
+      thinkingMode: "xhigh",
+      cache: {
+        status: "available",
+        hitRate: 0.7,
+        hitTokens: 700,
+        missTokens: 300
+      },
+      context: {
+        selectedTokens: 1000,
+        hardLimitTokens: 2000,
+        softLimitTokens: 1500,
+        budgetPressure: "normal"
+      },
+      prefix: {
+        stability: "stable",
+        stableLayerCount: 2,
+        changedLayerCount: 0,
+        pipelineFingerprint: "pipeline:test"
+      },
+      redaction: { class: "internal" },
+      compatibility: { schemaVersion: "1.0.0" }
+    };
+    const state = createChatTuiState({
+      enabled: true,
+      terminalProfile: interactiveProfile(72),
+      statusTelemetry
+    });
+    const status = renderChatTuiStatus(state);
+
+    assert.equal(status.some((line) => line.includes("model=deepseek-v4-flash")), true);
+    assert.equal(status.some((line) => line.includes("think=xhigh")), true);
+    assert.equal(status.some((line) => line.includes("cache=70%")), true);
+    assert.equal(status.some((line) => line.includes("ctx=1000/2000")), true);
+    assert.equal(status.every((line) => line.length <= 100), true);
+  });
+
+  it("projects bounded statusline telemetry from runtime events", () => {
+    const telemetry = statusTelemetryFromEvents([
+      runtimeEvent("model.reasoning.effort.mapped", { requestedEffort: "xhigh", providerEffort: "max" }),
+      runtimeEvent("model.requested", { model: "deepseek-v4-flash" }),
+      runtimeEvent("context.projection.completed", {
+        budget: { selectedTokens: 1200, hardLimitTokens: 2000, softLimitTokens: 1500 },
+        pipeline: {
+          pipelineFingerprint: "pipeline:test",
+          prefixHashes: [
+            { layer: "kernel", prefixHash: "prefix-kernel" },
+            { layer: "project", prefixHash: "prefix-project" }
+          ]
+        }
+      }),
+      runtimeEvent("usage.updated", {
+        inputTokens: 1500,
+        outputTokens: 20,
+        metadata: {
+          cache: {
+            status: "available",
+            hitTokens: 900,
+            missTokens: 300,
+            hitRate: 0.75,
+            pipelineFingerprint: "pipeline:test"
+          }
+        }
+      })
+    ]);
+
+    assert.equal(telemetry.modelId, "deepseek-v4-flash");
+    assert.equal(telemetry.thinkingMode, "xhigh");
+    assert.equal(telemetry.cache.status, "available");
+    assert.equal(telemetry.cache.hitRate, 0.75);
+    assert.equal(telemetry.context.selectedTokens, 1200);
+    assert.equal(telemetry.context.budgetPressure, "normal");
+    assert.equal(telemetry.prefix.stability, "stable");
+    assert.equal(JSON.stringify(telemetry).includes("prefix-kernel"), false);
   });
 
   it("records degraded diagnostics when terminal profile cannot host interactive TUI", () => {
@@ -343,6 +424,21 @@ function interactiveProfile(columns = 100): CliTerminalCapabilityProfile {
     rawInput: true,
     inlineText: true,
     reasons: ["renderer:interactive", "input:line"]
+  };
+}
+
+function runtimeEvent(kind: RuntimeEvent["kind"], data: RuntimeEvent["data"]): RuntimeEvent {
+  return {
+    kind,
+    sessionId: asId<"session">("session-tui-statusline"),
+    turnId: asId<"turn">("turn-tui-statusline"),
+    createdAt: new Date(0).toISOString(),
+    trace: {
+      traceId: asId<"trace">(`trace-${kind}`),
+      spanId: asId<"span">(`span-${kind}`),
+      correlationId: asId<"correlation">(`corr-${kind}`)
+    },
+    data
   };
 }
 

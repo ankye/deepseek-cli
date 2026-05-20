@@ -1,7 +1,10 @@
 # cli-interaction-modes Specification
 
 ## Purpose
-TBD - created by archiving change formalize-cli-interaction-agent-modes. Update Purpose after archive.
+Define CLI interaction mode requirements for chat, run, plan, review, approval, and host-visible mode transitions.
+
+定义 CLI interaction modes 对 chat、run、plan、review、approval 与 host-visible mode transitions 的要求。
+
 ## Requirements
 ### Requirement: Interaction Mode State Contract / 交互模式状态契约
 

@@ -10,6 +10,7 @@ import type {
   CliPluginContributionExplanation,
   CliRawInputEvent,
   CliTargetRef,
+  ContextStatuslineTelemetry,
   VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
 import { explainCliPluginContribution, rawInputEventToKeyName, resolveCliAction, resolveViKeySequence, viMinimalKeymapProfile, viProfessionalKeymapProfile } from "@deepseek/command-system";
@@ -86,6 +87,7 @@ export interface ChatTuiStateSnapshot {
   readonly workbench: ChatTuiWorkbench;
   readonly pluginExecutions: readonly PluginWorkbenchExecutionRecord[];
   readonly visibleReasoning?: VisibleReasoningProjection;
+  readonly statusTelemetry?: ContextStatuslineTelemetry;
   readonly sessionId?: string;
 }
 
@@ -287,6 +289,7 @@ export function createChatTuiState(input: {
   readonly pluginExecutions?: readonly PluginWorkbenchExecutionRecord[];
   readonly sessionId?: string;
   readonly visibleReasoning?: VisibleReasoningProjection;
+  readonly statusTelemetry?: ContextStatuslineTelemetry;
 }): ChatTuiStateSnapshot {
   const registry = input.registry ?? createChatTuiContributionRegistry();
   const composition = input.composition ?? createDefaultTuiComposition(registry.accepted);
@@ -313,6 +316,7 @@ export function createChatTuiState(input: {
     turns: input.turns ?? 0,
     pluginExecutions: boundedPluginExecutions(input.pluginExecutions ?? []),
     ...(input.visibleReasoning ? { visibleReasoning: input.visibleReasoning } : {}),
+    ...(input.statusTelemetry ? { statusTelemetry: input.statusTelemetry } : {}),
     ...(input.sessionId ? { sessionId: input.sessionId } : {})
   };
   return attachWorkbench(base);
@@ -456,6 +460,7 @@ function attachWorkbench(
     turns: base.turns,
     ...(base.sessionId ? { sessionId: base.sessionId } : {}),
     ...(base.visibleReasoning ? { visibleReasoning: base.visibleReasoning } : {}),
+    ...(base.statusTelemetry ? { statusTelemetry: base.statusTelemetry } : {}),
     ...(focus ? { focus } : {}),
     ...(commandBar ? { commandBar } : {})
   });
@@ -604,6 +609,7 @@ function updateChatTuiFromSession(
     pluginExecutions: current.pluginExecutions,
     reasoningPanel: reasoningPanelFromProjection(chatState.visibleReasoning, current.enabled),
     ...(chatState.visibleReasoning ? { visibleReasoning: chatState.visibleReasoning } : {}),
+    ...(chatState.statusTelemetry ? { statusTelemetry: chatState.statusTelemetry } : {}),
     ...(chatState.sessionId ? { sessionId: chatState.sessionId } : {})
   };
   return attachWorkbench(nextBase, previousWorkbench.focus, previousWorkbench.commandBar);

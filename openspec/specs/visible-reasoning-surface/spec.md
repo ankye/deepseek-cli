@@ -1,7 +1,10 @@
 # visible-reasoning-surface Specification
 
 ## Purpose
-TBD - created by archiving change add-visible-reasoning-surface. Update Purpose after archive.
+Define visible reasoning surface requirements for exposing bounded reasoning, thought summaries, status, and redacted model process evidence.
+
+定义 visible reasoning surface 对 bounded reasoning、thought summaries、status 与脱敏 model process evidence 展示的要求。
+
 ## Requirements
 ### Requirement: Visible Reasoning Records / 可见推理记录
 

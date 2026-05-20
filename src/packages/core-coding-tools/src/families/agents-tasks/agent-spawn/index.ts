@@ -30,6 +30,7 @@ export function defineAgentSpawnTool(deps: AgentSpawnToolDeps | undefined) {
       toolProjection: { type: "string" },
       toolScope: { type: "object" },
       contextScope: { type: "object" },
+      namespace: { type: "object" },
       timeoutMs: { type: "number" },
       maxIterations: { type: "number" },
       parentSessionId: { type: "string" },
@@ -82,6 +83,7 @@ async function agentSpawnTool(input: JsonObject, context: CapabilityExecutionCon
       status: result.terminalStatus === "completed" ? "completed" : "failed"
     });
   } catch (error) {
-    return failure("agent.spawn", "AGENT_SPAWN_FAILED", error instanceof Error ? error.message : "Agent spawn failed.", []);
+    const scoped = error as { readonly code?: string; readonly diagnostics?: readonly import("@deepseek/platform-contracts").CoreToolDiagnostic[] };
+    return failure("agent.spawn", scoped.code ?? "AGENT_SPAWN_FAILED", error instanceof Error ? error.message : "Agent spawn failed.", [], scoped.diagnostics ? { diagnostics: scoped.diagnostics as unknown as JsonObject } : {});
   }
 }

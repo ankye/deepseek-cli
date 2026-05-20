@@ -1,7 +1,10 @@
 # builtin-plugin-owner-routes Specification
 
 ## Purpose
-TBD - created by archiving change wire-builtin-plugin-owner-routes. Update Purpose after archive.
+Define owner-route requirements for built-in plugin commands so projection stays declarative and execution remains owned by governed host routes.
+
+定义 built-in plugin commands 的 owner-route 要求，使 projection 保持声明式，execution 仍由受治理的 host routes 拥有。
+
 ## Requirements
 ### Requirement: Built-in plugin commands have owner routes
 Every built-in plugin command contribution SHALL map to a deterministic host-owned owner route descriptor.

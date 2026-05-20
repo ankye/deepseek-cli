@@ -1,7 +1,10 @@
 # complete-tool-family-implementation Specification
 
 ## Purpose
-TBD - created by archiving change implement-all-tool-family-capabilities. Update Purpose after archive.
+Define requirements for implementing tool-family capabilities as executable, governed, tested tools rather than catalog-only placeholders.
+
+定义 tool-family capabilities 的实现要求，确保它们是可执行、受治理且有测试的工具，而不是仅目录占位。
+
 ## Requirements
 ### Requirement: All First-Version Families Have Concrete Capabilities / 全部第一版 Family 拥有真实 Capability
 The system SHALL implement every first-version catalog family as at least one concrete executable capability with a stable capability id, manifest, executor, model-visible projection, tool family metadata, governed runtime path, bounded output, and tests.

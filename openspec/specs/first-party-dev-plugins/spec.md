@@ -1,7 +1,10 @@
 # first-party-dev-plugins Specification
 
 ## Purpose
-TBD - created by archiving change ship-first-party-dev-plugins. Update Purpose after archive.
+Define first-party developer plugin requirements for trusted built-in workflows, governed owner routes, inert projection, and deterministic tests.
+
+定义一方 developer plugins 对可信内置 workflows、受治理 owner routes、inert projection 与确定性测试的要求。
+
 ## Requirements
 ### Requirement: Built-In Development Plugin Pack / 内置开发插件包
 

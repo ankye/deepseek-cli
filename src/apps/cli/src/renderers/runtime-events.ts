@@ -1,4 +1,4 @@
-import type { AgentLoopOutputMode, AgentLoopSummary, RuntimeDependencies, RuntimeEvent, RuntimeKernel, VisibleReasoningProjection, VisibleReasoningRecord } from "@deepseek/platform-contracts";
+import type { AgentLoopOutputMode, AgentLoopSummary, ContextStatuslineTelemetry, JsonObject, RuntimeDependencies, RuntimeEvent, RuntimeKernel, VisibleReasoningProjection, VisibleReasoningRecord } from "@deepseek/platform-contracts";
 import type { AgentLoopBudget, AgentPhasePlan, AgentPhasePlanItem, AgentVerifierResult, AgentWorkerLifecycleEvent, AgentWorkerResult } from "@deepseek/platform-contracts";
 import { runAgentLoop } from "@deepseek/runtime";
 import type { CliTerminalCapabilityProfile } from "../host/terminal-profile.js";
@@ -177,8 +177,87 @@ export function visibleReasoningProjectionFromEvents(events: readonly RuntimeEve
   return projected ? projected.data as unknown as VisibleReasoningProjection : undefined;
 }
 
+export function statusTelemetryFromEvents(events: readonly RuntimeEvent[]): ContextStatuslineTelemetry {
+  const explicit = [...events].reverse().find((event) => event.kind === "runtime.status.telemetry");
+  if (explicit) return explicit.data as unknown as ContextStatuslineTelemetry;
+  const modelEvent = [...events].reverse().find((event) => event.kind === "model.requested");
+  const reasoningEvent = [...events].reverse().find((event) => event.kind === "model.reasoning.effort.mapped");
+  const contextEvent = [...events].reverse().find((event) => event.kind === "context.projection.completed" || event.kind === "context.projection.cache-hit" || event.kind === "context.projection.degraded");
+  const usageEvent = [...events].reverse().find((event) => event.kind === "usage.updated");
+  const contextBudget = jsonObject(contextEvent?.data.budget) ?? jsonObject(jsonObject(modelEvent?.data.contextProjection)?.budget);
+  const usageMetadata = jsonObject(usageEvent?.data.metadata);
+  const cache = jsonObject(usageMetadata?.cache);
+  const hitTokens = numberValue(cache?.hitTokens);
+  const missTokens = numberValue(cache?.missTokens);
+  const derivedHitRate = hitTokens !== undefined || missTokens !== undefined
+    ? ratio(hitTokens ?? 0, (hitTokens ?? 0) + (missTokens ?? 0))
+    : undefined;
+  const hitRate = numberValue(cache?.hitRate) ?? derivedHitRate;
+  const selectedTokens = numberValue(contextBudget?.selectedTokens) ?? numberValue(contextBudget?.selectedTokensEstimate) ?? numberValue(contextEvent?.data.estimatedTokens) ?? 0;
+  const hardLimitTokens = numberValue(contextBudget?.hardLimitTokens) ?? numberValue(contextBudget?.hardLimit) ?? 0;
+  const softLimitTokens = numberValue(contextBudget?.softLimitTokens);
+  const pipeline = jsonObject(contextEvent?.data.pipeline) ?? jsonObject(jsonObject(modelEvent?.data.contextProjection)?.pipeline);
+  const pipelineFingerprint = stringValue(cache?.pipelineFingerprint) ?? stringValue(pipeline?.pipelineFingerprint);
+  const modelProfileId = stringValue(modelEvent?.data.modelProfileId);
+  const prefixHashCount = Array.isArray(pipeline?.prefixHashes) ? pipeline.prefixHashes.length : 0;
+  return {
+    schemaVersion: "1.0.0",
+    modelId: stringValue(modelEvent?.data.model) ?? "unknown",
+    ...(modelProfileId ? { modelProfileId } : {}),
+    thinkingMode: stringValue(reasoningEvent?.data.requestedEffort) ?? stringValue(reasoningEvent?.data.providerEffort) ?? "none",
+    cache: {
+      status: cacheStatus(cache, hitTokens, missTokens),
+      ...(hitRate !== undefined ? { hitRate } : {}),
+      ...(hitTokens !== undefined ? { hitTokens } : {}),
+      ...(missTokens !== undefined ? { missTokens } : {})
+    },
+    context: {
+      selectedTokens,
+      hardLimitTokens,
+      ...(softLimitTokens !== undefined ? { softLimitTokens } : {}),
+      budgetPressure: budgetPressure(selectedTokens, hardLimitTokens, softLimitTokens)
+    },
+    prefix: {
+      stability: pipelineFingerprint ? "stable" : "unavailable",
+      stableLayerCount: prefixHashCount,
+      changedLayerCount: 0,
+      ...(pipelineFingerprint ? { pipelineFingerprint } : {})
+    },
+    redaction: { class: "internal" },
+    compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
 export function finalAgentLoopEvent(events: readonly RuntimeEvent[]): RuntimeEvent | undefined {
   return [...events].reverse().find((event) => event.kind === "agent.loop.completed" || event.kind === "agent.loop.failed" || event.kind === "agent.loop.cancelled");
+}
+
+function cacheStatus(cache: JsonObject | undefined, hitTokens: number | undefined, missTokens: number | undefined): ContextStatuslineTelemetry["cache"]["status"] {
+  const explicit = stringValue(cache?.status);
+  if (explicit === "available" || explicit === "estimated" || explicit === "unavailable") return explicit;
+  return hitTokens !== undefined || missTokens !== undefined ? "available" : "unavailable";
+}
+
+function budgetPressure(selectedTokens: number, hardLimitTokens: number, softLimitTokens: number | undefined): ContextStatuslineTelemetry["context"]["budgetPressure"] {
+  if (hardLimitTokens > 0 && selectedTokens >= hardLimitTokens) return "hard";
+  if (softLimitTokens !== undefined && selectedTokens >= softLimitTokens) return "soft";
+  return "normal";
+}
+
+function ratio(numerator: number, denominator: number): number | undefined {
+  return denominator > 0 ? numerator / denominator : undefined;
+}
+
+function jsonObject(value: unknown): JsonObject | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonObject : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function resumeHint(sessionId: string): string {

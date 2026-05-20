@@ -86,8 +86,64 @@ describe("local readiness contracts", () => {
     assert.equal(release.verification.acceptanceEvidencePaths.includes("tests/acceptance/acceptance-index.md"), true);
     assert.equal(release.firstPartyPluginPack?.pluginCount, 6);
     assert.equal(release.checks.some((check) => check.id === "release.first-party-dev-plugins" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.runtime-pipes" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.policy-sandbox-gates" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.agent-namespace-quotas" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.plugin-module-boundaries" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.architecture-drift" && check.status === "pass"), true);
+    assert.equal(release.checks.some((check) => check.id === "governance.evidence-matrix" && check.status === "pass"), true);
+    const architectureDrift = release.checks.find((check) => check.id === "governance.architecture-drift");
+    assert.equal((architectureDrift?.metadata?.evidence as { aliasCount?: number } | undefined)?.aliasCount, 4);
+    assert.equal(JSON.stringify(architectureDrift).includes("@deepseek/remote-runtime-connectivity"), true);
+    assert.equal(release.governanceEvidenceMatrix?.kind, "governance.evidence-matrix");
+    assert.equal(release.governanceEvidenceMatrix?.records.some((record) => record.packageName === "deepseek-agent-cli" && record.productReadiness === "ready"), true);
+    assert.equal(release.governanceEvidenceMatrix?.records.some((record) => record.capability === "remote-runtime-connectivity" && record.productReadiness === "gated"), true);
+    assert.equal((release.governanceDiagnostics?.sections.length ?? 0) >= 9, true);
+    assert.equal(release.governanceDiagnostics?.findings.some((finding) => finding.id === "governance.finding.remote-runtime-connectivity-placeholder" && finding.maturityState === "placeholder"), true);
+    assert.equal(release.governanceDiagnostics?.findings.some((finding) => finding.id === "governance.finding.distribution-update-management-placeholder" && finding.maturityState === "placeholder"), true);
+    assert.equal(release.governanceDiagnostics?.findings.some((finding) => finding.id === "governance.finding.semantic-indexing-deferred" && finding.maturityState === "deferred"), true);
+    assert.equal(release.governanceDiagnostics?.findings.some((finding) => finding.id === "governance.finding.vscode-host-adapter-skeleton" && finding.ownerPackage === "vscode-extension"), true);
+    assert.equal(release.governanceDiagnostics?.findings.some((finding) => finding.id === "governance.finding.multi-agent-rollout-gated-defaults" && finding.maturityState === "rollout-gated"), true);
+    assert.equal(release.governanceDiagnostics?.sections.find((section) => section.sectionId === "governance.roadmap-drift")?.findings.some((finding) => finding.sourceCheckId === "governance.architecture-drift"), true);
+    assert.equal(release.governanceDiagnostics?.findings.every((finding) => (
+      typeof finding.id === "string"
+      && typeof finding.ownerPackage === "string"
+      && typeof finding.capability === "string"
+      && typeof finding.severity === "string"
+      && typeof finding.maturityState === "string"
+      && Array.isArray(finding.evidenceIds)
+      && Boolean(finding.redaction)
+      && typeof finding.nextAction === "string"
+    )), true);
     assert.equal(JSON.stringify(result).includes("npm publish --dry-run"), true);
     assert.equal(JSON.stringify(result).includes(fakeSecret), false);
+  });
+
+  it("blocks product-ready claims that conflict with governance maturity", async () => {
+    const release = await collectReleaseReadinessEvidence({
+      productReadyClaims: [{
+        capability: "agent-namespace-quotas",
+        claimedState: "product-ready",
+        evidenceIds: ["tests/acceptance/product-ready-claim.fixture"],
+        redaction: { class: "internal" }
+      }, {
+        capability: "remote-runtime-connectivity",
+        claimedState: "product-ready",
+        evidenceIds: ["tests/acceptance/product-ready-remote.fixture"],
+        redaction: { class: "internal" }
+      }]
+    });
+    const claimFinding = release.governanceDiagnostics?.findings.find((finding) => finding.id === "governance.product-ready-claim.agent-namespace-quotas.conflict");
+    const remoteClaimFinding = release.governanceDiagnostics?.findings.find((finding) => finding.id === "governance.product-ready-claim.remote-runtime-connectivity.conflict");
+
+    assert.equal(release.status, "fail");
+    assert.equal(release.checks.some((check) => check.id === "governance.product-ready-claims" && check.status === "fail"), true);
+    assert.equal(claimFinding?.severity, "release-blocking");
+    assert.equal(claimFinding?.releaseBlocking, true);
+    assert.equal(claimFinding?.evidenceIds.includes("tests/acceptance/product-ready-claim.fixture"), true);
+    assert.equal(remoteClaimFinding?.severity, "release-blocking");
+    assert.equal(remoteClaimFinding?.maturityState, "placeholder");
+    assert.equal(remoteClaimFinding?.evidenceIds.includes("tests/acceptance/product-ready-remote.fixture"), true);
   });
 
   it("derives release readiness from concrete local evidence gates", async () => {
@@ -284,6 +340,9 @@ async function withTempRepo(run: () => Promise<void>): Promise<void> {
       "dependency-boundaries.txt",
       "build-cli.txt",
       "release-verify.txt",
+      "uapi-compatibility.txt",
+      "architecture-drift-guardrails.json",
+      "governance-evidence-matrix.json",
       "smoke-headless.txt",
       "reference-hygiene.txt",
       "npm-publish-dry-run.txt",
@@ -313,6 +372,8 @@ function acceptanceEvidenceContentForTest(file: string): string {
   if (file === "live-doctor-smoke.txt") return liveDoctorSmokeEvidenceForTest();
   if (file === "live-tool-coverage.json") return JSON.stringify({ kind: "deepseek.live-tool-coverage", executionMode: "live", replayOnly: false, summary: { passedToolCount: 64, providerRequestMode: "live" } });
   if (file === "tool-family-delivery-capability-score.json") return JSON.stringify({ kind: "tool-family.delivery-capability-score.evidence", deliveryCapabilityPassed: true, fakeCoveredFamilyCount: 0, replayedCoveredFamilyCount: 0, liveCoveredFamilyCount: 64 });
+  if (file === "architecture-drift-guardrails.json") return JSON.stringify({ kind: "governance.architecture-drift", status: "pass", aliasCount: 4 });
+  if (file === "governance-evidence-matrix.json") return JSON.stringify({ kind: "governance.evidence-matrix", status: "pass", recordCount: 1 });
   if (file === "deepseek-provider-response-cache.json") return JSON.stringify({
     schemaVersion: "1.0.0",
     kind: "deepseek.provider-response-cache",

@@ -116,6 +116,30 @@ describe("headless runtime", () => {
     await kernel.shutdown();
   });
 
+  it("carries context pipeline evidence into prompt assembly and model metadata when enabled", async () => {
+    const gateway = new CapturingModelGateway();
+    const deps = { ...createDeterministicRuntimeDependencies(), models: gateway };
+    await registerRuntimeCoreTools(deps, "/workspace");
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const events = await collectRuntimeEvents(runAgentLoop(deps, kernel, {
+      prompt: "hello pipeline",
+      caller: "runtime.test",
+      workspaceRoot: "/workspace",
+      outputMode: "jsonl",
+      profile: defaultDeepSeekProfile,
+      contextPipeline: { enabled: true }
+    }));
+
+    const promptAssembled = events.find((event) => event.kind === "prompt.assembled");
+    const modelRequested = events.find((event) => event.kind === "model.requested");
+    assert.equal(typeof promptAssembled?.data.trace === "object", true);
+    assert.equal(typeof (promptAssembled?.data.trace as { pipeline?: { pipelineFingerprint?: string } } | undefined)?.pipeline?.pipelineFingerprint, "string");
+    assert.equal(typeof gateway.requests[0]?.metadata?.contextPipeline, "object");
+    assert.equal((gateway.requests[0]?.metadata?.contextPipeline as { pipelineFingerprint?: string } | undefined)?.pipelineFingerprint?.startsWith("pipeline:"), true);
+    assert.equal(typeof (modelRequested?.data.contextPipeline as { pipelineFingerprint?: string } | undefined)?.pipelineFingerprint, "string");
+    await kernel.shutdown();
+  });
+
   it("records lossless context nodes when a manager is configured", async () => {
     const deps = { ...createDeterministicRuntimeDependencies(), losslessContext: new InMemoryLosslessContextManager() };
     await registerRuntimeCoreTools(deps, "/workspace");

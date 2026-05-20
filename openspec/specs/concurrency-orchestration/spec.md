@@ -1,7 +1,10 @@
 # concurrency-orchestration Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define concurrency orchestration requirements for scheduling, cancellation, ordering, bounded work, and deterministic runtime coordination.
+
+定义 concurrency orchestration 对 scheduling、cancellation、ordering、有界工作与确定性 runtime coordination 的要求。
+
 ## Requirements
 ### Requirement: Central Concurrency Orchestrator
 

@@ -1,7 +1,10 @@
 # config Specification
 
 ## Purpose
-TBD - created by archiving change implement-persistent-config-and-auth. Update Purpose after archive.
+Define configuration requirements for profiles, defaults, migrations, host-neutral settings, and governed runtime option projection.
+
+定义 config 对 profiles、defaults、migrations、host-neutral settings 与受治理 runtime option projection 的要求。
+
 ## Requirements
 ### Requirement: Persistent Config Service / 持久化配置服务
 

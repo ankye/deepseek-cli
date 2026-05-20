@@ -1,7 +1,10 @@
 # vscode-extension-adapter Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define VSCode extension adapter requirements for protocol projection, editor context, workspace edits, policy gates, and CLI-proven workflow promotion.
+
+定义 VSCode extension adapter 对 protocol projection、editor context、workspace edits、policy gates 与 CLI-proven workflow promotion 的要求。
+
 ## Requirements
 ### Requirement: VSCode Adapter Boundary
 

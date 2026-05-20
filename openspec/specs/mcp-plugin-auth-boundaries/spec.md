@@ -1,7 +1,10 @@
 # mcp-plugin-auth-boundaries Specification
 
 ## Purpose
-TBD - created by archiving change implement-mcp-and-plugin-auth-boundaries. Update Purpose after archive.
+Define MCP and plugin authentication boundary requirements for credentials, permissions, transport trust, and fail-closed execution.
+
+定义 MCP 与 plugin authentication boundaries 对 credentials、permissions、transport trust 与 fail-closed execution 的要求。
+
 ## Requirements
 ### Requirement: Scoped Extension Credential Grants / 作用域化扩展凭证授权
 

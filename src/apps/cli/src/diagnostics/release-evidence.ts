@@ -2,6 +2,8 @@ import { join } from "node:path";
 import type {
   DiagnosticsReleaseReadinessEvidence,
   FirstPartyPluginPackReadinessEvidence,
+  GovernanceEvidenceMatrixSummary,
+  GovernanceProductReadyClaim,
   JsonObject,
   ReadinessCheck,
   ReleaseLiveEvidenceFileStatus,
@@ -21,7 +23,16 @@ import {
 } from "@deepseek/first-party-dev-plugins";
 import { InMemoryObservabilitySink } from "@deepseek/observability";
 import { NodePlatformRuntime } from "@deepseek/platform-abstraction";
+import { collectGovernanceEvidenceMatrix } from "@deepseek/testing-regression";
 import { VISIBLE_REASONING_PROVIDER_REASONING_PIT, VISIBLE_REASONING_SECRET_REDACTION_PIT } from "@deepseek/platform-contracts";
+import { collectPlatformContractsUapiGovernanceEvidence, platformContractsUapiGovernanceCheck } from "./uapi-governance.js";
+import { collectRuntimeKernelGovernanceEvidence, runtimeKernelGovernanceCheck } from "./runtime-kernel-governance.js";
+import { collectRuntimePipesGovernanceEvidence, runtimePipesGovernanceCheck } from "./runtime-pipes-governance.js";
+import { collectPolicySandboxGateGovernanceEvidence, policySandboxGateGovernanceCheck } from "./policy-gates-governance.js";
+import { agentNamespaceQuotaGovernanceCheck, collectAgentNamespaceQuotaGovernanceEvidence } from "./agent-namespace-governance.js";
+import { collectPluginModuleBoundaryGovernanceEvidence, pluginModuleBoundaryGovernanceCheck } from "./module-governance.js";
+import { collectGovernanceDiagnostics, governanceProductReadyClaimCheck } from "./governance-diagnostics.js";
+import { architectureDriftGovernanceCheck, collectArchitectureDriftGovernanceEvidence } from "./architecture-drift-governance.js";
 
 export const diagnosticsSchemaVersion = DIAGNOSTICS_READINESS_SCHEMA_VERSION;
 export const diagnosticPitIds = [
@@ -31,12 +42,33 @@ export const diagnosticPitIds = [
   VISIBLE_REASONING_PROVIDER_REASONING_PIT
 ] as const;
 
-export async function collectReleaseReadinessEvidence(): Promise<DiagnosticsReleaseReadinessEvidence> {
+export interface ReleaseReadinessEvidenceOptions {
+  readonly productReadyClaims?: readonly GovernanceProductReadyClaim[];
+}
+
+export async function collectReleaseReadinessEvidence(options: ReleaseReadinessEvidenceOptions = {}): Promise<DiagnosticsReleaseReadinessEvidence> {
   const packageSurface = await releasePackageSurface();
   const supportBundle = supportBundlePolicyEvidence();
   const verification = await releaseVerificationEvidence(packageSurface);
   const firstPartyPluginPack = firstPartyPluginPackReadinessEvidence();
-  const checks = releaseReadinessChecks(packageSurface, supportBundle, verification, firstPartyPluginPack);
+  const platformContractsUapi = collectPlatformContractsUapiGovernanceEvidence();
+  const runtimeKernel = collectRuntimeKernelGovernanceEvidence();
+  const runtimePipes = collectRuntimePipesGovernanceEvidence();
+  const policyGates = collectPolicySandboxGateGovernanceEvidence();
+  const agentNamespaces = collectAgentNamespaceQuotaGovernanceEvidence();
+  const moduleBoundaries = collectPluginModuleBoundaryGovernanceEvidence();
+  const architectureDrift = collectArchitectureDriftGovernanceEvidence();
+  const governanceEvidenceMatrix = collectGovernanceEvidenceMatrix({
+    productReadyClaims: options.productReadyClaims ?? []
+  });
+  const baseChecks = releaseReadinessChecks(packageSurface, supportBundle, verification, firstPartyPluginPack, runtimeKernel, platformContractsUapi, runtimePipes, policyGates, agentNamespaces, moduleBoundaries, architectureDrift, governanceEvidenceMatrix);
+  const governanceDiagnostics = collectGovernanceDiagnostics({
+    checks: baseChecks,
+    verification,
+    productReadyClaims: options.productReadyClaims ?? []
+  });
+  const productReadyCheck = governanceProductReadyClaimCheck(governanceDiagnostics);
+  const checks = productReadyCheck ? [...baseChecks, productReadyCheck] : baseChecks;
   const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "pass";
   return {
     schemaVersion: diagnosticsSchemaVersion,
@@ -45,8 +77,10 @@ export async function collectReleaseReadinessEvidence(): Promise<DiagnosticsRele
     verification,
     supportBundle,
     firstPartyPluginPack,
+    governanceEvidenceMatrix,
+    governanceDiagnostics,
     checks,
-    redaction: { class: "internal", fields: ["packageSurface.buildOutputPath", "verification.acceptanceEvidencePaths", "firstPartyPluginPack.diagnostics"] }
+    redaction: { class: "internal", fields: ["packageSurface.buildOutputPath", "verification.acceptanceEvidencePaths", "firstPartyPluginPack.diagnostics", "governanceEvidenceMatrix.records.evidence.evidenceIds", "governanceEvidenceMatrix.findings.message", "governanceEvidenceMatrix.findings.nextAction", "governanceDiagnostics.findings.message", "governanceDiagnostics.findings.nextAction", "checks.metadata.evidence.compatibilityShims", "checks.metadata.evidence.surfaces.exportedNames", "checks.metadata.evidence.streams.description", "checks.metadata.evidence.fixtureRecords.reason", "checks.metadata.evidence.fixtures.operation.path", "checks.metadata.evidence.fixtures.policyEvaluations.policyRequest"] }
   };
 }
 
@@ -139,6 +173,9 @@ function baseAcceptanceEvidencePaths(): readonly string[] {
     "tests/acceptance/latest/dependency-boundaries.txt",
     "tests/acceptance/latest/build-cli.txt",
     "tests/acceptance/latest/release-verify.txt",
+    "tests/acceptance/latest/uapi-compatibility.txt",
+    "tests/acceptance/latest/architecture-drift-guardrails.json",
+    "tests/acceptance/latest/governance-evidence-matrix.json",
     "tests/acceptance/latest/smoke-headless.txt",
     "tests/acceptance/latest/reference-hygiene.txt",
     "tests/acceptance/latest/npm-publish-dry-run.txt"
@@ -179,7 +216,15 @@ export function releaseReadinessChecks(
   packageSurface: ReleasePackageSurface,
   supportBundle: SupportBundlePolicyEvidence,
   verification: ReleaseVerificationEvidence,
-  firstPartyPluginPack?: FirstPartyPluginPackReadinessEvidence
+  firstPartyPluginPack?: FirstPartyPluginPackReadinessEvidence,
+  runtimeKernel = collectRuntimeKernelGovernanceEvidence(),
+  platformContractsUapi = collectPlatformContractsUapiGovernanceEvidence(),
+  runtimePipes = collectRuntimePipesGovernanceEvidence(),
+  policyGates = collectPolicySandboxGateGovernanceEvidence(),
+  agentNamespaces = collectAgentNamespaceQuotaGovernanceEvidence(),
+  moduleBoundaries = collectPluginModuleBoundaryGovernanceEvidence(),
+  architectureDrift = collectArchitectureDriftGovernanceEvidence(),
+  governanceEvidenceMatrix = collectGovernanceEvidenceMatrix()
 ): readonly ReadinessCheck[] {
   return [
     readinessCheck("release.package", "CLI package metadata", packageSurface.packageName === "deepseek-agent-cli" ? "pass" : "fail", `${packageSurface.packageName}@${packageSurface.packageVersion}`, [], { packageName: packageSurface.packageName, packageVersion: packageSurface.packageVersion }),
@@ -191,9 +236,31 @@ export function releaseReadinessChecks(
     readinessCheck("release.live-evidence", "DeepSeek live release evidence", verification.liveEvidence?.status ?? "fail", liveEvidenceMessage(verification.liveEvidence), liveEvidenceActions(verification.liveEvidence), { evidence: verification.liveEvidence ?? {} }),
     readinessCheck("release.publish-dry-run", "npm publish dry-run", verification.publishDryRunEvidence?.status ?? "fail", verification.publishDryRunEvidence?.message ?? "npm publish dry-run evidence is missing.", publishDryRunActions(verification.publishDryRunEvidence), { evidence: verification.publishDryRunEvidence ?? {} }),
     readinessCheck("release.support-bundle", "Support bundle policy", supportBundle.localDiagnosticsAvailable && !supportBundle.externalExportAllowed && !supportBundle.visibleReasoningRawProviderReasoningAllowed ? "pass" : "warn", `External export policy: ${supportBundle.externalExportReasonCode}; visible reasoning=${supportBundle.visibleReasoningPolicy}.`, [], { externalExportAllowed: supportBundle.externalExportAllowed, visibleReasoningPolicy: supportBundle.visibleReasoningPolicy, referencePitFixtureIds: supportBundle.referencePitFixtureIds }),
+    platformContractsUapiGovernanceCheck(platformContractsUapi),
+    runtimeKernelGovernanceCheck(runtimeKernel),
+    runtimePipesGovernanceCheck(runtimePipes),
+    policySandboxGateGovernanceCheck(policyGates),
+    agentNamespaceQuotaGovernanceCheck(agentNamespaces),
+    pluginModuleBoundaryGovernanceCheck(moduleBoundaries),
+    architectureDriftGovernanceCheck(architectureDrift),
+    governanceEvidenceMatrixCheck(governanceEvidenceMatrix),
     readinessCheck("release.first-party-dev-plugins", "First-party dev plugin pack", firstPartyPluginPack?.status ?? "fail", firstPartyPluginPack ? `${firstPartyPluginPack.pluginCount} plugin(s), ${firstPartyPluginPack.commandCount} command(s), diagnostics=${firstPartyPluginPack.diagnostics.length}.` : "First-party plugin pack evidence is missing.", firstPartyPluginPack?.status === "pass" ? [] : ["Fix first-party plugin manifest validation before release."], { firstPartyPluginPack: firstPartyPluginPack ?? {} }),
     readinessCheck("release.acceptance", "Acceptance evidence", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? "pass" : "warn", (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? `${verification.acceptanceEvidencePaths.length} acceptance evidence files present.` : `Missing acceptance evidence: ${verification.missingAcceptanceEvidencePaths?.join(", ")}.`, (verification.missingAcceptanceEvidencePaths?.length ?? 0) === 0 ? [] : ["Refresh tests/acceptance/latest evidence before publishing."], { requiredCommands: verification.requiredCommands, acceptanceEvidencePaths: verification.acceptanceEvidencePaths, missingAcceptanceEvidencePaths: verification.missingAcceptanceEvidencePaths ?? [] })
   ];
+}
+
+export function governanceEvidenceMatrixCheck(matrix: GovernanceEvidenceMatrixSummary): ReadinessCheck {
+  const blocking = matrix.findings.filter((finding) => finding.releaseBlocking);
+  return readinessCheck(
+    "governance.evidence-matrix",
+    "Governance evidence matrix",
+    blocking.length > 0 ? "fail" : "pass",
+    `Evidence matrix records=${matrix.recordCount}, ready=${matrix.readyCount}, gated=${matrix.gatedCount}, blockers=${blocking.length}.`,
+    blocking.length > 0
+      ? ["Attach required evidence or downgrade product-ready claims before promotion."]
+      : [],
+    { evidence: matrix }
+  );
 }
 
 function firstPartyPluginPackReadinessEvidence(): FirstPartyPluginPackReadinessEvidence {

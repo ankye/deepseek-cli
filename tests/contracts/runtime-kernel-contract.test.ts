@@ -152,6 +152,31 @@ describe("runtime kernel contracts", () => {
 
     assert.equal(schedulerCalls, 0);
     assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.code === "KERNEL_POLICY_DENIED"), true);
+    assert.equal(events.some((event) => event.kind === "policy.decided" && typeof event.data.record === "object"), true);
+    assert.equal(events.some((event) => event.kind === "scheduler.queued"), false);
+    await kernel.shutdown();
+  });
+
+  it("fails closed when policy decision evaluation throws", async () => {
+    const deps = createDeterministicRuntimeDependencies();
+    let schedulerCalls = 0;
+    deps.policy.decide = async () => {
+      throw new Error("policy unavailable");
+    };
+    deps.concurrency.run = async () => {
+      schedulerCalls += 1;
+      throw new Error("should not run without policy");
+    };
+    const kernel = await createDefaultRuntimeKernel(deps);
+    const events = await collectRuntimeEvents(kernel.execute({
+      capabilityId: runtimeEchoCapability.id,
+      caller: "contract-test",
+      input: {},
+      timeoutMs: 30_000
+    }));
+
+    assert.equal(schedulerCalls, 0);
+    assert.equal(events.some((event) => event.kind === "execution.rejected" && event.error?.code === "KERNEL_POLICY_DECISION_MISSING"), true);
     assert.equal(events.some((event) => event.kind === "scheduler.queued"), false);
     await kernel.shutdown();
   });

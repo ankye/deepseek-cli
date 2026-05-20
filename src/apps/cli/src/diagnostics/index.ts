@@ -6,6 +6,7 @@ import type {
   DiagnosticsCommandName,
   DiagnosticsReleaseReadinessEvidence,
   AcceptanceEvidenceRefreshSummary,
+  GovernanceDiagnosticsFilter,
   JsonObject,
   ObservabilityPrivacyDecision,
   IndexProviderDiagnosticsSummary,
@@ -27,6 +28,12 @@ import type { CliModeMatrixSummary } from "./mode-matrix.js";
 import { collectDeliveryCapabilitySummary } from "./delivery-capability.js";
 import type { CliDeliveryCapabilitySummary } from "./delivery-capability.js";
 import { collectPackageScorecards, releasePackageScorecardAdvisory } from "./package-scorecard.js";
+import {
+  filterGovernanceDiagnostics,
+  governanceFilterFromInput,
+  productReadyClaimsFromInput
+} from "./governance-diagnostics.js";
+import { governanceEvidenceMatrixJsonLines, renderGovernanceEvidenceMatrixText } from "./governance-evidence-render.js";
 
 export interface CliDiagnosticNotice {
   readonly code: string;
@@ -121,6 +128,21 @@ export function renderDiagnosticsResult(result: CliDiagnosticsResult, output: Ag
       const aggregate = result.release.packageScorecardAdvisory.aggregate;
       lines.push(`- package delivery capability: advisory ${result.release.packageScorecardAdvisory.status} score=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} target=${aggregate.deliveryCapabilityTargetScore} passed=${aggregate.deliveryCapabilityPassedPackageCount}/${aggregate.deliveryCapabilityTotalPackageCount} gate=${aggregate.deliveryCapabilityPassed ? "pass" : "blocked"}`);
       lines.push(`- package scorecards: packages=${aggregate.totalPackageCount} pass=${aggregate.passPackageCount} warn=${aggregate.warnPackageCount} fail=${aggregate.failPackageCount} delivery=${aggregate.averageDeliveryCapabilityScore ?? "n/a"} quality=${aggregate.averageWeightedScore ?? "n/a"} assessed=${aggregate.averageAssessmentCoverage} rubric=${aggregate.averageRubricCoverage}`);
+    }
+    if (result.release.governanceEvidenceMatrix) {
+      lines.push(...renderGovernanceEvidenceMatrixText(result.release.governanceEvidenceMatrix));
+    }
+    if (result.release.governanceDiagnostics) {
+      const governance = result.release.governanceDiagnostics;
+      lines.push(`- governance diagnostics: ${governance.status} sections=${governance.sections.length} findings=${governance.findings.length}`);
+      for (const section of governance.sections) {
+        lines.push(`- /proc/deepseek/${section.sectionId}: ${section.status} maturity=${section.maturityState} owner=${section.ownerPackage} capability=${section.capability}`);
+        const severityGroups = [...new Set(section.findings.map((finding) => finding.severity))].sort();
+        lines.push(`  severities=${severityGroups.join(", ") || "none"}`);
+        for (const finding of section.findings) {
+          lines.push(`  finding ${finding.id}: severity=${finding.severity} state=${finding.maturityState} evidence=${finding.evidenceIds.join(", ") || "none"} next=${finding.nextAction}`);
+        }
+      }
     }
     for (const check of result.release.checks) lines.push(`- ${check.id}: ${check.status} - ${check.message}`);
   }
@@ -225,11 +247,15 @@ async function bundleDiagnostics(options: CliOptions): Promise<CliDiagnosticsRes
   };
 }
 
-async function releaseDiagnostics(_options: CliOptions): Promise<CliDiagnosticsResult> {
-  const release = await collectReleaseReadinessEvidence();
+async function releaseDiagnostics(options: CliOptions): Promise<CliDiagnosticsResult> {
+  const release = await collectReleaseReadinessEvidence({
+    productReadyClaims: productReadyClaimsFromInput(options.diagnosticsInput)
+  });
   const packageScorecards = await collectPackageScorecards();
+  const governanceFilter = governanceFilterFromInput(options.diagnosticsInput);
   const releaseWithAdvisory: DiagnosticsReleaseReadinessEvidence = {
     ...release,
+    ...filteredGovernance(release, governanceFilter),
     ...(packageScorecards.scorecards.length > 0 ? {
       packageScorecardAdvisory: releasePackageScorecardAdvisory(packageScorecards.aggregate, packageScorecards.scorecards)
     } : {})
@@ -241,12 +267,18 @@ async function releaseDiagnostics(_options: CliOptions): Promise<CliDiagnosticsR
     command: "release",
     release: releaseWithAdvisory,
     referencePitFixtureIds: [...diagnosticPitIds],
-    redaction: { class: "internal", fields: ["release.packageSurface.buildOutputPath"] }
+    redaction: { class: "internal", fields: ["release.packageSurface.buildOutputPath", "release.governanceDiagnostics.findings.message", "release.governanceDiagnostics.findings.nextAction"] }
   };
 }
 
-async function verifyDiagnostics(_options: CliOptions): Promise<CliDiagnosticsResult> {
-  const release = await collectReleaseReadinessEvidence();
+async function verifyDiagnostics(options: CliOptions): Promise<CliDiagnosticsResult> {
+  const releaseRaw = await collectReleaseReadinessEvidence({
+    productReadyClaims: productReadyClaimsFromInput(options.diagnosticsInput)
+  });
+  const release = {
+    ...releaseRaw,
+    ...filteredGovernance(releaseRaw, governanceFilterFromInput(options.diagnosticsInput))
+  };
   const verificationSummary = releaseVerificationSummary(release);
   const modeMatrix = await collectModeMatrix();
   return {
@@ -434,7 +466,13 @@ async function writeEvaluationDeliveryCapabilityEvidence(
 async function doctorDiagnostics(options: CliOptions): Promise<CliDiagnosticsResult> {
   const environment = await createCliReadinessEnvironment({ ...options, readinessCommand: "doctor", readinessInput: { live: false } });
   const readiness = await invokeLocalReadinessCommand("doctor", { live: false }, environment);
-  const release = await collectReleaseReadinessEvidence();
+  const releaseRaw = await collectReleaseReadinessEvidence({
+    productReadyClaims: productReadyClaimsFromInput(options.diagnosticsInput)
+  });
+  const release = {
+    ...releaseRaw,
+    ...filteredGovernance(releaseRaw, governanceFilterFromInput(options.diagnosticsInput))
+  };
   const modeMatrix = await collectModeMatrix();
   const status = readiness.value?.status === "fail" || release.status === "fail" ? "fail" : readiness.value?.status === "warn" || release.status === "warn" ? "warn" : "pass";
   return {
@@ -590,6 +628,8 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
       verification: result.release.verification,
       supportBundle: result.release.supportBundle,
       firstPartyPluginPack: result.release.firstPartyPluginPack,
+      governanceEvidenceMatrix: result.release.governanceEvidenceMatrix,
+      governanceDiagnostics: result.release.governanceDiagnostics,
       packageScorecardAdvisory: result.release.packageScorecardAdvisory,
       redaction: result.release.redaction
     });
@@ -616,6 +656,31 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
         check,
         redaction: { class: "internal", fields: ["check.metadata"] }
       });
+    }
+    entries.push(...governanceEvidenceMatrixJsonLines(result.schemaVersion, result.release.governanceEvidenceMatrix));
+    if (result.release.governanceDiagnostics) {
+      entries.push({
+        schemaVersion: result.schemaVersion,
+        kind: "diagnostics.governance.summary",
+        governanceDiagnostics: result.release.governanceDiagnostics,
+        redaction: result.release.governanceDiagnostics.redaction
+      });
+      for (const section of result.release.governanceDiagnostics.sections) {
+        entries.push({
+          schemaVersion: result.schemaVersion,
+          kind: "diagnostics.governance.section",
+          section,
+          redaction: section.redaction
+        });
+      }
+      for (const finding of result.release.governanceDiagnostics.findings) {
+        entries.push({
+          schemaVersion: result.schemaVersion,
+          kind: "diagnostics.governance.finding",
+          finding,
+          redaction: finding.redaction
+        });
+      }
     }
   }
   if (result.verificationSummary) {
@@ -699,6 +764,14 @@ function diagnosticsJsonLines(result: CliDiagnosticsResult): readonly JsonObject
     });
   }
   return entries;
+}
+
+function filteredGovernance(
+  release: DiagnosticsReleaseReadinessEvidence,
+  filter: GovernanceDiagnosticsFilter | undefined
+): Pick<DiagnosticsReleaseReadinessEvidence, "governanceDiagnostics"> {
+  const governanceDiagnostics = filterGovernanceDiagnostics(release.governanceDiagnostics, filter);
+  return governanceDiagnostics ? { governanceDiagnostics } : {};
 }
 
 function modeMatrixStatusText(entries: readonly { readonly status: string }[]): string {

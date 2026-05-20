@@ -1,7 +1,10 @@
 # code-intelligence Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define code intelligence requirements for local analysis, diagnostics, symbol/reference enrichment, and governed pre-edit evidence.
+
+定义 code intelligence 对本地分析、diagnostics、symbol/reference enrichment 与受治理 pre-edit evidence 的要求。
+
 ## Requirements
 ### Requirement: Code Intelligence Boundary
 

@@ -564,6 +564,7 @@ export async function* runAgentLoop(
         sectionCount: assembly.sections.length,
         budgetStatus: assembly.budget.status
       },
+      ...(assembly.trace.pipeline ? { contextPipeline: assembly.trace.pipeline } : {}),
       ...(evidenceFirst ? { evidenceFirst: evidenceFirstEventData(evidenceFirst) } : {}),
       ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {})
     });
@@ -613,6 +614,7 @@ export async function* runAgentLoop(
         sectionCount: assembly.sections.length,
         budgetStatus: assembly.budget.status
       },
+      ...(assembly.trace.pipeline ? { contextPipeline: assembly.trace.pipeline } : {}),
       ...(evidenceFirst ? { evidenceFirst: evidenceFirstEventData(evidenceFirst) } : {}),
       ...(contextProjection ? { contextProjection: projectionEventData(contextProjection) } : {}),
       ...(request.referenceContext ? { referenceContext: referenceContextSummary(request) } : {})
@@ -645,6 +647,7 @@ export async function* runAgentLoop(
           budget: assembly.budget,
           replay: assembly.trace.replay
         },
+        ...(assembly.trace.pipeline ? { contextPipeline: assembly.trace.pipeline } : {}),
         ...(request.referenceContext ? { referenceContext: request.referenceContext } : {}),
         live: request.live === true
       }

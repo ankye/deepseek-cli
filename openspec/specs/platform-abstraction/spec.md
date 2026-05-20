@@ -1,7 +1,10 @@
 # platform-abstraction Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define platform abstraction requirements for host-neutral filesystem, process, shell, environment, placeholder adapters, and deterministic fakes.
+
+定义 platform abstraction 对 host-neutral filesystem、process、shell、environment、placeholder adapters 与 deterministic fakes 的要求。
+
 ## Requirements
 ### Requirement: Platform Runtime Contract
 

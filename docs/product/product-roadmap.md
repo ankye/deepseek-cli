@@ -153,6 +153,10 @@ Current status: mostly underway or implemented through bootstrap, hardening, and
 
 当前状态：主要能力已通过 bootstrap、hardening 和 provider 工作推进或实现。
 
+Roadmap labels are governance labels, not marketing copy. A risk-bearing capability marked `implemented` or ready for promotion must cite accepted evidence. Capabilities backed by ghost aliases, placeholder adapters, deferred providers, skeleton hosts, or rollout gates must stay `placeholder`, `deferred`, `partial`, `rollout-gated`, or `disabled` until `deepseek diagnostics release` reports accepted evidence.
+
+路线图标签是治理标签，不是营销描述。标记为 `implemented` 或 ready for promotion 的高风险能力必须引用已接受证据。由 ghost alias、placeholder adapter、deferred provider、skeleton host 或 rollout gate 支撑的能力，在 `deepseek diagnostics release` 报告已接受证据前，必须保持为 `placeholder`、`deferred`、`partial`、`rollout-gated` 或 `disabled`。
+
 Platform scope / 平台范围:
 
 - Runtime kernel owns execution. / Runtime kernel 负责执行。

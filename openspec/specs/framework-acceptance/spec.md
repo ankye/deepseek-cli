@@ -1,7 +1,10 @@
 # framework-acceptance Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define framework acceptance requirements for validating the monorepo contract, CLI product path, governance evidence, and release readiness.
+
+定义 framework acceptance 对 monorepo contract、CLI product path、governance evidence 与 release readiness 的验收要求。
+
 ## Requirements
 ### Requirement: Acceptance Gate Model
 

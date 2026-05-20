@@ -1,6 +1,6 @@
 import type { CapabilityManifest } from "./capability.js";
 import type { CompatibilityMetadata, JsonObject, RedactedError, RedactionMetadata, TraceContext } from "./common.js";
-import type { ContextProjectionResult } from "./context.js";
+import type { ContextPipelineManifest, ContextProjectionResult } from "./context.js";
 import type { EvidenceFirstRuntimeContext } from "./evidence-first.js";
 import type { SelfRepairOutcomeSummary } from "./self-repair.js";
 import type { AgentLoopOutputContract, AgentLoopProjectRuleEvidence, AgentLoopReferenceContext, AgentLoopToolProjection } from "./runtime.js";
@@ -22,6 +22,7 @@ export type PromptSectionKind =
   | "task.output-contract"
   | "task.work-order"
   | "context.projected"
+  | "context.pipeline"
   | "context.pageindex-recall"
   | "context.semantic-recall"
   | "context.file-reference"
@@ -144,8 +145,19 @@ export interface PromptAssemblyTrace extends JsonObject {
   readonly projectRules: readonly AgentLoopProjectRuleEvidence[];
   readonly diagnostics: readonly RedactedError[];
   readonly replay: PromptAssemblyReplayEvidence;
+  readonly pipeline?: PromptAssemblyPipelineEvidence;
   readonly redaction: RedactionMetadata;
   readonly compatibility: CompatibilityMetadata;
+}
+
+export interface PromptAssemblyPipelineEvidence extends JsonObject {
+  readonly schemaVersion: "1.0.0";
+  readonly pipelineFingerprint: string;
+  readonly layerPrefixHashes: readonly string[];
+  readonly includedBlockIds: readonly string[];
+  readonly excludedBlockIds: readonly string[];
+  readonly cacheHintSummary: JsonObject;
+  readonly redaction: RedactionMetadata;
 }
 
 export interface PromptAssemblyReplayEvidence extends JsonObject {
@@ -175,6 +187,7 @@ export interface PromptAssemblyInput {
   readonly trace: TraceContext;
   readonly history: readonly ModelChatMessage[];
   readonly contextProjection?: ContextProjectionResult;
+  readonly contextPipelineManifest?: ContextPipelineManifest;
   readonly evidenceFirst?: EvidenceFirstRuntimeContext;
   readonly selfRepair?: SelfRepairOutcomeSummary;
   readonly projectRules?: readonly AgentLoopProjectRuleEvidence[];

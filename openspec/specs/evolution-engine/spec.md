@@ -1,7 +1,10 @@
 # evolution-engine Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define evolution engine requirements for future feedback loops, migrations, rollout evaluation, and managed change evidence.
+
+定义 evolution engine 对未来 feedback loops、migrations、rollout evaluation 与 managed change evidence 的要求。
+
 ## Requirements
 ### Requirement: Versioned Capability Bundles
 

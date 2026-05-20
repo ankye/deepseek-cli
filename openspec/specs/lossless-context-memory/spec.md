@@ -1,7 +1,10 @@
 # lossless-context-memory Specification
 
 ## Purpose
-TBD - created by archiving change add-lossless-context-memory. Update Purpose after archive.
+Define lossless context memory requirements for reversible summaries, redaction, expansion, provenance, and durable context records.
+
+定义 lossless context memory 对可逆 summaries、redaction、expansion、provenance 与 durable context records 的要求。
+
 ## Requirements
 ### Requirement: Durable Lossless Context DAG / 持久无损上下文 DAG
 

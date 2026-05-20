@@ -1,7 +1,10 @@
 # cli-permission-approval-ux Specification
 
 ## Purpose
-TBD - created by archiving change harden-cli-permissions-and-approval-ux. Update Purpose after archive.
+Define CLI permission and approval UX requirements for surfacing risky actions, collecting decisions, and preserving audit evidence.
+
+定义 CLI permission and approval UX 对风险动作展示、decision 收集与 audit evidence 保存的要求。
+
 ## Requirements
 ### Requirement: CLI Approval Lifecycle Rendering / CLI 审批生命周期渲染
 

@@ -1,7 +1,10 @@
 # agent-loop Specification
 
 ## Purpose
-TBD - created by archiving change deliver-first-usable-agent-loop. Update Purpose after archive.
+Define how the agent loop coordinates planning, tool governance, verification, repair, synthesis, and terminal phases for DeepSeek runtime turns.
+
+定义 agent loop 如何协调 DeepSeek runtime turn 中的 planning、tool governance、verification、repair、synthesis 与 terminal 阶段。
+
 ## Requirements
 ### Requirement: First Usable Agent Loop / 第一个可用 Agent Loop
 

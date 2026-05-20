@@ -1,7 +1,10 @@
 # reference-pit-fixtures Specification
 
 ## Purpose
-TBD - created by archiving change backfill-reference-pit-fixtures. Update Purpose after archive.
+Define reference pit fixture requirements for capturing known CLI, TUI, and workflow pitfalls as deterministic regression evidence.
+
+定义 reference pit fixtures 要求，将已知 CLI、TUI 与 workflow pitfalls 固化为确定性回归证据。
+
 ## Requirements
 ### Requirement: Reference Pit Fixture Catalog / 参考坑位 Fixture Catalog
 

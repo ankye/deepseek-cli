@@ -1,7 +1,10 @@
 # tool-family-capability-catalog Specification
 
 ## Purpose
-TBD - created by archiving change formalize-tool-family-capability-catalog. Update Purpose after archive.
+Define tool family capability catalog requirements for concrete executable tools, family scoring, no-placeholder entries, and delivery visibility.
+
+定义 tool family capability catalog 对具体可执行工具、family scoring、no-placeholder entries 与交付可见性的要求。
+
 ## Requirements
 ### Requirement: Canonical Tool Family Catalog / 规范工具家族目录
 The system SHALL define a versioned tool family catalog with exactly 16 first-version domains and 64 first-version scoring families.

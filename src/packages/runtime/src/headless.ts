@@ -50,6 +50,7 @@ export class HeadlessAgentRuntime implements AgentRuntime {
       prompt: request.prompt,
       sessionId,
       ...(request.agentId ? { agentId: request.agentId } : {}),
+      ...(request.contextPipeline?.enabled ? { contextPipeline: { enabled: true } } : {}),
       timeoutMs: 30_000
     });
   }
@@ -86,6 +87,9 @@ export function createHeadlessRuntime(deps: RuntimeDependencies): AgentRuntime {
 
 export interface ProjectedRuntimeTurnRequest extends RuntimeKernelRequest {
   readonly prompt: string;
+  readonly contextPipeline?: {
+    readonly enabled?: boolean;
+  };
 }
 
 export async function* executeProjectedRuntimeTurn(
@@ -126,6 +130,7 @@ export async function* executeProjectedRuntimeTurn(
       ...(request.agentId ? { agentId: request.agentId } : {}),
       availableRedactionClasses: ["public", "internal", "sensitive"]
     },
+    ...(request.contextPipeline?.enabled ? { pipeline: { enabled: true } } : {}),
     trace,
     policy: { redaction: "fail-closed" },
     compatibility: { schemaVersion: CONTEXT_PROJECTION_SCHEMA_VERSION }

@@ -6,3 +6,4 @@ export * from "./dependency.js";
 export * from "./conflicts.js";
 export * from "./projection.js";
 export * from "./hooks.js";
+export * from "./governed-modules.js";

@@ -14,6 +14,7 @@ The protocol layer is responsible for:
 - routing between host/runtime/server / host、runtime、server 之间的路由
 - redaction metadata / 脱敏 metadata
 - version contract metadata / 版本契约 metadata
+- additive governance metadata such as prefix hashes, cache evidence, and status telemetry / prefix hash、cache evidence 与 status telemetry 等增量治理 metadata
 - replayable payloads / 可 replay payload
 - typed errors / typed errors
 
@@ -32,6 +33,7 @@ They are used by:
 - session store / session store
 - runtime message bus / runtime message bus
 - prompt assembly replay / prompt assembly replay
+- context pipeline diagnostics and cache statusline projection / 上下文管道诊断与缓存 statusline 投影
 - evidence-first diagnostics and artifact gates / evidence-first diagnostics 与产物门禁
 - observability / observability
 - golden replay tests / golden replay tests
@@ -42,6 +44,10 @@ They are used by:
 If a host needs to display state, it should derive that state from events. It should not query runtime internals or build a separate execution model.
 
 如果 host 需要展示状态，应从 events 派生状态。它不应查询 runtime internals，也不应构建单独的执行模型。
+
+This includes the CLI statusline. Cache hit rate, selected model, thinking mode, context size, and budget pressure are protocol-visible telemetry produced by runtime/model/context owners, not host-owned state.
+
+这包括 CLI statusline。缓存命中率、当前模型、思考模式、上下文大小与预算压力都是由 runtime/model/context 责任方产生的 protocol-visible telemetry，而不是 host 自有状态。
 
 ## Replay Rule / Replay 规则
 
@@ -68,6 +74,21 @@ Changes to event shape should be treated as protocol changes.
 | Remove field / 删除字段 | Breaking; avoid until versioned protocol boundary exists. / breaking；在版本化协议边界前避免。 |
 | Add event kind / 增加事件类型 | Add docs, tests, and host rendering behavior. / 增加文档、测试和 host 渲染行为。 |
 | Change redaction / 改变脱敏 | Security-sensitive; update secret/sandbox tests. / 安全敏感；更新 secret/sandbox 测试。 |
+
+## Context Cache And Status Events / 上下文缓存与状态事件
+
+Context/cache events are additive protocol facts. They must carry bounded metadata and fingerprints, never raw context blocks unless redaction policy explicitly permits them.
+
+上下文/缓存事件是增量协议事实。它们必须携带有界 metadata 与 fingerprint，除非 redaction policy 明确允许，不得携带 raw context block。
+
+| Event kind / 事件类型 | Producer / 生产者 | Payload rule / Payload 规则 |
+| --- | --- | --- |
+| `context.pipeline.manifest.created` | `context-engine` via `runtime` | Contains layer ids, block counts, token estimates, prefix hashes, cache hint summary, and redaction metadata. / 包含 layer id、block count、token estimate、prefix hash、cache hint summary 与 redaction metadata。 |
+| `context.pipeline.prefix-drift` | `context-engine` or diagnostics | Contains previous/current prefix hashes, affected layer, drift reason, and release impact. / 包含前后 prefix hash、受影响 layer、drift 原因与 release 影响。 |
+| `context.pipeline.compacted` | `runtime` / `memory-cache-management` | Contains compacted range, summary block id/hash, covered source hashes, and replay fingerprint. / 包含压缩范围、summary block id/hash、覆盖的 source hashes 与 replay fingerprint。 |
+| `model.cache.usage.normalized` | `model-gateway` | Contains provider-neutral hit/miss token counts when reported, metric status, and provider capability metadata. / 在 provider 上报时包含 provider-neutral hit/miss token 数、metric status 与 provider capability metadata。 |
+| `runtime.status.telemetry` | `runtime` | Contains bounded statusline inputs: model id, thinking mode, context tokens, context budget pressure, cache hit rate/status, and active task state. / 包含有界 statusline 输入：model id、thinking mode、context tokens、context budget pressure、cache hit rate/status 与 active task state。 |
+| `runtime.pipe.backpressure` | `runtime-message-bus` / scheduler | Contains pipe id, queue depth, overflow policy, dropped/deferred counts, and caller-visible decision. / 包含 pipe id、queue depth、overflow policy、dropped/deferred count 与 caller-visible decision。 |
 
 ## Evidence And Prompt Events / 证据与 Prompt 事件
 

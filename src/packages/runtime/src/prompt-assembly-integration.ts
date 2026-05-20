@@ -50,6 +50,7 @@ export async function assemblePromptForIteration(
     trace,
     history: messages,
     ...(contextProjection ? { contextProjection } : {}),
+    ...(contextProjection?.pipeline ? { contextPipelineManifest: contextProjection.pipeline } : {}),
     ...(evidenceFirst ? { evidenceFirst } : {}),
     ...(selfRepair ? { selfRepair } : {}),
     ...(request.projectRules ? { projectRules: request.projectRules } : {}),

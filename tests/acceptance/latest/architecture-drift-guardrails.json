@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "governance.architecture-drift",
+  "status": "pass",
+  "aliasCount": 4,
+  "placeholderAliasCount": 4,
+  "packageMapDriftCount": 4,
+  "ghostAliases": [
+    "@deepseek/distribution-update-management",
+    "@deepseek/evolution-engine",
+    "@deepseek/extension-system",
+    "@deepseek/remote-runtime-connectivity"
+  ],
+  "requiredMetadata": [
+    "ownerPackage",
+    "allowedConsumers",
+    "blockedProductClaims",
+    "replacementTrigger",
+    "evidenceIds"
+  ],
+  "evidenceIds": [
+    "tsconfig.base.json",
+    "scripts/lint-framework/rules/architecture-drift.mjs",
+    "docs/architecture/package-map.md",
+    "docs/product/product-roadmap.md",
+    "openspec/changes/archive/2026-05-20-enforce-architecture-guardrails-drift"
+  ],
+  "redaction": {
+    "class": "internal",
+    "fields": [
+      "evidenceIds"
+    ]
+  }
+}

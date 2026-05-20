@@ -1,7 +1,10 @@
 # command-palette-vi-actions Specification
 
 ## Purpose
-TBD - created by archiving change implement-command-palette-and-vi-result-actions. Update Purpose after archive.
+Define command palette and vi-style result action requirements for discoverable, keyboard-driven CLI and TUI workflows.
+
+定义 command palette 与 vi-style result actions 要求，支撑可发现、键盘驱动的 CLI 与 TUI workflows。
+
 ## Requirements
 ### Requirement: Command Palette Projection / 命令面板投影
 

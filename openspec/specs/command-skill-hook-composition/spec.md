@@ -1,7 +1,10 @@
 # command-skill-hook-composition Specification
 
 ## Purpose
-TBD - created by archiving change stabilize-command-skill-hook-composition. Update Purpose after archive.
+Define composition requirements for commands, skills, and hooks so extension behavior remains ordered, governed, and replayable.
+
+定义 commands、skills 与 hooks 的组合要求，使扩展行为保持有序、受治理且可 replay。
+
 ## Requirements
 ### Requirement: Canonical Composition Records / 规范组合记录
 

@@ -12,15 +12,24 @@ This repository is the future-ready DeepSeek CLI platform framework. Treat it as
 - Keep `platform-contracts` implementation-free and host-agnostic. It must not import Node filesystem/process APIs, VSCode APIs, model SDKs, or implementation packages.
 - Prefer package imports such as `@deepseek/runtime` over cross-package relative imports.
 
+## Test-First Implementation Gate
+
+- For non-documentation implementation work, add or update focused unit, contract, regression, golden, matrix, or e2e coverage before changing implementation files under `src/**`.
+- Bug fixes must start with a failing regression test that demonstrates the bug, then the implementation fix.
+- New behavior must start with a test that describes the expected contract or observable behavior, then the implementation.
+- If no practical test can be written first, stop and record the reason in the OpenSpec task/design or the acceptance evidence before touching implementation code.
+- Allowed exceptions: docs-only changes, comment-only changes, generated fixture refreshes, pure config metadata, and mechanical migrations that already have an approved OpenSpec verification plan.
+- Do not treat a successful typecheck as unit coverage. Typecheck is necessary but not sufficient.
+
 ## OpenSpec Workflow
 
-- Active first framework change: `bootstrap-future-ready-cli-framework`.
+- Active OpenSpec changes: none after the 2026-05-20 governance archive pass. Start new work with a fresh OpenSpec change unless the task is a small docs-only correction.
 - OpenSpec artifacts must remain bilingual where they describe planning, behavior, or implementation guidance.
 - OpenSpec change artifacts must describe this project in its own terms. Do not copy external reference implementation details into OpenSpec.
 - Validate OpenSpec changes with:
 
 ```bash
-openspec validate bootstrap-future-ready-cli-framework --strict
+openspec validate --specs --strict
 ```
 
 ## Architecture Boundaries

@@ -2,12 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   JsonProtocolCodec,
+  createProtocolEnvelope,
   approvalIdFromProtocolEnvelope,
   createApprovalDecisionControlEnvelope,
   createApprovalLifecycleEnvelope,
   createRunTurnEnvelope
 } from "../src/index.js";
-import { APPROVAL_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import { APPROVAL_SCHEMA_VERSION, RUNTIME_PIPE_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import type { ApprovalDecision, ApprovalId, ApprovalLifecycleRecord } from "@deepseek/platform-contracts";
 
 describe("communication protocol", () => {
@@ -64,6 +65,64 @@ describe("communication protocol", () => {
     assert.equal(decoded.payload.approval?.kind, "approval.denied");
     assert.equal(decoded.payload.approval?.approvalId, "approval:protocol");
     assert.equal(decoded.payload.approval?.referencePitFixtureIds.includes("pit.headless-trust.fail-closed"), true);
+  });
+
+  it("carries additive bounded stream metadata without breaking older payload consumers", () => {
+    const codec = new JsonProtocolCodec();
+    const envelope = createProtocolEnvelope({
+      kind: "event",
+      host: "test",
+      target: "host",
+      payload: { event: runtimeEvent() },
+      stream: {
+        schemaVersion: RUNTIME_PIPE_SCHEMA_VERSION,
+        streamId: "runtime.events",
+        sequence: 42,
+        pressure: "pressured",
+        overflowPolicy: "drop-oldest",
+        delivery: "compactable",
+        replayImpact: "diagnostic-only",
+        droppedRecords: 1,
+        compactedRecords: 0,
+        redaction: { class: "internal", fields: ["streamId"] }
+      }
+    });
+
+    const decoded = codec.decode(codec.encode(envelope));
+    assert.equal(decoded.stream?.streamId, "runtime.events");
+    assert.equal(decoded.stream?.sequence, 42);
+    assert.equal(decoded.payload.event?.kind, "runtime.error");
+  });
+
+  it("carries pipeline cache metadata without raw context content", () => {
+    const codec = new JsonProtocolCodec();
+    const envelope = createProtocolEnvelope({
+      kind: "event",
+      host: "test",
+      target: "host",
+      payload: { event: runtimeEvent() },
+      pipeline: {
+        schemaVersion: "1.0.0",
+        pipelineFingerprint: "pipeline:test",
+        prefixHashes: [
+          { layer: "kernel", prefixHash: "prefix-kernel", estimatedTokens: 10 },
+          { layer: "project", prefixHash: "prefix-project", estimatedTokens: 20 }
+        ],
+        cache: {
+          status: "available",
+          hitRate: 0.75,
+          hitTokens: 75,
+          missTokens: 25
+        },
+        redaction: { class: "internal", fields: ["prefixHashes"] }
+      }
+    });
+
+    const decoded = codec.decode(codec.encode(envelope));
+    assert.equal(decoded.pipeline?.pipelineFingerprint, "pipeline:test");
+    assert.equal(decoded.pipeline?.prefixHashes.length, 2);
+    assert.equal(decoded.pipeline?.cache?.hitRate, 0.75);
+    assert.equal(JSON.stringify(decoded.pipeline).includes("raw context"), false);
   });
 });
 
@@ -141,5 +200,15 @@ function approvalDecision(): ApprovalDecision {
     trace,
     redaction: { class: "internal", fields: ["reason"] },
     metadata: { referencePitFixtureIds: ["pit.headless-trust.fail-closed"] }
+  };
+}
+
+function runtimeEvent() {
+  return {
+    kind: "runtime.error" as const,
+    sessionId: asId<"session">("session-protocol-stream"),
+    createdAt: new Date(0).toISOString(),
+    trace,
+    data: { diagnostic: "stream metadata roundtrip" }
   };
 }

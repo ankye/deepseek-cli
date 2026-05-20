@@ -6,15 +6,56 @@ import {
   analyzeResourceScope,
   classifySecretText,
   createSandboxRequirement,
+  collectPolicyGateCoverageRecords,
+  createPolicyDecisionRecord,
+  createPolicyGateFixtureRecords,
   createSecretRedactionDecision,
   DefaultPolicyEngine,
   HeadlessApprovalBroker,
+  listRiskyOperationTaxonomy,
   redactJsonSecrets,
   redactSecretText,
   selectSandboxDecision
 } from "./index.js";
 
 describe("secret and sandbox policy helpers", () => {
+  it("defines mandatory policy taxonomy and coverage for risky operation families", () => {
+    const taxonomy = listRiskyOperationTaxonomy();
+    const coverage = collectPolicyGateCoverageRecords();
+    const families = new Set(taxonomy.map((entry) => entry.family));
+
+    for (const family of ["file", "shell", "mcp", "plugin", "credential", "remote", "sandbox", "workspace-mutation"]) {
+      assert.equal(families.has(family as never), true);
+    }
+    assert.equal(taxonomy.every((entry) => entry.schemaVersion === "1.0.0" && entry.requiredDecision === "mandatory"), true);
+    assert.equal(taxonomy.some((entry) => entry.operationId === "plugin.execution" && entry.examples.includes("module.contribution.invoke")), true);
+    assert.equal(coverage.some((record) => record.operationFamily === "remote" && record.coverage === "deferred"), true);
+    assert.equal(coverage.some((record) => record.operationId === "plugin.execution" && record.entrypoints.includes("module.permission.evaluate")), true);
+    assert.equal(coverage.filter((record) => record.releaseGate === "release-blocking").every((record) => record.coverage === "covered"), true);
+  });
+
+  it("creates redacted replay-safe policy decision records for every required outcome", () => {
+    const fixtures = createPolicyGateFixtureRecords();
+    const decisions = new Set(fixtures.map((record) => record.decision));
+    const record = createPolicyDecisionRecord({
+      subject: "user sk-live-1234567890",
+      action: "execute:file.write",
+      resource: "core.file.write",
+      metadata: { sideEffect: "write", permissionMode: "bypass" },
+      resourceScope: analyzeResourceScope({ path: "../secret.txt", workspaceRoot: "/workspace" }, "write")
+    }, {
+      action: "deny",
+      reason: "Denied sk-live-1234567890"
+    });
+
+    for (const decision of ["allow", "deny", "prompt", "redact", "audit-only", "bypass-detected"]) {
+      assert.equal(decisions.has(decision as never), true);
+    }
+    assert.equal(record.decision, "bypass-detected");
+    assert.equal(record.replayBehavior, "fail-closed");
+    assert.equal(JSON.stringify([fixtures, record]).includes("sk-live-1234567890"), false);
+  });
+
   it("classifies and redacts common secret fixtures deterministically", () => {
     const fixtures = [
       ["sk-live-1234567890", "api-key"],

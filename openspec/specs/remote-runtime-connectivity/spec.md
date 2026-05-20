@@ -1,7 +1,10 @@
 # remote-runtime-connectivity Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define remote runtime connectivity requirements for future server/runtime binding, transport, identity, policy, and diagnostics beyond noop placeholders.
+
+定义 remote runtime connectivity 对未来 server/runtime binding、transport、identity、policy 与 diagnostics 的要求，明确超越 noop placeholders 的推广边界。
+
 ## Requirements
 ### Requirement: Remote Runtime Connectivity Boundary
 

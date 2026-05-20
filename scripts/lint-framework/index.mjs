@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { access } from "node:fs/promises";
 import { lintConventions } from "./conventions.mjs";
 import { LintBaseContext, LintFileContext } from "./context.mjs";
 import { collectSourceFiles, readTextFile } from "./filesystem.mjs";
@@ -18,6 +19,8 @@ export async function runArchitectureLint(options = {}) {
     ignoredDirectoryNames: conventions.ignoredDirectoryNames,
     extensions: [".json"]
   });
+  const explicitJsonFiles = await existingFiles(conventions.metadataFiles ?? []);
+  const allJsonFiles = [...new Set([...jsonFiles, ...explicitJsonFiles])];
   const failures = [];
 
   for (const file of tsFiles) {
@@ -27,7 +30,7 @@ export async function runArchitectureLint(options = {}) {
     visitWithRules(context, rules);
   }
 
-  for (const file of jsonFiles) {
+  for (const file of allJsonFiles) {
     const context = new LintBaseContext({ file, conventions, failures });
     try {
       const json = JSON.parse(await readTextFile(file));
@@ -39,7 +42,20 @@ export async function runArchitectureLint(options = {}) {
 
   return {
     failures,
-    fileCount: tsFiles.length + jsonFiles.length,
+    fileCount: tsFiles.length + allJsonFiles.length,
     ruleCount: rules.length
   };
+}
+
+async function existingFiles(files) {
+  const existing = [];
+  for (const file of files) {
+    try {
+      await access(file);
+      existing.push(file);
+    } catch {
+      // Optional metadata files are ignored in fixtures and partial checkouts.
+    }
+  }
+  return existing;
 }

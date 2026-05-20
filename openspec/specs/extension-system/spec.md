@@ -1,7 +1,10 @@
 # extension-system Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define extension system requirements for extension lifecycle, authentication boundaries, contribution projection, and promotion beyond current placeholders.
+
+定义 extension system 对 extension lifecycle、authentication boundaries、contribution projection 与超越当前 placeholders 的推广要求。
+
 ## Requirements
 ### Requirement: Manifest-Driven Extension System
 

@@ -1,4 +1,4 @@
-import type { AgentLoopTerminalStatus, SessionId, TurnId, VisibleReasoningProjection } from "@deepseek/platform-contracts";
+import type { AgentLoopTerminalStatus, ContextStatuslineTelemetry, SessionId, TurnId, VisibleReasoningProjection } from "@deepseek/platform-contracts";
 import type { createCliAgentRuntime } from "../host/runtime.js";
 import type { ChatModeControlState } from "./chat-mode-controls.js";
 import type { ChatPageIndexPage } from "./pageindex.js";
@@ -25,6 +25,7 @@ export interface ChatSessionState {
   pendingExitTimer: NodeJS.Timeout | undefined;
   modeControls: ChatModeControlState;
   visibleReasoning: VisibleReasoningProjection | undefined;
+  statusTelemetry?: ContextStatuslineTelemetry | undefined;
 }
 
 export interface ChatHistoryEntry {

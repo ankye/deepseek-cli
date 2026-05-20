@@ -1,7 +1,10 @@
 # baseline-comparison-evaluation Specification
 
 ## Purpose
-TBD - created by archiving change run-isolated-codex-webpage-evaluation. Update Purpose after archive.
+Define baseline comparison evaluation requirements for measuring DeepSeek CLI behavior against task and competitor baselines without overstating readiness.
+
+定义 baseline comparison evaluation 要求，用于将 DeepSeek CLI 行为与任务及竞品基线对比，同时避免夸大就绪状态。
+
 ## Requirements
 ### Requirement: Baseline comparison evaluates DeepSeek Codex and Claude together / Baseline 对比同时评估 DeepSeek、Codex 与 Claude
 The system SHALL support a comparison evaluation that includes DeepSeek CLI, Codex, Claude Code, and future baselines under the same selected task definitions.

@@ -33,6 +33,7 @@ Executable capabilities must declare:
 - Sandbox requirements: profile, capabilities, timeout, enforcement. / 沙箱要求：profile、capabilities、timeout、enforcement。
 - Redaction: secret exposure, output redaction, audit evidence. / 脱敏：secret exposure、output redaction、audit evidence。
 - Replay: deterministic metadata and evidence references. / replay：确定性 metadata 与 evidence reference。
+- Context projection: whether outputs are model-visible now, summarized into the session pipe, persisted as artifacts, or excluded from stable prefixes. / 上下文投影：输出是当前模型可见、摘要进入 session pipe、作为 artifact 持久化，还是从稳定前缀排除。
 
 ## Registration Vs Execution / 注册与执行
 
@@ -42,6 +43,25 @@ Executable capabilities must declare:
 | Discoverable / 可发现 | Can be selected by model or host as candidate capability. / 可被模型或 host 选择为候选能力。 | Bypass preflight or policy. / 绕过 preflight 或 policy。 |
 | Executable / 可执行 | Runtime can build envelope and call executor after policy/scheduler. / runtime 可在 policy/scheduler 后调用 executor。 | Execute without envelope, trace, timeout, sandbox, audit. / 无 envelope、trace、timeout、sandbox、audit 执行。 |
 | Installed extension / 已安装扩展 | Contributes manifests under lockfile and permission diff. / 在 lockfile 与权限 diff 下贡献 manifest。 | Change capabilities silently after approval. / 审批后静默改变能力。 |
+
+## Governed Modules / 受治理模块
+
+Plugins, extensions, MCP bridges, skills, hooks, and UI contributions enter the platform as governed modules. A governed module declares public contract paths and contribution descriptors; the owner package executes or projects the contribution after policy and lifecycle checks.
+
+plugins、extensions、MCP bridges、skills、hooks 与 UI contributions 都以受治理模块进入平台。受治理模块声明公共契约路径与 contribution descriptor；责任包在 policy 与 lifecycle 检查后执行或投影该 contribution。
+
+| Module contribution / 模块贡献 | Public path / 公共路径 | Owner / 责任包 |
+| --- | --- | --- |
+| Command or action / 命令或动作 | `module.command` | `command-system` |
+| Hook / Hook | `module.hook` | `hook-system` |
+| Tool / 工具 | `module.tool` | `capability-registry` / `tool-system` |
+| MCP bridge / MCP 桥接 | `module.mcp-bridge` | `mcp-gateway` |
+| TUI, keymap, palette, render hint / TUI、keymap、palette、render hint | `module.ui` | host projection packages |
+| Diagnostics provider / 诊断提供者 | `module.diagnostics` | diagnostics surfaces |
+
+Modules are never handed private runtime handles, host callbacks, raw credential resolvers, Node filesystem/process/network imports, or model SDK clients. Risk-bearing contributions produce a `PolicyRequest` before scheduler visibility.
+
+模块绝不会拿到 runtime 私有句柄、host callback、raw credential resolver、Node filesystem/process/network import 或 model SDK client。带风险的 contribution 在 scheduler 可见前必须产生 `PolicyRequest`。
 
 ## Capability Flow / 能力流
 
@@ -71,3 +91,16 @@ sequenceDiagram
 Adding a new capability type should not create a new execution path. It should add a new manifest/contribution shape and then enter the same execution pipeline.
 
 新增 capability 类型不应创建新的执行路径。它应该新增 manifest/contribution 形态，然后进入同一执行管线。
+
+## Tool Result Projection / 工具结果投影
+
+Capability results must not blindly become stable prompt prefix material. Large or volatile outputs stay in the current-turn tail or artifact storage; only bounded, redacted summaries and evidence references may enter the session pipe.
+
+Capability 结果不得无脑进入稳定 prompt 前缀。大型或易变输出留在当前回合尾部或 artifact storage；只有有界、脱敏的摘要与证据引用可以进入 session pipe。
+
+| Result form / 结果形态 | Allowed projection / 允许投影 |
+| --- | --- |
+| Raw file/search/shell output / 原始文件、搜索、shell 输出 | Current turn only unless explicitly summarized. / 仅当前回合可见，除非显式摘要化。 |
+| Edit/checkpoint evidence / 编辑与 checkpoint 证据 | Redacted ids, hashes, paths, and status may enter events/session. / 脱敏 id、hash、路径与状态可以进入 events/session。 |
+| Plugin/MCP output / 插件或 MCP 输出 | Must pass manifest permissions, policy, redaction, and bounded projection rules. / 必须经过 manifest permission、policy、redaction 与有界投影规则。 |
+| Subagent result / 子 Agent 结果 | Summary, scope, verification evidence, and open risks merge through session/bus records. / summary、scope、verification evidence 与 open risks 通过 session/bus records 合并。 |

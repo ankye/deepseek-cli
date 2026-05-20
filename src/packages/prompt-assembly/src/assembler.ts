@@ -5,6 +5,7 @@ import type {
   ModelChatMessage,
   PromptAssembler,
   PromptAssemblyInput,
+  PromptAssemblyPipelineEvidence,
   PromptAssemblyReplayReport,
   PromptAssemblyResult,
   PromptAssemblyReplayEvidence,
@@ -92,6 +93,7 @@ export class DefaultPromptAssembler implements PromptAssembler {
       projectRules: input.projectRules ?? [],
       diagnostics,
       replay,
+      ...(input.contextPipelineManifest ? { pipeline: promptPipelineEvidence(input.contextPipelineManifest) } : {}),
       redaction: { class: "internal", fields: ["sections.preview", "diagnostics.details"] },
       compatibility: { schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION }
     } as const;
@@ -391,6 +393,7 @@ function createReplayEvidence(input: {
             }
           : undefined,
         contextFingerprint: input.input.contextProjection?.replayFingerprint,
+        contextPipelineFingerprint: input.input.contextPipelineManifest?.pipelineFingerprint,
         evidenceFirst: input.input.evidenceFirst
           ? {
               summaryId: input.input.evidenceFirst.summary.summaryId,
@@ -415,6 +418,18 @@ function createReplayEvidence(input: {
     })),
     messageRoles: input.messages.map((message) => message.role),
     redaction: EMPTY_REDACTION
+  };
+}
+
+function promptPipelineEvidence(manifest: NonNullable<PromptAssemblyInput["contextPipelineManifest"]>): PromptAssemblyPipelineEvidence {
+  return {
+    schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION,
+    pipelineFingerprint: manifest.pipelineFingerprint,
+    layerPrefixHashes: manifest.prefixHashes.map((entry) => `${entry.layer}:${entry.prefixHash}`),
+    includedBlockIds: manifest.blocks.map((block) => block.id),
+    excludedBlockIds: manifest.excludedBlocks.map((block) => block.id),
+    cacheHintSummary: manifest.cacheHintSummary,
+    redaction: { class: "internal", fields: ["layerPrefixHashes", "includedBlockIds", "excludedBlockIds"] }
   };
 }
 

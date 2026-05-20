@@ -1,7 +1,10 @@
 # workflow-orchestration Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define workflow orchestration requirements for invocation lifecycles, step ordering, rollback, hook points, and governed runtime coordination.
+
+定义 workflow orchestration 对 invocation lifecycles、step ordering、rollback、hook points 与受治理 runtime coordination 的要求。
+
 ## Requirements
 ### Requirement: Workflow Task Model
 

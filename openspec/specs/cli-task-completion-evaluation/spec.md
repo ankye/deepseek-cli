@@ -1,7 +1,10 @@
 # cli-task-completion-evaluation Specification
 
 ## Purpose
-TBD - created by archiving change add-cli-task-completion-evaluation. Update Purpose after archive.
+Define CLI task completion evaluation requirements for measuring task outcomes, evidence quality, correction behavior, and delivery capability.
+
+定义 CLI task completion evaluation 对任务结果、evidence quality、correction behavior 与交付能力衡量的要求。
+
 ## Requirements
 ### Requirement: CLI Evaluation Defines Repeatable Task Completion Protocol / CLI 评估定义可重复任务完成协议
 

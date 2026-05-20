@@ -1,7 +1,10 @@
 # agent-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define agent modes, worker lifecycle, delegation records, namespace quotas, and governance requirements for multi-agent runtime surfaces.
+
+定义多 agent runtime 表面的 agent modes、worker lifecycle、delegation records、namespace quotas 与治理要求。
+
 ## Requirements
 ### Requirement: Agent Definition Registry
 
@@ -228,4 +231,70 @@ delegated worker orders 必须列出 assigned task 所需 families、可选 fami
 - **WHEN** a coordinator delegates browser verification
 - **THEN** the worker order allows `browser.navigate`, `browser.interact`, `browser.inspect`, and `browser.screenshot` while denying unrelated write families
 - **中文** 当 coordinator 委派 browser verification 时，worker order 必须允许 `browser.navigate`、`browser.interact`、`browser.inspect` 与 `browser.screenshot`，同时拒绝无关 write families。
+
+### Requirement: Agent Namespace And Quota Governance / Agent Namespace 与配额治理
+
+Agent management SHALL define explicit scopes for every non-default agent mode before write-capable multi-agent execution is promoted.
+
+Agent management 必须在可写多 agent 执行被推广前，为每个非 default agent mode 定义显式 scopes。
+
+#### Scenario: Worker has bounded namespace / Worker 具备有界 Namespace
+
+- **WHEN** a worker agent is spawned for a task
+- **THEN** its work order includes path scope, tool scope, memory scope, scratchpad scope, checkpoint policy, token budget, deadline, lineage, and ownership metadata
+- **中文** 当 worker agent 为任务被 spawn 时，其 work order 必须包含 path scope、tool scope、memory scope、scratchpad scope、checkpoint policy、token budget、deadline、lineage 与 ownership metadata。
+
+#### Scenario: Missing scope blocks write promotion / 缺失 Scope 阻止写执行推广
+
+- **WHEN** coordinator, worker, repair, or implementer mode attempts write-capable default execution without required scopes
+- **THEN** runtime or diagnostics rejects promotion and records a governance finding rather than falling back to implicit broad access
+- **中文** 当 coordinator、worker、repair 或 implementer mode 在缺少必需 scopes 时尝试默认可写执行，runtime 或 diagnostics 必须拒绝推广并记录治理发现，而不是回退到隐式宽权限。
+
+### Requirement: Agent Resource Accounting / Agent 资源记账
+
+Agent orchestration SHALL account for budgets, fan-out, over-delegation, conflict risk, and verification evidence.
+
+Agent orchestration 必须对 budgets、fan-out、over-delegation、conflict risk 与 verification evidence 进行记账。
+
+#### Scenario: Coordinator default enablement requires evidence / Coordinator 默认启用需要证据
+
+- **WHEN** coordinator mode is proposed for default enablement
+- **THEN** evidence shows bounded worker fan-out, lower correction cost or failure rate than baseline, scoped writes, conflict handling, and verification quality
+- **中文** 当 coordinator mode 被提议默认启用时，证据必须证明 bounded worker fan-out、相比 baseline 更低的 correction cost 或 failure rate、scoped writes、conflict handling 与 verification quality。
+
+### Requirement: Agent Namespace / Agent Namespace
+
+Write-capable agents SHALL execute within explicit namespaces that bound paths, tools, memory, scratchpad, checkpoints, budgets, deadlines, lineage, and ownership.
+
+可写 agents 必须在显式 namespaces 中执行，用于约束 paths、tools、memory、scratchpad、checkpoints、budgets、deadlines、lineage 与 ownership。
+
+#### Scenario: Agent write is scoped / Agent 写入受 Scope 约束
+
+- **WHEN** a coordinator, worker, verifier, repair, or implementer agent attempts a write operation
+- **THEN** agent-management verifies the operation is within the agent namespace before execution proceeds
+- **中文** 当 coordinator、worker、verifier、repair 或 implementer agent 尝试写操作时，agent-management 必须在执行前验证该操作位于 agent namespace 内。
+
+### Requirement: Agent Quotas / Agent Quotas
+
+Agent execution SHALL enforce quotas for token budget, tool calls, wall-clock deadlines, retries, and mutation scope.
+
+Agent execution 必须执行 token budget、tool calls、wall-clock deadlines、retries 与 mutation scope 的 quotas。
+
+#### Scenario: Quota exhaustion stops work / Quota 耗尽停止工作
+
+- **WHEN** an agent exhausts a configured quota
+- **THEN** execution stops or requests policy-approved extension and emits a quota diagnostic
+- **中文** 当 agent 耗尽配置 quota 时，execution 必须停止或请求 policy-approved extension，并发出 quota diagnostic。
+
+### Requirement: Agent Lineage And Ownership / Agent Lineage 与 Ownership
+
+Child agents SHALL record parent lineage, delegated scope, output ownership, and merge responsibility.
+
+Child agents 必须记录 parent lineage、delegated scope、output ownership 与 merge responsibility。
+
+#### Scenario: Child scope cannot silently expand / Child Scope 不能静默扩大
+
+- **WHEN** a child agent requests broader paths, tools, memory, or budget than its parent delegated
+- **THEN** the request requires an explicit policy decision and lineage record
+- **中文** 当 child agent 请求比 parent delegated 更宽的 paths、tools、memory 或 budget 时，该请求必须需要显式 policy decision 与 lineage record。
 

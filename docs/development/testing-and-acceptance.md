@@ -4,6 +4,18 @@ DeepSeek CLI treats tests as product infrastructure. Every platform guarantee sh
 
 DeepSeek CLI 将测试视为产品基础设施。每个系统保证都应映射到确定性测试、replay trace、matrix fixture 或显式验收证据。
 
+## Test-First Implementation Gate / 测试先行实现门禁
+
+Implementation work is test-first by default. Before changing non-documentation implementation files under `src/**`, add or update focused coverage that describes the behavior being introduced, repaired, or protected.
+
+实现工作默认测试先行。在修改 `src/**` 下的非文档实现文件前，必须先增加或更新聚焦覆盖，描述将要引入、修复或保护的行为。
+
+- Bug fixes start with a failing regression test. / bug 修复必须先写能失败的回归测试。
+- New behavior starts with unit, contract, golden, matrix, integration, or e2e coverage for the observable contract. / 新行为必须先写覆盖可观察契约的单元、契约、golden、matrix、集成或 e2e 测试。
+- Typecheck does not count as behavior coverage. / typecheck 不算行为覆盖。
+- If no practical test can be written first, the OpenSpec design or task must record the reason, risk, and verification substitute before implementation begins. / 如果确实无法先写测试，OpenSpec design 或 task 必须在实现开始前记录原因、风险和替代验证方式。
+- Allowed exceptions are docs-only changes, comment-only changes, generated fixture refreshes, pure config metadata, and mechanical migrations with an approved verification plan. / 允许例外仅限 docs-only、comment-only、生成 fixture 刷新、纯配置 metadata，以及已有验证计划的机械迁移。
+
 ## Default Gate / 默认门禁
 
 Run this before committing framework or runtime changes:

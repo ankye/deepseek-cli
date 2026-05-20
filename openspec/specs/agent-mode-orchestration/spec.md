@@ -1,7 +1,10 @@
 # agent-mode-orchestration Specification
 
 ## Purpose
-TBD - created by archiving change formalize-cli-interaction-agent-modes. Update Purpose after archive.
+Define orchestration requirements for switching and governing interactive, autonomous, worker, verifier, and repair agent modes.
+
+定义 interactive、autonomous、worker、verifier 与 repair agent modes 的切换和治理编排要求。
+
 ## Requirements
 ### Requirement: Agent Mode Taxonomy / Agent 模式分类
 

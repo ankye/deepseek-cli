@@ -4,6 +4,7 @@ import { contextMessageContent, createPromptSection, projectionSections } from "
 
 export function createContextProviders(): readonly PromptSectionProviderRegistration[] {
   return [
+    createPipelineManifestProvider(),
     createProjectedContextProvider(),
     createLosslessContextProtocolProvider(),
     createPageIndexRecallProvider(),
@@ -12,6 +13,58 @@ export function createContextProviders(): readonly PromptSectionProviderRegistra
     createCodeIntelligenceContextProvider(),
     createSemanticRecallProvider()
   ];
+}
+
+function createPipelineManifestProvider(): PromptSectionProviderRegistration {
+  return {
+    id: "core.context-pipeline",
+    version: "1.0.0",
+    kind: "context.pipeline",
+    source: "context-engine",
+    priority: 925,
+    budgetClass: "high",
+    trust: "workspace",
+    required: false,
+    compatibility: { schemaVersion: PROMPT_ASSEMBLY_SCHEMA_VERSION },
+    provide(input) {
+      const manifest = input.contextPipelineManifest;
+      if (!manifest) return [];
+      const layerLines = manifest.layers.flatMap((layer) => {
+        const blocks = manifest.blocks.filter((block) => block.layer === layer.id);
+        if (blocks.length === 0) return [];
+        return [
+          `Layer ${layer.id}: prefix=${layer.prefixHash} tokens=${layer.estimatedTokens}`,
+          ...blocks.map((block) => [
+            `[${block.id}] ${block.kind}/${block.source} cache=${block.cacheHint.policy} tokens=${block.estimatedTokens}`,
+            block.content ?? block.contentRef ?? block.contentPreview ?? ""
+          ].filter(Boolean).join("\n"))
+        ];
+      });
+      if (layerLines.length === 0) return [];
+      return [createPromptSection({
+        id: "section.context-pipeline",
+        providerId: "core.context-pipeline",
+        kind: "context.pipeline",
+        source: "context-engine",
+        role: "system",
+        content: [
+          "Context pipeline manifest:",
+          ...layerLines
+        ].join("\n\n"),
+        priority: 925,
+        budgetClass: "high",
+        trust: "workspace",
+        required: false,
+        provenance: {
+          pipelineFingerprint: manifest.pipelineFingerprint,
+          layerPrefixHashes: manifest.prefixHashes.map((entry) => `${entry.layer}:${entry.prefixHash}`),
+          includedBlockIds: manifest.blocks.map((block) => block.id),
+          excludedBlockIds: manifest.excludedBlocks.map((block) => block.id),
+          cacheHintSummary: manifest.cacheHintSummary
+        }
+      })];
+    }
+  };
 }
 
 function createLosslessContextProtocolProvider(): PromptSectionProviderRegistration {

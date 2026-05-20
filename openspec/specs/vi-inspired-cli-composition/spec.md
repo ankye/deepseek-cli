@@ -1,7 +1,10 @@
 # vi-inspired-cli-composition Specification
 
 ## Purpose
-TBD - created by archiving change split-cli-host-and-architecture-scale-guardrails. Update Purpose after archive.
+Define vi-inspired CLI composition requirements for modal command editing, motions, operators, result actions, and efficient terminal workflows.
+
+定义 vi-inspired CLI composition 对 modal command editing、motions、operators、result actions 与高效 terminal workflows 的要求。
+
 ## Requirements
 ### Requirement: Vi-Inspired Composition Model / Vi 启发式组合模型
 

@@ -6,6 +6,7 @@ import type {
   CliPanelScrollState,
   CliPluginContributionExplanation,
   CliTargetRef,
+  ContextStatuslineTelemetry,
   VisibleReasoningDetailLevel,
   VisibleReasoningProjection
 } from "@deepseek/platform-contracts";
@@ -188,6 +189,7 @@ export interface ChatTuiWorkbench {
   readonly activityFeed: ChatTuiActivityFeed;
   readonly pluginShelf: ChatTuiPluginShelf;
   readonly pluginExecutions: readonly PluginWorkbenchExecutionRecord[];
+  readonly statusTelemetry?: ContextStatuslineTelemetry;
   readonly scrollStates: readonly CliPanelScrollState[];
   readonly keyboardHints: readonly ChatTuiKeyboardHint[];
   readonly frameLineBudget: number;
@@ -224,6 +226,7 @@ export interface ChatTuiWorkbenchInput {
   readonly turns: number;
   readonly sessionId?: string;
   readonly visibleReasoning?: VisibleReasoningProjection;
+  readonly statusTelemetry?: ContextStatuslineTelemetry;
   readonly focus?: ChatTuiFocusState;
   readonly commandBar?: Partial<Pick<ChatTuiCommandBarState, "open" | "mode" | "query" | "activeSuggestionId">>;
 }
@@ -277,6 +280,7 @@ export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWor
     activityFeed,
     pluginShelf,
     pluginExecutions: input.pluginExecutions ?? [],
+    ...(input.statusTelemetry ? { statusTelemetry: input.statusTelemetry } : {}),
     scrollStates,
     keyboardHints: keyboardHints(layout),
     frameLineBudget: lineBudgetFor(layout)
@@ -541,7 +545,7 @@ function projectRegions(
   pluginShelf: ChatTuiPluginShelf
 ): readonly ChatTuiWorkbenchRegion[] {
   return [
-    region("status", "Status", true, 0, 1, `framework=${input.frameworkId} mode=${input.mode} renderer=${input.terminalProfile.rendererProfile} input=${input.terminalProfile.inputStrategy} diagnostics=${input.diagnostics.length}`),
+    region("status", "Status", true, 0, 1, statusTelemetryText(input)),
     region("transcript", "Transcript", true, 1, layout === "compact" ? 1 : 2, `turns=${input.turns} session=${input.sessionId ?? "new"} promptReady=${input.promptReady}`),
     region("result-list", "Results", input.composition.resultLists.length > 0, 2, 2, `lists=${input.composition.resultLists.length} active=${activeResultListItemTarget(input.composition)?.id ?? "none"}`),
     region("reasoning", "Reasoning", true, 3, layout === "compact" ? 1 : 2, `records=${rail.recordCount} evidence=${rail.evidenceLinkCount} active=${rail.activeRecordId ?? "none"}`),
@@ -550,6 +554,24 @@ function projectRegions(
     region("activity", "Activity", true, 6, 1, `records=${activityFeed.records.length} overflow=${activityFeed.overflowCount}`),
     region("plugins", "Plugins", true, 7, 1, `readiness=${pluginShelf.readiness} plugins=${pluginShelf.totalPlugins} conflicts=${pluginShelf.conflicts} focus=${focus.activePanel}`)
   ];
+}
+
+function statusTelemetryText(input: ChatTuiWorkbenchInput): string {
+  const base = `framework=${input.frameworkId} mode=${input.mode} renderer=${input.terminalProfile.rendererProfile} input=${input.terminalProfile.inputStrategy} diagnostics=${input.diagnostics.length}`;
+  const telemetry = input.statusTelemetry;
+  if (!telemetry) return base;
+  const cache = telemetry.cache.status === "available" && telemetry.cache.hitRate !== undefined
+    ? `${Math.round(telemetry.cache.hitRate * 100)}%`
+    : telemetry.cache.status;
+  return [
+    `model=${telemetry.modelId}`,
+    `think=${telemetry.thinkingMode}`,
+    `cache=${cache}`,
+    `ctx=${telemetry.context.selectedTokens}/${telemetry.context.hardLimitTokens}`,
+    `budget=${telemetry.context.budgetPressure}`,
+    `prefix=${telemetry.prefix.stability}`,
+    `diagnostics=${input.diagnostics.length}`
+  ].join(" ");
 }
 
 function projectScrollStates(regions: readonly ChatTuiWorkbenchRegion[]): readonly CliPanelScrollState[] {

@@ -1,7 +1,10 @@
 # agent-self-repair-loop Specification
 
 ## Purpose
-TBD - created by archiving change teach-agent-self-repair-loop. Update Purpose after archive.
+Define self-repair loop requirements for detecting failed work, producing repair plans, applying bounded fixes, and recording evidence.
+
+定义 self-repair loop 对失败检测、repair plan、受限修复与证据记录的要求。
+
 ## Requirements
 ### Requirement: Deterministic Failure Classification / 确定性失败分类
 

@@ -248,7 +248,7 @@ export function cliUsageLines(): readonly string[] {
     "  deepseek palette action <action> <target-id> [--output text|json|jsonl]",
     "  deepseek revert preview --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
     "  deepseek revert apply --request <id>|--turn <id>|--session <id> [--path <path>] [--output text|json|jsonl]",
-    "  deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate [--baseline <id>] [--full] [--dry-run] [--live] [--output text|json|jsonl]",
+    "  deepseek diagnostics bundle|release|doctor|verify|refresh|evaluate [--baseline <id>] [--severity info|warning|release-blocking] [--package <name>] [--capability <id>] [--product-ready <capability>] [--full] [--dry-run] [--live] [--output text|json|jsonl]",
     "  deepseek tools-smoke [--output text|jsonl]",
     "  deepseek <init|config|auth|doctor|privacy|verify-install> [--output text|json]",
     "Notes:",
@@ -496,6 +496,14 @@ function parseDiagnosticsInput(command: DiagnosticsCommandName, args: readonly s
   if (maxRecords) input.maxRecords = maxRecords;
   if (args.includes("--external")) input.external = true;
   if (args.includes("--fake-secret")) input.fakeSecret = true;
+  const severities = readRepeatedFlagValues(args, "--severity");
+  if (severities.length > 0) input.severities = severities;
+  const packages = readRepeatedFlagValues(args, "--package");
+  if (packages.length > 0) input.packages = packages;
+  const capabilities = readRepeatedFlagValues(args, "--capability");
+  if (capabilities.length > 0) input.capabilities = capabilities;
+  const productReadyClaims = readRepeatedFlagValues(args, "--product-ready");
+  if (productReadyClaims.length > 0) input.productReadyClaims = productReadyClaims;
   if (command === "refresh") {
     input.full = args.includes("--full");
     input.dryRun = args.includes("--dry-run");
@@ -538,7 +546,11 @@ function extraDiagnosticsArgs(args: readonly string[], knownBooleanFlags: Readon
       value === "--codex-command" ||
       value === "--claude-command" ||
       value === "--baseline-arg" ||
-      value === "--execute-task"
+      value === "--execute-task" ||
+      value === "--severity" ||
+      value === "--package" ||
+      value === "--capability" ||
+      value === "--product-ready"
     ) {
       index += 1;
       continue;

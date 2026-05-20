@@ -2,6 +2,7 @@ import type {
   AgentLoopRequest,
   AgentLoopReferenceContextItem,
   ContextGraphNode,
+  ContextPipelineManifest,
   ContextProjectionResult,
   JsonObject,
   RedactedError,
@@ -61,7 +62,24 @@ export function projectionEventData(projection: ContextProjectionResult): JsonOb
     ...(referenceEvidence?.memoryEvidence ? { memoryEvidence: referenceEvidence.memoryEvidence } : {}),
     ...(referenceEvidence?.codeEvidence ? { codeEvidence: referenceEvidence.codeEvidence } : {}),
     cache: projection.cache,
+    ...(projection.pipeline ? { pipeline: pipelineEventData(projection.pipeline) } : {}),
     replayFingerprint: projection.replayFingerprint
+  };
+}
+
+function pipelineEventData(pipeline: ContextPipelineManifest): JsonObject {
+  return {
+    schemaVersion: pipeline.schemaVersion,
+    manifestId: pipeline.manifestId,
+    pipelineFingerprint: pipeline.pipelineFingerprint,
+    layers: pipeline.layers,
+    prefixHashes: pipeline.prefixHashes,
+    blockCount: pipeline.blocks.length,
+    excludedBlockCount: pipeline.excludedBlocks.length,
+    tokenTotals: pipeline.tokenTotals,
+    cacheHintSummary: pipeline.cacheHintSummary,
+    diagnostics: pipeline.diagnostics,
+    redaction: { class: "internal", fields: ["layers.blockIds", "layers.blockHashes", "prefixHashes.blockIds", "prefixHashes.blockHashes", "diagnostics"] }
   };
 }
 
@@ -150,6 +168,7 @@ export async function* projectAgentLoopContext(
       availableRedactionClasses: ["public", "internal", "sensitive"]
     },
     ...(candidateNodes.length > 0 ? { candidateNodes } : {}),
+    ...(request.contextPipeline?.enabled ? { pipeline: { enabled: true } } : {}),
     trace,
     policy: {
       redaction: "fail-closed",

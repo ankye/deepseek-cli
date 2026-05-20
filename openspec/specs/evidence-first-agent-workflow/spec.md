@@ -1,7 +1,10 @@
 # evidence-first-agent-workflow Specification
 
 ## Purpose
-TBD - created by archiving change evidence-first-agent-workflow. Update Purpose after archive.
+Define evidence-first agent workflow requirements for grounding actions in gathered context, policy decisions, verification, and traceable outcomes.
+
+定义 evidence-first agent workflow 对 context grounding、policy decisions、verification 与可追踪 outcomes 的要求。
+
 ## Requirements
 ### Requirement: Fact-Sensitive Tasks Require Evidence / 事实敏感任务必须搜证
 

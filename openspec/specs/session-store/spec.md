@@ -1,7 +1,10 @@
 # session-store Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define session store requirements for durable sessions, event persistence, resume, fork, redaction, and host-neutral replay.
+
+定义 session store 对 durable sessions、event persistence、resume、fork、redaction 与 host-neutral replay 的要求。
+
 ## Requirements
 ### Requirement: Event-Sourced Session Log
 

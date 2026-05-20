@@ -1,7 +1,10 @@
 # runtime-message-bus Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define runtime message bus requirements for replayable records, bounded pipes, backpressure, subscriptions, redaction, and event ordering.
+
+定义 runtime message bus 对 replayable records、有界 pipes、backpressure、subscriptions、redaction 与 event ordering 的要求。
+
 ## Requirements
 ### Requirement: Internal Runtime Message Bus
 
@@ -202,3 +205,100 @@ runtime message bus 必须能够承载脱敏、可 replay 的 MCP gateway eviden
 - **WHEN** MCP gateway returns discovery, prompt, resource, or tool-call evidence
 - **THEN** the bus records the evidence as replayable metadata only, and no runtime state mutation happens through the bus record itself
 - **中文** 当 MCP gateway 返回 discovery、prompt、resource 或 tool-call evidence 时，bus 只能将其记录为 replayable metadata，不能通过 bus record 本身修改 runtime state。
+
+### Requirement: Pipe Semantics For Runtime Streams / Runtime Streams 的 Pipe 语义
+
+The runtime message bus SHALL govern context, tool-result, plugin, MCP, agent, and runtime event streams as bounded ordered pipes with explicit backpressure and overflow policy.
+
+Runtime message bus 必须将 context、tool-result、plugin、MCP、agent 与 runtime event streams 治理为有界有序 pipes，并具备显式 backpressure 与 overflow policy。
+
+#### Scenario: Stream buffer is bounded / Stream Buffer 有界
+
+- **WHEN** a producer emits stream records faster than a consumer can process them
+- **THEN** the bus applies configured backpressure or overflow behavior and records a replayable diagnostic instead of allowing unbounded memory growth
+- **中文** 当 producer 发出 stream records 的速度超过 consumer 处理能力时，bus 必须应用配置的 backpressure 或 overflow 行为，并记录可 replay diagnostic，而不是允许内存无界增长。
+
+#### Scenario: Ordered stream failure is explicit / 有序流失败显式化
+
+- **WHEN** ordered delivery within a correlation stream cannot be preserved
+- **THEN** the bus emits a typed stream failure event and prevents subscribers from silently observing reordered execution facts
+- **中文** 当 correlation stream 内的有序传递无法保持时，bus 必须发出 typed stream failure event，并防止 subscribers 静默观察到重排后的执行事实。
+
+### Requirement: Backpressure Is Product Evidence / Backpressure 是产品证据
+
+Backpressure events SHALL be included in diagnostics and regression replay when they affect context projection, tool-result continuation, plugin execution, or agent orchestration.
+
+当 backpressure 影响 context projection、tool-result continuation、plugin execution 或 agent orchestration 时，backpressure events 必须纳入 diagnostics 与 regression replay。
+
+#### Scenario: Backpressure affects context / Backpressure 影响 Context
+
+- **WHEN** context stream backpressure causes a block to be summarized, deferred, excluded, or dropped
+- **THEN** diagnostics record the affected block id, stream id, policy decision, and replay fingerprint
+- **中文** 当 context stream backpressure 导致某 block 被摘要、延期、排除或丢弃时，diagnostics 必须记录 affected block id、stream id、policy decision 与 replay fingerprint。
+
+### Requirement: Bounded Runtime Pipes / 有界 Runtime Pipes
+
+Runtime message bus streams SHALL declare capacity, stream identity, ordering, backpressure behavior, overflow policy, and replay impact.
+
+Runtime message bus streams 必须声明 capacity、stream identity、ordering、backpressure behavior、overflow policy 与 replay impact。
+
+#### Scenario: Producer exceeds capacity / Producer 超过容量
+
+- **WHEN** a producer writes beyond a stream capacity
+- **THEN** the bus applies the declared overflow policy and emits a pressure diagnostic or event
+- **中文** 当 producer 写入超过 stream capacity 时，bus 必须应用声明的 overflow policy，并发出 pressure diagnostic 或 event。
+
+### Requirement: Replay-Safe Pressure Handling / Replay-safe Pressure 处理
+
+Backpressure and overflow handling SHALL preserve deterministic replay or fail closed with stable diagnostics.
+
+Backpressure 与 overflow handling 必须保留确定性 replay，或以稳定 diagnostics fail closed。
+
+#### Scenario: Lossless stream cannot drop records / Lossless Stream 不能丢记录
+
+- **WHEN** a lossless replay-affecting stream reaches capacity
+- **THEN** the bus blocks, backpressures, or fails closed instead of silently dropping records
+- **中文** 当 lossless 且影响 replay 的 stream 达到容量时，bus 必须 block、backpressure 或 fail closed，而不是静默丢弃记录。
+
+### Requirement: Pressure Diagnostics / Pressure 诊断
+
+The bus SHALL expose pressure state, blocked producers, overflow counts, compaction counts, and fail-closed stream ids to diagnostics.
+
+Bus 必须向 diagnostics 暴露 pressure state、blocked producers、overflow counts、compaction counts 与 fail-closed stream ids。
+
+#### Scenario: Diagnostics shows bus pressure / Diagnostics 显示 Bus 压力
+
+- **WHEN** a runtime stream is under sustained pressure
+- **THEN** diagnostics identifies the stream, producer, consumer, capacity, current depth, policy, and suggested action
+- **中文** 当 runtime stream 持续处于 pressure 时，diagnostics 必须识别 stream、producer、consumer、capacity、current depth、policy 与建议动作。
+
+### Requirement: Context Stream Backpressure / 上下文流 Backpressure
+
+The runtime message bus SHALL support bounded context stream and backpressure events for transferring or projecting context blocks, tool-result summaries, and pipeline manifests.
+
+Runtime message bus 必须支持有界 context stream 与 backpressure events，用于传输或投影 context blocks、tool-result summaries 与 pipeline manifests。
+
+#### Scenario: Large stream triggers backpressure / 大型流触发 Backpressure
+
+- **WHEN** a producer emits context blocks or tool-result summaries faster than a subscriber or buffer policy can accept
+- **THEN** the bus emits a structured backpressure event and applies the configured overflow policy instead of growing unbounded memory
+- **中文** 当 producer 发出 context blocks 或 tool-result summaries 的速度超过 subscriber 或 buffer policy 可接受范围时，bus 必须发出结构化 backpressure event，并应用配置的 overflow policy，而不是无限增长内存。
+
+#### Scenario: Backpressure is replayable / Backpressure 可 Replay
+
+- **WHEN** backpressure changes which context blocks are delivered, summarized, or deferred
+- **THEN** the bus record includes correlation id, stream id, affected block ids, overflow policy, and redaction metadata
+- **中文** 当 backpressure 改变哪些 context blocks 被传递、摘要或延期时，bus record 必须包含 correlation id、stream id、affected block ids、overflow policy 与 redaction metadata。
+
+### Requirement: Ordered Pipeline Stream Delivery / 有序管道流传递
+
+The runtime message bus SHALL preserve declared pipeline order within a stream correlation.
+
+Runtime message bus 必须在 stream correlation 内保持声明的 pipeline order。
+
+#### Scenario: Block delivery order is stable / 块传递顺序稳定
+
+- **WHEN** context blocks from the same pipeline manifest are published through the bus
+- **THEN** subscribers observe blocks in manifest order or receive a structured stream-failed event
+- **中文** 当同一 pipeline manifest 的 context blocks 通过 bus 发布时，subscribers 必须按 manifest order 观察 blocks，或者收到结构化 stream-failed event。
+

@@ -11,6 +11,7 @@ describe("acceptance evidence index", () => {
     assert.equal(index.includes("| Index provider text evidence rendering |"), true);
     assert.equal(index.includes("| CLI acceptance evidence refresh |"), true);
     assert.equal(index.includes("| CLI task completion evaluation |"), true);
+    assert.equal(index.includes("| Platform contracts UAPI compatibility |"), true);
     assert.equal(index.includes("| CLI mode and agent completion matrix |"), true);
     assert.equal(index.includes("| CLI release diagnostics gate |"), true);
     assert.equal(index.includes("| CLI release verify decision |"), true);
@@ -24,6 +25,7 @@ describe("acceptance evidence index", () => {
     assert.equal(index.includes("tests/contracts/adversarial-mode-fixtures.test.ts"), true);
     assert.equal(index.includes("tests/matrix/cli-mode-terminal-matrix.test.ts"), true);
     assert.equal(index.includes("tests/contracts/index-provider-contracts.test.ts"), true);
+    assert.equal(index.includes("tests/contracts/platform-contracts-uapi.test.ts"), true);
     assert.equal(index.includes("tests/e2e/local-readiness-cli.test.ts"), true);
     assert.equal(index.includes("src/apps/cli/test/cli.test.ts"), true);
   });

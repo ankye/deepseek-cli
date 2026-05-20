@@ -10,21 +10,22 @@ The execution model is the contract that keeps hosts, models, tools, policies, s
 sequenceDiagram
   participant Host
   participant Evidence
-  participant Prompt
   participant Context
+  participant Prompt
   participant Runtime
   participant Policy
   participant Scheduler
   participant Capability
+  participant Model
   participant Session
   participant Bus
 
   Host->>Runtime: request
   Runtime->>Evidence: classify fact sensitivity
   Evidence-->>Runtime: classification + evidence plan + selected evidence
-  Runtime->>Context: project context
-  Context-->>Runtime: redacted projection
-  Runtime->>Prompt: assemble exact prompt + evidence + tools
+  Runtime->>Context: project immutable context layers
+  Context-->>Runtime: context manifest + prefix hashes + cache hints
+  Runtime->>Prompt: assemble stable sections + evidence + tools
   Prompt-->>Runtime: messages + fingerprint + budget report
   Runtime->>Runtime: build execution envelope
   Runtime->>Policy: policy request
@@ -32,8 +33,10 @@ sequenceDiagram
   Runtime->>Scheduler: governed task
   Scheduler->>Capability: execute
   Capability-->>Runtime: result + evidence
+  Runtime->>Model: dispatch through model gateway
+  Model-->>Runtime: response + normalized cache usage
   Runtime->>Session: append event
-  Runtime->>Bus: publish replayable event
+  Runtime->>Bus: publish replayable event + status telemetry
   Bus-->>Host: render event
 ```
 
@@ -53,6 +56,27 @@ The current implementation makes generated webpage/product artifacts evidence-ch
 
 当前实现先让生成网页/产品产物可证据验收。更广泛的确定性 claim extraction 与 unsupported-claim retry 仍属于后续 rollout 工作。
 
+## Context Pipeline Phase / 上下文管道阶段
+
+Context projection is becoming a cache-optimized pipe instead of a monolithic prompt fragment. The runtime asks `context-engine` for a manifest of immutable layers, then passes only that manifest and bounded evidence to `prompt-assembly`.
+
+上下文投影正在从单体 prompt 片段升级为缓存优化管道。runtime 向 `context-engine` 请求不可变分层 manifest，然后只把该 manifest 和有界证据交给 `prompt-assembly`。
+
+The layer order is part of the execution ABI:
+
+层顺序是执行 ABI 的一部分：
+
+| Layer / 层 | Stability / 稳定性 | Rule / 规则 |
+| --- | --- | --- |
+| Kernel prefix / 内核前缀 | Highest / 最高 | Runtime contracts, stable tool summaries, and system rules change rarely. / runtime 契约、稳定工具摘要与系统规则很少变化。 |
+| Project prefix / 项目前缀 | High / 高 | Repo facts, AGENTS.md, package map, and project memory are content-addressed. / 仓库事实、AGENTS.md、包地图与项目记忆按内容寻址。 |
+| Session pipe / 会话管道 | Append-oriented / 追加为主 | Turn summaries and bounded tool evidence append or compact contiguous ranges. / 回合摘要和有界工具证据追加，或压缩连续区间。 |
+| Current turn tail / 当前回合尾部 | Volatile / 易变 | Exact user input, active selection, and full current tool output stay at the tail. / 精确用户输入、活动选择与当前完整工具输出留在尾部。 |
+
+Runtime does not translate cache hints into provider-specific wire fields. `model-gateway` owns that translation and reports normalized cache usage back as telemetry.
+
+runtime 不把 cache hints 翻译成 provider-specific wire fields。该翻译由 `model-gateway` 负责，并把归一化 cache usage 作为 telemetry 回传。
+
 ## Prompt Assembly Phase / Prompt Assembly 阶段
 
 `@deepseek/prompt-assembly` is the only package that weaves model-visible prompt sections for the runtime agent loop.
@@ -65,6 +89,10 @@ The current implementation makes generated webpage/product artifacts evidence-ch
 - Runtime emits `prompt.assembled` before model dispatch so hosts and golden tests can observe prompt structure without owning prompt logic. / runtime 在模型调用前发出 `prompt.assembled`，让 host 与 golden tests 可观测 prompt 结构，但不拥有 prompt 逻辑。
 
 ## Projection Cache Tiers / Projection 缓存的两级存储
+
+These tiers describe the current projection-cache implementation. They remain compatibility behavior while the layered context pipeline and prefix-cache manifest are enabled on the main path.
+
+以下两级描述当前 projection-cache 实现。在分层上下文管道与 prefix-cache manifest 接入主路径前，它们保持为兼容行为。
 
 `InMemoryContextEngine` resolves `projectGraph` through two tiers so that the same request is served identically whether or not a shared cache is wired in.
 
@@ -140,6 +168,9 @@ runtime events 是 host 和测试的集成边界。
 | Event kind / 事件类型 | Meaning / 含义 |
 | --- | --- |
 | `context.projection.*` | Context projection started/completed/degraded/rejected. / 上下文投影开始、完成、降级、拒绝。 |
+| `context.pipeline.*` | Layered context manifest, prefix hashes, drift, and compaction status. / 分层 context manifest、prefix hash、漂移与压缩状态。 |
+| `model.cache.*` | Provider-neutral cache hints and normalized cache usage. / provider-neutral cache hints 与归一化 cache usage。 |
+| `runtime.status.telemetry` | Local statusline inputs such as model, thinking mode, context size, cache hit rate, and budget pressure. / 本地 statusline 输入，例如模型、思考模式、上下文大小、缓存命中率与预算压力。 |
 | `evidence.classified` | Task evidence sensitivity and required fact classes. / 任务证据敏感度与 required fact classes。 |
 | `evidence.plan.created` | Runtime-created evidence plan before model dispatch. / 模型调用前 runtime 创建的 evidence plan。 |
 | `evidence.selected` | Bounded selected evidence summary and source coverage. / 有界已选证据摘要与 source coverage。 |
@@ -147,7 +178,10 @@ runtime events 是 host 和测试的集成边界。
 | `kernel.request.accepted` | Runtime accepted a request. / runtime 接受请求。 |
 | `workflow.opened` / `workflow.closed` | Workflow lifecycle. / workflow 生命周期。 |
 | `execution.envelope.created` | Envelope was built and persisted. / envelope 已构建并持久化。 |
-| `policy.decided` | Policy action and audit evidence. / policy 动作与审计证据。 |
+| `policy.decided` | Policy action, normalized decision record, audit id, replay behavior, and redacted evidence. / policy 动作、标准化 decision record、audit id、replay behavior 与脱敏证据。 |
+| `agent.scope.evaluated` | Subagent namespace, quota, and lineage handoff passed before worker launch. / worker 启动前 subagent namespace、quota 与 lineage handoff 通过。 |
+| `agent.scope.denied` | Subagent work was rejected for out-of-scope path/tool or denied namespace expansion. / subagent work 因 path/tool 越界或 namespace expansion 被拒绝而停止。 |
+| `agent.quota.exhausted` | Subagent quota was exhausted before work could proceed. / subagent quota 在 work 执行前耗尽。 |
 | `sandbox.selected` | Selected sandbox profile. / 选中的 sandbox profile。 |
 | `scheduler.*` | Queue, start, complete, fail, timeout, cancel. / 排队、启动、完成、失败、超时、取消。 |
 | `capability.*` | Capability start, output, completion, failure. / capability 启动、输出、完成、失败。 |
@@ -163,6 +197,7 @@ host 可以：
 - request approval / 请求审批
 - send cancellation / 发送取消
 - project host-specific context as protocol data / 将 host-specific context 投影为协议数据
+- render cache-aware status surfaces from runtime telemetry / 从 runtime telemetry 渲染缓存感知状态面
 
 Hosts must not:
 
@@ -172,3 +207,4 @@ host 不得：
 - own workflow state machines / 拥有 workflow 状态机
 - bypass policy or sandbox / 绕过 policy 或 sandbox
 - serialize raw secrets / 序列化 raw secret
+- compute cache hit rate, context size, selected model, or thinking mode from runtime internals / 从 runtime internals 自行计算缓存命中率、上下文大小、模型或思考模式

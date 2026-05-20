@@ -1,7 +1,10 @@
 # distribution-update-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-future-ready-cli-framework. Update Purpose after archive.
+Define distribution update management requirements for update metadata, channels, dry-run evidence, rollback, and future signed catalog promotion.
+
+定义 distribution update management 对 update metadata、channels、dry-run evidence、rollback 与未来 signed catalog promotion 的要求。
+
 ## Requirements
 ### Requirement: Distribution and Update Boundary
 

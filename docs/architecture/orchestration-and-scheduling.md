@@ -15,6 +15,7 @@ flowchart LR
   Scheduler[Scheduler / 调度器]
   Agent[Agent Manager / Agent 管理]
   Capability[Capability Executor / 能力执行]
+  ContextPipe[Context Pipe / 上下文管道]
   Evidence[Evidence / 证据]
   Replay[Replay / 回放]
 
@@ -22,7 +23,7 @@ flowchart LR
   Scheduler --> Agent
   Scheduler --> Capability
   Agent --> Capability
-  Capability --> Evidence --> Replay
+  Capability --> Evidence --> ContextPipe --> Replay
 ```
 
 ## Core Contracts / 核心契约
@@ -32,6 +33,7 @@ flowchart LR
 | Execution envelope / 执行信封 | Carries caller, capability, session, trace, side effects, timeout, retry, secret exposure, resource scope, sandbox requirements, and audit metadata. / 携带 caller、capability、session、trace、副作用、超时、重试、secret、resource、sandbox、audit。 |
 | Workflow graph / 工作流图 | Represents task decomposition, dependencies, phases, and terminal criteria. / 表示任务拆解、依赖、阶段和完成条件。 |
 | Task event / 任务事件 | Represents queued, running, completed, failed, cancelled, timed-out, or backpressure states. / 表示 queued、running、completed、failed、cancelled、timed-out、backpressure 状态。 |
+| Pipe event / 管道事件 | Represents ordered context/tool/plugin/agent stream state, queue pressure, compaction, or overflow decisions. / 表示有序 context/tool/plugin/agent stream 状态、队列压力、压缩或溢出决策。 |
 | Agent definition / Agent 定义 | Declares agent role, scope, tools, budget, model, and lifecycle. / 声明 agent 角色、范围、工具、预算、模型和生命周期。 |
 | Resource lock / 资源锁 | Prevents conflicting writes or process scopes from running concurrently. / 防止冲突写入或进程范围并发运行。 |
 | Audit evidence / 审计证据 | Records policy, sandbox, platform, and redaction decisions in replayable form. / 以可 replay 形式记录 policy、sandbox、platform、redaction 决策。 |
@@ -78,6 +80,7 @@ The scheduler decides **when work runs**.
 | --- | --- | --- |
 | Concurrency / 并发 | Priority, locks, queue limit, agent scope | Independent tasks may run concurrently; conflicting locks serialize. / 独立任务并行，锁冲突串行。 |
 | Backpressure / 背压 | Queue size, active tasks, caller | Overload becomes typed failure, not unbounded memory growth. / 过载变 typed failure，不无限增长内存。 |
+| Pipe pressure / 管道压力 | Pipe id, layer, queue depth, overflow policy | Context and tool-result streams compact, defer, or fail with replayable evidence. / context 与 tool-result streams 通过可 replay 证据进行压缩、延迟或失败。 |
 | Timeout / 超时 | `timeoutMs`, `deadlineAt` | Task emits typed timeout and closes workflow deterministically. / 发出 typed timeout 并确定性关闭 workflow。 |
 | Cancellation / 取消 | `invocationId`, `taskId`, reason | Host or workflow can propagate cancellation through AbortSignal. / host 或 workflow 通过 AbortSignal 传播取消。 |
 | Retry / 重试 | Retry policy, idempotency key, failure class | Retry only when policy says the side effect is safe. / 仅在策略认为副作用安全时重试。 |
@@ -92,6 +95,7 @@ The scheduler decides **when work runs**.
 | Concurrency scheduler | Queueing, locks, fairness, timeout, cancellation, backpressure. / 排队、锁、公平性、超时、取消、背压。 | Model/tool reasoning or host rendering. / 模型/工具推理或 host 渲染。 |
 | Agent management | Agent lifecycle, tools, budget, scope, parent-child lineage. / agent 生命周期、工具、预算、范围、父子 lineage。 | Bypass scheduler for direct execution. / 绕过 scheduler 直接执行。 |
 | Runtime kernel | Envelope creation, policy preflight, scheduler handoff, event persistence. / envelope 创建、policy preflight、调度交接、事件持久化。 | Own product UI state. / 拥有产品 UI 状态。 |
+| Context pipeline | Layered context manifests, prefix hashes, compaction evidence, and cache telemetry. / 分层 context manifest、prefix hash、压缩证据与 cache telemetry。 | Schedule executable side effects or render host UI. / 调度可执行副作用或渲染 host UI。 |
 
 ## Multi-Agent Direction / 多 Agent 方向
 

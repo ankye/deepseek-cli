@@ -87,6 +87,9 @@ export type RuntimeEventKind =
   | "agent.phase.plan.created"
   | "agent.phase.skipped"
   | "agent.loop.budget.consumed"
+  | "agent.scope.evaluated"
+  | "agent.scope.denied"
+  | "agent.quota.exhausted"
   | "agent.worker.launched"
   | "agent.worker.continued"
   | "agent.worker.stopped"
@@ -141,6 +144,7 @@ export type RuntimeEventKind =
   | "model.done"
   | "model.blocked"
   | "usage.updated"
+  | "runtime.status.telemetry"
   | "turn.completed"
   | "hooks.invoked"
   | "skill.activated"
@@ -171,6 +175,7 @@ export type KernelErrorCode =
   | "KERNEL_INVALID_TIMEOUT"
   | "KERNEL_MALFORMED_TRACE"
   | "KERNEL_POLICY_DENIED"
+  | "KERNEL_POLICY_DECISION_MISSING"
   | "KERNEL_SCHEDULER_TIMEOUT"
   | "KERNEL_QUEUE_BACKPRESSURE"
   | "KERNEL_CANCELLED"
@@ -401,6 +406,9 @@ export interface AgentLoopRequest extends JsonObject {
   readonly outputContract?: AgentLoopOutputContract;
   readonly referenceContext?: AgentLoopReferenceContext;
   readonly trace?: TraceContext;
+  readonly contextPipeline?: {
+    readonly enabled?: boolean;
+  };
 }
 
 export interface AgentLoopControl {
@@ -495,6 +503,9 @@ export interface RunTurnRequest {
   readonly sessionId?: SessionId;
   readonly prompt: string;
   readonly agentId?: AgentId;
+  readonly contextPipeline?: {
+    readonly enabled?: boolean;
+  };
 }
 
 export interface RunAgentLoopRequest extends AgentLoopRequest {}

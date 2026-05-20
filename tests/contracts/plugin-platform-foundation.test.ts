@@ -27,15 +27,19 @@ import {
   toolContribution,
   workflowTemplate
 } from "@deepseek/plugin-api";
+import { DefaultPolicyEngine } from "@deepseek/policy-sandbox";
 import {
   PLUGIN_API_LEVELS,
   PLUGIN_CONTRIBUTION_KINDS,
   PLUGIN_LIFECYCLE_STATES,
+  createGovernedModuleFixtures,
+  createGovernedModulePolicyRequest,
   createPluginAuditRecord,
   createPluginHealthRecord,
   createPluginLifecycleEvent,
   createPluginLifecycleStatePath,
   createPluginLifecycleTransition,
+  evaluateGovernedModulePolicies,
   createPluginRollbackRecord,
   detectPluginContributionConflicts,
   normalizePluginHookContribution,
@@ -43,6 +47,7 @@ import {
   projectPluginDiagnosticSurfaces,
   projectPluginInspector,
   resolvePluginDependencyGraph,
+  validateGovernedModuleManifest,
   validatePluginManifestMetadata
 } from "@deepseek/plugin-system";
 
@@ -209,5 +214,44 @@ describe("complete plugin platform foundation", () => {
     assert.equal(PLUGIN_LIFECYCLE_HOOK_POINTS.includes(hook.point as (typeof PLUGIN_LIFECYCLE_HOOK_POINTS)[number]), true);
     assert.equal(hook.source, "plugin");
     assert.equal(hook.metadata?.pluginId, manifest.id);
+  });
+
+  it("governs modules through public contract paths, policy handoff, disable, and unload fixtures", async () => {
+    const fixtures = createGovernedModuleFixtures();
+    const scenarios = new Set(fixtures.map((fixture) => fixture.scenario));
+    const valid = fixtures.find((fixture) => fixture.scenario === "valid-module");
+    const missingPermission = fixtures.find((fixture) => fixture.scenario === "missing-permission");
+    const privateAccess = fixtures.find((fixture) => fixture.scenario === "private-object-access");
+    const disabled = fixtures.find((fixture) => fixture.scenario === "disabled-module");
+    const unloaded = fixtures.find((fixture) => fixture.scenario === "unloaded-module");
+
+    for (const scenario of ["valid-module", "missing-permission", "private-object-access", "disabled-module", "unloaded-module"]) {
+      assert.equal(scenarios.has(scenario as never), true, scenario);
+    }
+    assert.ok(valid);
+    assert.equal(validateGovernedModuleManifest(valid.module).length, 0);
+    assert.equal(valid.module.contractPaths.some((path) => path.kind === "command" && path.publicApi.includes("platform-contracts")), true);
+    assert.equal(valid.module.contractPaths.some((path) => path.kind === "mcp-bridge" && path.policyFamily === "mcp"), true);
+
+    assert.ok(missingPermission);
+    const missingPolicies = evaluateGovernedModulePolicies(missingPermission.module);
+    const denied = missingPolicies.find((evaluation) => evaluation.missingPermissions.includes("network:read"));
+    assert.ok(denied);
+    assert.equal(denied.decision, "deny");
+    const policy = new DefaultPolicyEngine();
+    const contribution = missingPermission.module.contributions[0];
+    assert.ok(contribution);
+    const request = createGovernedModulePolicyRequest(missingPermission.module, contribution);
+    const decision = await policy.decide(request);
+    assert.notEqual(decision.action, "allow");
+    assert.equal(decision.record?.operationFamily, "mcp");
+
+    assert.ok(privateAccess);
+    assert.equal(privateAccess.diagnostics.some((diagnostic) => diagnostic.category === "private-access" && diagnostic.releaseBlocking), true);
+    assert.ok(disabled);
+    assert.equal(disabled.lifecycleRecords.some((record) => record.nextState === "disabled" && record.cleanupRequired), true);
+    assert.ok(unloaded);
+    assert.equal(unloaded.lifecycleRecords.some((record) => record.nextState === "unloaded"), true);
+    assert.equal(unloaded.lifecycleRecords.some((record) => record.nextState === "cleanup-completed" && record.cleanupCompleted), true);
   });
 });

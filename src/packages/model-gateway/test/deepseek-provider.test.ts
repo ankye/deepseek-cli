@@ -8,6 +8,7 @@ import {
   FixtureModelProviderTransport,
   StaticCredentialProvider,
   defaultDeepSeekProfile,
+  deepSeekOpenAIProviderConfig,
   estimateModelUsageCostMicros,
   normalizeDeepSeekChunk,
   parseDeepSeekJsonOutputResponse,
@@ -325,6 +326,106 @@ describe("DeepSeek OpenAI provider", () => {
     assert.deepEqual(usage?.kind === "usage" ? usage.metadata?.cache : undefined, { hitTokens: 7, missTokens: 3 });
     assert.equal(usage?.kind === "usage" ? usage.metadata?.reasoningTokens : undefined, 2);
     assert.equal(events.every((event) => event.kind !== "tool-call" || event.provider?.provider === "deepseek"), true);
+  });
+
+  it("attaches normalized cache usage to request pipeline fingerprints", async () => {
+    const transport = new FixtureModelProviderTransport([
+      {
+        data: {
+          choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 2,
+            prompt_cache_hit_tokens: 7,
+            prompt_cache_miss_tokens: 3
+          }
+        }
+      }
+    ]);
+    const provider = new DeepSeekOpenAIProvider({ transport, credentials: new StaticCredentialProvider("sk-test") });
+    const events = await collect(provider.stream({
+      profile: defaultDeepSeekProfile,
+      prompt: "hello",
+      metadata: {
+        contextPipeline: {
+          pipelineFingerprint: "pipeline:test"
+        }
+      }
+    }));
+
+    const usage = events.find((event) => event.kind === "usage");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.status : undefined, "available");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.pipelineFingerprint : undefined, "pipeline:test");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.hitRate : undefined, 0.7);
+  });
+
+  it("marks provider cache metrics unavailable when a fingerprint has no cache counts", async () => {
+    const transport = new FixtureModelProviderTransport([
+      {
+        data: {
+          choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 2
+          }
+        }
+      }
+    ]);
+    const provider = new DeepSeekOpenAIProvider({ transport, credentials: new StaticCredentialProvider("sk-test") });
+    const events = await collect(provider.stream({
+      profile: defaultDeepSeekProfile,
+      prompt: "hello",
+      metadata: { contextPipeline: { pipelineFingerprint: "pipeline:test" } }
+    }));
+
+    const usage = events.find((event) => event.kind === "usage");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.status : undefined, "unavailable");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.pipelineFingerprint : undefined, "pipeline:test");
+    assert.equal(usage?.kind === "usage" ? usage.metadata?.cache?.hitTokens : undefined, undefined);
+  });
+
+  it("projects provider cache hints only when capability metadata supports them", async () => {
+    const metadata = {
+      contextPipeline: {
+        pipelineFingerprint: "pipeline:test",
+        cacheHintSummary: {
+          stable: 2,
+          ephemeral: 1,
+          noStore: 0,
+          ttlBound: 0
+        }
+      }
+    };
+    const unsupportedTransport = new FixtureModelProviderTransport([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }]);
+    const unsupported = new DeepSeekOpenAIProvider({ transport: unsupportedTransport, credentials: new StaticCredentialProvider("sk-test") });
+    await collect(unsupported.stream({ profile: defaultDeepSeekProfile, prompt: "hello", metadata }));
+
+    assert.equal(unsupportedTransport.requests[0]?.body.cache_control, undefined);
+
+    const supportedTransport = new FixtureModelProviderTransport([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }]);
+    const supported = new DeepSeekOpenAIProvider({
+      transport: supportedTransport,
+      credentials: new StaticCredentialProvider("sk-test"),
+      config: {
+        ...deepSeekOpenAIProviderConfig,
+        cacheHints: {
+          explicitPrefixCacheHints: true,
+          supportedPolicies: ["stable", "ephemeral"],
+          maxCacheHintBlocks: 8
+        }
+      }
+    });
+    await collect(supported.stream({ profile: defaultDeepSeekProfile, prompt: "hello", metadata }));
+
+    assert.deepEqual(supportedTransport.requests[0]?.body.cache_control, {
+      type: "deepseek-prefix-cache",
+      pipeline_fingerprint: "pipeline:test",
+      stable_blocks: 2,
+      ephemeral_blocks: 1,
+      no_store_blocks: 0,
+      ttl_blocks: 0,
+      max_hint_blocks: 8
+    });
   });
 
   it("normalizes provider error chunks and transport failures", async () => {

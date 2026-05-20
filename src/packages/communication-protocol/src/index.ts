@@ -3,9 +3,11 @@ import type {
   JsonObject,
   ProtocolCodec,
   ProtocolEnvelope,
+  ProtocolPipelineMetadata,
   ProtocolPipelineStage,
   ProtocolResponse,
   ProtocolRouter,
+  ProtocolStreamMetadata,
   ProtocolTraceFactory,
   RuntimeRequest
 } from "@deepseek/platform-contracts";
@@ -116,6 +118,8 @@ export function createProtocolEnvelope(input: {
   payload: JsonObject;
   traceFactory?: ProtocolTraceFactory;
   sessionId?: ProtocolEnvelope["routing"]["sessionId"];
+  stream?: ProtocolStreamMetadata;
+  pipeline?: ProtocolPipelineMetadata;
 }): ProtocolEnvelope {
   const traceFactory = input.traceFactory ?? new DeterministicTraceFactory();
   const correlationId = asId<"correlation">(`corr-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -136,6 +140,8 @@ export function createProtocolEnvelope(input: {
       target: input.target ?? "runtime",
       ...(input.sessionId ? { sessionId: input.sessionId } : {})
     },
+    ...(input.stream ? { stream: input.stream } : {}),
+    ...(input.pipeline ? { pipeline: input.pipeline } : {}),
     payload: input.payload
   };
 }

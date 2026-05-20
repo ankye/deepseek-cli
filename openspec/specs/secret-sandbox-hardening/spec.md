@@ -1,7 +1,10 @@
 # secret-sandbox-hardening Specification
 
 ## Purpose
-TBD - created by archiving change harden-secret-and-sandbox-policy. Update Purpose after archive.
+Define secret and sandbox hardening requirements for credential redaction, forbidden bypasses, sandbox metadata, and safe test fixtures.
+
+定义 secret and sandbox hardening 对 credential redaction、forbidden bypasses、sandbox metadata 与安全 test fixtures 的要求。
+
 ## Requirements
 ### Requirement: Platform Secret And Sandbox Hardening Contract / 平台 Secret 与 Sandbox Hardening 契约
 

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.0.0",
+  "capability": "context-pipeline-prefix-cache",
+  "status": "implemented",
+  "implementedSlices": [
+    "provider-neutral ContextBlock, ContextPipelineManifest, ContextPrefixHash, cache hint, cache evidence, and statusline telemetry DTOs",
+    "compatibility projector from ContextProjectionResult.selectedNodes into kernel/project/session/current-turn layers",
+    "deterministic block hashes, layer prefix hashes, pipeline fingerprints, and manifest comparison",
+    "content-addressed context block and manifest cache entries",
+    "prompt assembly manifest consumer with ordered pipeline evidence and fallback behavior",
+    "runtime compatibility switch for contextPipeline.enabled carrying evidence into prompt assembly and model metadata",
+    "model-gateway cache hit/miss normalization attached to pipeline fingerprints",
+    "provider cache hint serialization gated by explicit capability metadata",
+    "runtime-message-bus context pipeline stream payloads with replay-safe backpressure metadata",
+    "session compact-boundary replacement that records source block hashes",
+    "structured prefix drift and high-priority exclusion diagnostics",
+    "CLI/TUI bounded statusline rendering for cache hit rate, model, thinking mode, context size, and budget pressure",
+    "additive protocol envelope pipeline metadata without raw context content"
+  ],
+  "verification": [
+    "openspec validate --specs --strict",
+    "openspec/changes/archive/2026-05-20-introduce-context-pipeline-prefix-cache",
+    "openspec/specs/context-pipeline-prefix-cache/spec.md",
+    "npm run typecheck",
+    "npm run lint",
+    "npx tsx --test src/packages/context-engine/src/index.test.ts src/packages/memory-cache-management/src/index.test.ts src/packages/prompt-assembly/test/prompt-assembly.test.ts src/packages/model-gateway/test/deepseek-provider.test.ts src/packages/runtime/test/runtime.test.ts src/packages/runtime-message-bus/test/bus.test.ts tests/contracts/chat-tui-framework.test.ts src/packages/communication-protocol/test/protocol.test.ts tests/golden/context-pipeline-prefix-cache-replay.test.ts"
+  ],
+  "remainingWork": [
+    "provider-specific cache-control wire format must remain disabled unless a provider profile explicitly declares support",
+    "future hosts may add richer diagnostics views for prefix evidence, but current CLI/TUI statusline is bounded and local"
+  ],
+  "redaction": {
+    "class": "internal"
+  }
+}

@@ -1,0 +1,11 @@
+# Platform contracts UAPI compatibility
+
+Command: npx tsx --test tests/contracts/platform-contracts-uapi.test.ts
+Exit Code: 0
+
+Evidence:
+- UAPI inventory covers persisted, replayed, host-facing, and plugin-facing platform contract surfaces.
+- Breaking persisted UAPI changes without migration evidence are rejected with stable diagnostics.
+- Breaking persisted UAPI changes with versioned migration and replay evidence pass.
+- Persisted additive changes require a versioned reader or fail-closed rejection decision.
+- Release diagnostics expose `governance.platform-contracts-uapi`.

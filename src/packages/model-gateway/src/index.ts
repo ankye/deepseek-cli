@@ -84,8 +84,9 @@ export interface DeepSeekOpenAIProviderOptions {
 
 export class DeterministicMockModelGateway implements ModelGateway {
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+    const pipelineFingerprint = requestPipelineFingerprint(request.metadata);
     yield { kind: "delta", text: `DeepSeek mock response: ${lastUserMessageContent(request)}` };
-    yield {
+    yield attachPipelineCacheEvidence({
       kind: "usage",
       inputTokens: await this.countTokens(request.prompt, request.profile),
       outputTokens: 6,
@@ -93,7 +94,7 @@ export class DeterministicMockModelGateway implements ModelGateway {
         inputTokens: await this.countTokens(request.prompt, request.profile),
         outputTokens: 6
       }
-    };
+    }, pipelineFingerprint);
     yield { kind: "finish", reason: "stop" };
     yield { kind: "done" };
   }
@@ -139,6 +140,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
 
   async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
     const provider = this.providerMetadata(request.profile);
+    const pipelineFingerprint = requestPipelineFingerprint(request.metadata);
     if (!this.options.transport) {
       yield { kind: "error", error: providerError("PROVIDER_TRANSPORT_NOT_CONFIGURED", "DeepSeek provider transport is not configured.", false), provider };
       return;
@@ -156,10 +158,10 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
     try {
       for await (const chunk of this.options.transport.stream(providerRequest, request.signal ? { signal: request.signal } : undefined)) {
         for (const event of normalizeDeepSeekChunk(chunk, provider, accumulator)) {
-          yield event;
+          yield attachPipelineCacheEvidence(event, pipelineFingerprint);
         }
       }
-      for (const event of accumulator.flush(provider)) yield event;
+      for (const event of accumulator.flush(provider)) yield attachPipelineCacheEvidence(event, pipelineFingerprint);
       yield { kind: "done", provider };
     } catch (error) {
       yield {
@@ -182,6 +184,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
     const reasoningEffort = request.reasoning?.enabled === false
       ? undefined
       : deepSeekReasoningEffort(request.reasoning?.providerEffort ?? request.reasoning?.effort);
+    const providerCacheControl = providerCacheControlFor(request, this.config);
     const body: JsonObject = {
       model: request.profile.model,
       messages: providerMessagesFrom(request),
@@ -192,6 +195,7 @@ export class DeepSeekOpenAIProvider implements ModelGateway {
       ...(request.reasoning ? { thinking: { type: request.reasoning.enabled === false ? "disabled" : "enabled" } } : {}),
       ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       ...(validateDeepSeekJsonOutputRequest(request).ok && request.output?.format === "json_object" ? { response_format: { type: "json_object" } } : {}),
+      ...(providerCacheControl ? { cache_control: providerCacheControl } : {}),
       ...(request.profile.providerOptions ? request.profile.providerOptions : {})
     };
 
@@ -823,6 +827,55 @@ function normalizeUsage(value: unknown, provider: ModelProviderEventMetadata): M
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
     ...(hitTokens !== undefined || missTokens !== undefined ? { cache: { ...(hitTokens !== undefined ? { hitTokens } : {}), ...(missTokens !== undefined ? { missTokens } : {}) } } : {}),
     provider
+  };
+}
+
+function attachPipelineCacheEvidence(event: ModelStreamEvent, pipelineFingerprint: string | undefined): ModelStreamEvent {
+  if (!pipelineFingerprint || event.kind !== "usage") return event;
+  const metadata = event.metadata ?? { inputTokens: event.inputTokens, outputTokens: event.outputTokens };
+  const cache = metadata.cache;
+  const hitTokens = cache?.hitTokens;
+  const missTokens = cache?.missTokens;
+  const denominator = (hitTokens ?? 0) + (missTokens ?? 0);
+  return {
+    ...event,
+    metadata: {
+      ...metadata,
+      cache: {
+        ...(cache ?? {}),
+        status: hitTokens !== undefined || missTokens !== undefined ? "available" : "unavailable",
+        ...(denominator > 0 ? { hitRate: (hitTokens ?? 0) / denominator } : {}),
+        pipelineFingerprint
+      }
+    }
+  };
+}
+
+function requestPipelineFingerprint(metadata: JsonObject | undefined): string | undefined {
+  const direct = metadata?.pipelineFingerprint;
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  const pipeline = metadata?.contextPipeline;
+  if (isJsonObject(pipeline) && typeof pipeline.pipelineFingerprint === "string" && pipeline.pipelineFingerprint.length > 0) {
+    return pipeline.pipelineFingerprint;
+  }
+  return undefined;
+}
+
+function providerCacheControlFor(request: ModelRequest, config: ModelProviderConfig): JsonObject | undefined {
+  const capability = request.profile.cacheHints ?? config.cacheHints;
+  if (!capability?.explicitPrefixCacheHints) return undefined;
+  const pipeline = isJsonObject(request.metadata?.contextPipeline) ? request.metadata.contextPipeline : undefined;
+  const pipelineFingerprint = stringValue(pipeline?.pipelineFingerprint);
+  const cacheHintSummary = isJsonObject(pipeline?.cacheHintSummary) ? pipeline.cacheHintSummary : undefined;
+  if (!pipelineFingerprint || !cacheHintSummary) return undefined;
+  return {
+    type: "deepseek-prefix-cache",
+    pipeline_fingerprint: pipelineFingerprint,
+    stable_blocks: numberValue(cacheHintSummary.stable) ?? 0,
+    ephemeral_blocks: numberValue(cacheHintSummary.ephemeral) ?? 0,
+    no_store_blocks: numberValue(cacheHintSummary.noStore) ?? 0,
+    ttl_blocks: numberValue(cacheHintSummary.ttlBound) ?? 0,
+    ...(capability.maxCacheHintBlocks !== undefined ? { max_hint_blocks: capability.maxCacheHintBlocks } : {})
   };
 }
 

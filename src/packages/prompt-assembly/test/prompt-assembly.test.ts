@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { AgentLoopBudget, AgentLoopProjectRuleEvidence, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, CapabilityManifest, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
-import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
+import type { AgentLoopBudget, AgentLoopProjectRuleEvidence, AgentPhasePlan, AgentReasoningEffortMapping, AgentWorkOrder, CapabilityManifest, ContextPipelineManifest, EvidenceFirstRuntimeContext, EvidenceItem, EvidenceSourceCoverage, EvidenceTaskClassification, JsonObject, PromptAssemblyInput, PromptSection, SelfRepairAttemptRecord, SelfRepairFailureClassification, SelfRepairOutcomeSummary, SelfRepairVerificationSummary } from "@deepseek/platform-contracts";
+import { AGENT_MODE_COMPATIBILITY, AGENT_MODE_SCHEMA_VERSION, CONTEXT_PIPELINE_SCHEMA_VERSION, EVIDENCE_FIRST_COMPATIBILITY, EVIDENCE_FIRST_SCHEMA_VERSION, SELF_REPAIR_COMPATIBILITY, SELF_REPAIR_SCHEMA_VERSION, asId } from "@deepseek/platform-contracts";
 import { createDefaultPromptAssembler, replayPromptAssembly, type PromptSectionProviderRegistration } from "../src/index.js";
 
 describe("prompt assembly", () => {
@@ -65,6 +65,21 @@ describe("prompt assembly", () => {
     assert.equal(result.sections.some((section) => section.kind === "context.skill" && section.included), true);
     assert.equal(result.sections.some((section) => section.kind === "context.code-intelligence" && section.included), true);
     assert.equal(result.messages.some((message) => message.content.includes("Semantic recall evidence")), true);
+  });
+
+  it("preserves context pipeline manifest order and records assembly evidence", async () => {
+    const assembler = createDefaultPromptAssembler();
+    const result = await assembler.assemble(input({
+      prompt: "use layered context",
+      contextPipelineManifest: pipelineManifest()
+    }));
+    const pipelineText = result.messages.find((message) => message.content.includes("Context pipeline manifest:"))?.content ?? "";
+
+    assert.equal(pipelineText.indexOf("Kernel block") < pipelineText.indexOf("Project block"), true);
+    assert.equal(pipelineText.indexOf("Project block") < pipelineText.indexOf("Session block"), true);
+    assert.equal(pipelineText.indexOf("Session block") < pipelineText.indexOf("Current turn block"), true);
+    assert.equal(result.trace.pipeline?.pipelineFingerprint, "pipeline:test");
+    assert.deepEqual(result.trace.pipeline?.includedBlockIds, ["block-kernel", "block-project", "block-session", "block-current"]);
   });
 
   it("states lossless context priority below current instructions and policy", async () => {
@@ -311,6 +326,7 @@ function input(options: {
   readonly availableTools?: readonly CapabilityManifest[];
   readonly toolPolicy?: PromptAssemblyInput["toolPolicy"];
   readonly projectRules?: readonly AgentLoopProjectRuleEvidence[];
+  readonly contextPipelineManifest?: ContextPipelineManifest;
 }): PromptAssemblyInput {
   const selectedNodes = options.projectionNodes ?? (options.contextContent ? [
     projectionNode("context-node-1", "memory-ref", "memory", options.contextContent, { memoryId: "memory-1", scope: "session" })
@@ -335,6 +351,7 @@ function input(options: {
     },
     history: [{ role: "user", content: options.prompt }],
     ...(options.projectRules ? { projectRules: options.projectRules } : {}),
+    ...(options.contextPipelineManifest ? { contextPipelineManifest: options.contextPipelineManifest } : {}),
     ...(options.evidenceFirst ? { evidenceFirst: options.evidenceFirst } : {}),
     ...(options.selfRepair ? { selfRepair: options.selfRepair } : {}),
     ...(options.phasePlan ? {
@@ -371,6 +388,62 @@ function input(options: {
     toolPolicy: options.toolPolicy ?? "all",
     budget: { hardLimitTokens: options.hardLimitTokens ?? 1024, reservedOutputTokens: 0 },
     compatibility: { schemaVersion: "1.0.0" }
+  };
+}
+
+function pipelineManifest(): ContextPipelineManifest {
+  const sessionId = asId<"session">("session-prompt-assembly");
+  const turnId = asId<"turn">("turn-prompt-assembly");
+  return {
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    manifestId: "context-pipeline:manifest-test",
+    sessionId,
+    turnId,
+    layers: [
+      { id: "kernel", order: 0, blockIds: ["block-kernel"], blockHashes: ["hash-kernel"], layerHash: "layer-kernel", prefixHash: "prefix-kernel", estimatedTokens: 2 },
+      { id: "project", order: 1, blockIds: ["block-project"], blockHashes: ["hash-project"], layerHash: "layer-project", prefixHash: "prefix-project", estimatedTokens: 2 },
+      { id: "session", order: 2, blockIds: ["block-session"], blockHashes: ["hash-session"], layerHash: "layer-session", prefixHash: "prefix-session", estimatedTokens: 2 },
+      { id: "current-turn", order: 3, blockIds: ["block-current"], blockHashes: ["hash-current"], layerHash: "layer-current", prefixHash: "prefix-current", estimatedTokens: 3 }
+    ],
+    blocks: [
+      pipelineBlock("block-kernel", "kernel", 0, "Kernel block"),
+      pipelineBlock("block-project", "project", 1, "Project block"),
+      pipelineBlock("block-session", "session", 2, "Session block"),
+      pipelineBlock("block-current", "current-turn", 3, "Current turn block")
+    ],
+    excludedBlocks: [],
+    prefixHashes: [
+      { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION, id: "prefix:kernel", layer: "kernel", order: 0, blockIds: ["block-kernel"], blockHashes: ["hash-kernel"], layerHash: "layer-kernel", prefixHash: "prefix-kernel", estimatedTokens: 2, redaction: { class: "internal" }, compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION } },
+      { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION, id: "prefix:project", layer: "project", order: 1, blockIds: ["block-project"], blockHashes: ["hash-project"], layerHash: "layer-project", prefixHash: "prefix-project", estimatedTokens: 2, redaction: { class: "internal" }, compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION } },
+      { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION, id: "prefix:session", layer: "session", order: 2, blockIds: ["block-session"], blockHashes: ["hash-session"], layerHash: "layer-session", prefixHash: "prefix-session", estimatedTokens: 2, redaction: { class: "internal" }, compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION } },
+      { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION, id: "prefix:current-turn", layer: "current-turn", order: 3, blockIds: ["block-current"], blockHashes: ["hash-current"], layerHash: "layer-current", prefixHash: "prefix-current", estimatedTokens: 3, redaction: { class: "internal" }, compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION } }
+    ],
+    tokenTotals: { selectedTokens: 9, excludedTokens: 0, hardLimitTokens: 128 },
+    cacheHintSummary: { stable: 3, ephemeral: 1, noStore: 0, ttlBound: 0 },
+    pipelineFingerprint: "pipeline:test",
+    diagnostics: [],
+    redaction: { class: "internal", fields: ["blocks.content"] },
+    compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION }
+  };
+}
+
+function pipelineBlock(id: string, layer: ContextPipelineManifest["blocks"][number]["layer"], order: number, content: string): ContextPipelineManifest["blocks"][number] {
+  return {
+    schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION,
+    id,
+    layer,
+    order,
+    kind: layer === "current-turn" ? "user" : "summary",
+    source: layer === "current-turn" ? "user" : "system",
+    hash: `hash-${id}`,
+    content,
+    estimatedTokens: content.split(/\s+/).length,
+    dependencyFingerprints: [`dep:${id}`],
+    provenance: { fixture: true },
+    cacheHint: { policy: layer === "current-turn" ? "ephemeral" : "stable" },
+    replay: { fingerprint: `replay:${id}` },
+    redaction: { class: "internal", fields: ["content"] },
+    compatibility: { schemaVersion: CONTEXT_PIPELINE_SCHEMA_VERSION }
   };
 }
 

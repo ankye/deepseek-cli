@@ -87,6 +87,7 @@ function attachWorkbenchForPluginExecution(
     turns: base.turns,
     ...(base.sessionId ? { sessionId: base.sessionId } : {}),
     ...(base.visibleReasoning ? { visibleReasoning: base.visibleReasoning } : {}),
+    ...(base.statusTelemetry ? { statusTelemetry: base.statusTelemetry } : {}),
     ...(focus ? { focus } : {}),
     ...(commandBar ? { commandBar } : {})
   });

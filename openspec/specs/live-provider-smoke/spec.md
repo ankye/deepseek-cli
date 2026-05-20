@@ -1,7 +1,10 @@
 # live-provider-smoke Specification
 
 ## Purpose
-TBD - created by archiving change add-live-deepseek-provider-smoke. Update Purpose after archive.
+Define live provider smoke requirements for opt-in DeepSeek reachability, structural assertions, credential safety, and default skip behavior.
+
+定义 live provider smoke 对显式启用的 DeepSeek reachability、structural assertions、credential safety 与默认跳过行为的要求。
+
 ## Requirements
 ### Requirement: Opt-In Live Provider Smoke / 显式启用的 Live Provider Smoke
 

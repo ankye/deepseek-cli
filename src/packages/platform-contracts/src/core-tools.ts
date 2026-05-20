@@ -1,5 +1,6 @@
 import type { JsonObject, RedactedError, RedactionMetadata } from "./common.js";
 import type { AgentId, AgentInstanceId, CapabilityId, SessionId, TurnId } from "./ids.js";
+import type { AgentNamespace } from "./agent.js";
 import type { AgentDelegationReasonCode, AgentModeName, AgentVerifierVerdict, AgentWorkerResult, AgentWorkerStopReason, AgentWorkOrder } from "./agent-mode.js";
 import type { PlatformProviderResultMetadata, ProcessExecutionProfile } from "./platform.js";
 
@@ -253,6 +254,7 @@ export interface AgentSpawnRequest extends JsonObject {
   readonly toolProjection?: AgentSpawnToolProjection;
   readonly toolScope?: JsonObject;
   readonly contextScope?: JsonObject;
+  readonly namespace?: AgentNamespace;
   readonly timeoutMs?: number;
   readonly maxIterations?: number;
   readonly parentSessionId?: SessionId;
@@ -291,6 +293,7 @@ export interface AgentContinueRequest extends JsonObject {
   readonly toolProjection?: AgentSpawnToolProjection;
   readonly toolScope?: JsonObject;
   readonly contextScope?: JsonObject;
+  readonly namespace?: AgentNamespace;
   readonly timeoutMs?: number;
   readonly maxIterations?: number;
   readonly contextOverlapScore?: number;
