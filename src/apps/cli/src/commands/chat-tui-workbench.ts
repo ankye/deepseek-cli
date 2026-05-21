@@ -251,12 +251,12 @@ export type ChatTuiCommandBarUpdate = Partial<Pick<ChatTuiCommandBarState, "open
 
 const PANEL_ORDER: readonly ChatTuiWorkbenchPanelId[] = [
   "transcript",
-  "result-list",
   "reasoning",
   "inspector",
   "command-bar",
   "activity",
-  "plugins"
+  "plugins",
+  "result-list"
 ];
 
 export function createChatTuiWorkbench(input: ChatTuiWorkbenchInput): ChatTuiWorkbench {

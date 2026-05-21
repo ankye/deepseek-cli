@@ -113,7 +113,7 @@ function selectInputStrategy(input: {
 }): CliInputStrategy {
   if (input.command !== "chat") return "none";
   if (input.inputIsScripted || !input.stdinIsTTY) return "scripted";
-  if (input.tuiProfile === "full-screen" && input.rendererProfile === "full-screen") return "raw";
+  if ((input.rendererProfile === "interactive" || input.rendererProfile === "full-screen") && input.rawInput) return "raw";
   return input.rawInput ? "line" : "scripted";
 }
 

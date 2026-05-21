@@ -41,7 +41,7 @@ describe("terminal capability profile", () => {
     assert.equal(profile.rawInput, false);
   });
 
-  it("uses line input and interactive rendering for supported tty chat", () => {
+  it("uses raw input and interactive rendering for supported tty chat", () => {
     const profile = createTerminalCapabilityProfile({
       command: "chat",
       output: "text",
@@ -51,7 +51,7 @@ describe("terminal capability profile", () => {
     });
 
     assert.equal(profile.rendererProfile, "interactive");
-    assert.equal(profile.inputStrategy, "line");
+    assert.equal(profile.inputStrategy, "raw");
     assert.equal(profile.rawInput, true);
     assert.equal(profile.inlineText, true);
   });
@@ -86,7 +86,7 @@ describe("terminal capability profile", () => {
     assert.equal(fullScreen.inputStrategy, "raw");
     assert.equal(fullScreen.reasons.includes("tui:full-screen"), true);
     assert.equal(narrow.rendererProfile, "interactive");
-    assert.equal(narrow.inputStrategy, "line");
+    assert.equal(narrow.inputStrategy, "raw");
     assert.equal(json.rendererProfile, "json");
     assert.equal(json.inputStrategy, "line");
   });

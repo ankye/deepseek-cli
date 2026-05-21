@@ -10,9 +10,47 @@ import type {
   ChatTuiWorkbenchPanelId
 } from "./chat-tui-workbench.js";
 
-export const CHAT_TUI_ALT_SCREEN_ENTER = "\x1b[?1049h\x1b[?25l";
-export const CHAT_TUI_ALT_SCREEN_EXIT = "\x1b[?25h\x1b[?1049l";
-export const CHAT_TUI_REPAINT_HOME = "\x1b[H\x1b[2J";
+export const CHAT_TUI_ALT_SCREEN_ENTER = "\x1b[?1049h\x1b[?2004h\x1b[?25l";
+export const CHAT_TUI_ALT_SCREEN_EXIT = "\x1b[?25h\x1b[?2004l\x1b[?1049l";
+export const CHAT_TUI_CLEAR_HOME = "\x1b[H\x1b[2J";
+export const CHAT_TUI_REPAINT_HOME = "\x1b[H";
+
+export interface ChatTuiInputFrame {
+  readonly commandBarOpen: boolean;
+  readonly inputLine: string;
+  readonly promptPreviewLines: readonly string[];
+  readonly suggestionLines: readonly string[];
+  readonly compactSuggestionLine?: string;
+}
+
+export function createChatTuiInputFrame(workbench: ChatTuiWorkbench, input: {
+  readonly pending?: string;
+  readonly maxInputColumns?: number;
+  readonly maxPreviewLines?: number;
+  readonly previewColumns?: number;
+  readonly maxSuggestions?: number;
+} = {}): ChatTuiInputFrame {
+  if (workbench.commandBar.open) {
+    const visibleSuggestions = workbench.commandBar.suggestions
+      .slice(0, input.maxSuggestions ?? 3)
+      .map((entry) => `${entry.id === workbench.commandBar.activeSuggestionId ? ">" : " "}${entry.title}`);
+    const suggestionLines = visibleSuggestions.length > 0 ? visibleSuggestions : ["no matches"];
+    return {
+      commandBarOpen: true,
+      inputLine: formatInputAnchor(`/${workbench.commandBar.query}`, input.maxInputColumns),
+      promptPreviewLines: [],
+      suggestionLines,
+      compactSuggestionLine: `Suggestions | ${suggestionLines.join("  ")}`
+    };
+  }
+  const pending = input.pending ?? "";
+  return {
+    commandBarOpen: false,
+    inputLine: formatInputAnchor(pending, input.maxInputColumns),
+    promptPreviewLines: createPromptPreviewLines(pending, input.maxPreviewLines ?? 0, input.previewColumns ?? input.maxInputColumns ?? 80),
+    suggestionLines: []
+  };
+}
 
 export function renderChatTuiWorkbench(workbench: ChatTuiWorkbench): readonly string[] {
   if (workbench.layout === "disabled") return [];
@@ -45,42 +83,47 @@ export function createChatTuiFullscreenLifecycle(input: {
 
 export function renderChatTuiFullscreenFrame(input: {
   readonly workbench: ChatTuiWorkbench;
+  readonly pending?: string;
   readonly rows?: number;
   readonly phase?: CliFullscreenRendererLifecycle["phase"];
 }): { readonly lifecycle: CliFullscreenRendererLifecycle; readonly chunks: readonly string[] } {
   const columns = Math.max(80, Math.min(input.workbench.columns ?? 100, 200));
   const rows = Math.max(12, Math.min(input.rows ?? 32, 80));
   const phase = input.phase ?? "repaint";
-  const padded = renderFullscreenWorkbench(input.workbench, columns, rows);
+  const padded = renderFullscreenWorkbench(input.workbench, columns, rows, input.pending);
   const lifecycle = createChatTuiFullscreenLifecycle({ phase, columns, rows });
+  const repaintHome = phase === "enter" ? CHAT_TUI_CLEAR_HOME : CHAT_TUI_REPAINT_HOME;
   const chunks = [
     ...(phase === "enter" ? [CHAT_TUI_ALT_SCREEN_ENTER] : []),
-    ...(phase === "teardown" ? [CHAT_TUI_ALT_SCREEN_EXIT] : [CHAT_TUI_REPAINT_HOME, padded.join("\n")])
+    ...(phase === "teardown" ? [CHAT_TUI_ALT_SCREEN_EXIT] : [repaintHome, padded.join("\n")])
   ];
   return { lifecycle, chunks };
 }
 
-function renderFullscreenWorkbench(workbench: ChatTuiWorkbench, columns: number, rows: number): readonly string[] {
+function renderFullscreenWorkbench(workbench: ChatTuiWorkbench, columns: number, rows: number, pending?: string): readonly string[] {
   if (workbench.layout === "disabled") return padFrame(["DeepSeek Workbench disabled"], columns, rows);
   const header = headerLines(workbench, columns, rows);
-  const commandRows = rows >= 18 ? 4 : 3;
+  const promptPreviewVisible = !workbench.commandBar.open && hasMultipleDisplayLines(pending ?? "");
+  const commandRows = workbench.commandBar.open
+    ? rows >= 18 ? 6 : 5
+    : promptPreviewVisible ? rows >= 18 ? 7 : 5 : 3;
   const footerRows = 2;
   const mainRows = Math.max(3, rows - header.length - commandRows - footerRows);
   const body = renderMainArea(workbench, columns, mainRows);
-  const command = renderCommandArea(workbench, columns, commandRows);
+  const command = renderCommandArea(workbench, columns, commandRows, pending);
   return padFrame([
     ...header,
     ...body,
-    ...command,
     keyLine(workbench, columns),
-    statusLine(workbench)
+    statusLine(workbench),
+    ...command
   ], columns, rows);
 }
 
 function headerLines(workbench: ChatTuiWorkbench, columns: number, rows: number): readonly string[] {
   const title = fitColumns(
-    ` DeepSeek Workbench  ${workbench.layout}  focus:${workbench.focus.activePanel}`,
-    `raw/full-screen ${columns}x${rows}`,
+    ` DeepSeek Chat  ${workbench.commandBar.open ? "command" : "ready"}  focus:${workbench.focus.activePanel}`,
+    "/ commands  Tab panels  Ctrl+C exit",
     columns
   );
   if (rows < 16) return [borderLine(columns, "="), title];
@@ -88,8 +131,8 @@ function headerLines(workbench: ChatTuiWorkbench, columns: number, rows: number)
     borderLine(columns, "="),
     title,
     fitColumns(
-      ` ${regionSummary(workbench, "status")}`,
-      `command ${commandBarStatus(workbench.commandBar)}`,
+      ` Session ${regionSummary(workbench, "transcript")}`,
+      workbench.commandBar.open ? `Command /${workbench.commandBar.query}_` : "Input deepseek> _",
       columns
     )
   ];
@@ -110,38 +153,49 @@ function renderMainArea(workbench: ChatTuiWorkbench, columns: number, rows: numb
   return Array.from({ length: rows }, (_, index) => `${left[index] ?? "".padEnd(leftWidth)} ${right[index] ?? "".padEnd(sideWidth)}`);
 }
 
-function renderCommandArea(workbench: ChatTuiWorkbench, columns: number, rows: number): readonly string[] {
-  const prompt = workbench.commandBar.open
-    ? `/${workbench.commandBar.query}`
-    : workbench.commandBar.placeholder;
-  const suggestions = workbench.commandBar.suggestions.slice(0, Math.max(1, rows - 3)).map((entry, index) => {
-    const active = entry.id === workbench.commandBar.activeSuggestionId ? ">" : " ";
-    return `${active} ${index + 1}. ${entry.title}  ${entry.kind}${entry.pluginId ? `  ${entry.pluginId}` : ""}`;
+function renderCommandArea(workbench: ChatTuiWorkbench, columns: number, rows: number, pending?: string): readonly string[] {
+  const inputFrame = createChatTuiInputFrame(workbench, {
+    ...(pending === undefined ? {} : { pending }),
+    maxInputColumns: Math.max(24, columns - 4),
+    maxPreviewLines: Math.max(0, rows - 4),
+    previewColumns: Math.max(24, columns - 4)
   });
-  return renderBox("Command", [`> ${prompt}`, ...suggestions], columns, rows, workbench.focus.activePanel === "command-bar");
+  if (!inputFrame.commandBarOpen && inputFrame.promptPreviewLines.length > 0) {
+    const inputRows = 3;
+    const previewRows = Math.max(3, rows - inputRows);
+    return [
+      ...renderBox("Prompt preview", inputFrame.promptPreviewLines, columns, previewRows, false),
+      ...renderBox("Input", [inputFrame.inputLine], columns, inputRows, false)
+    ].slice(0, rows);
+  }
+  if (!inputFrame.commandBarOpen) return renderBox("Input", [inputFrame.inputLine], columns, rows, workbench.focus.activePanel === "command-bar");
+  const inputRows = 3;
+  const suggestionRows = Math.max(3, rows - inputRows);
+  const suggestionFrame = createChatTuiInputFrame(workbench, { maxSuggestions: Math.max(1, suggestionRows - 2) });
+  return [
+    ...renderBox("Suggestions", suggestionFrame.suggestionLines, columns, suggestionRows, false),
+    ...renderBox("Input", [inputFrame.inputLine], columns, inputRows, true)
+  ].slice(0, rows);
 }
 
 function transcriptLines(workbench: ChatTuiWorkbench): readonly string[] {
   return [
+    "Conversation",
     regionSummary(workbench, "transcript"),
-    `focus=${workbench.focus.activePanel} previous=${workbench.focus.previousPanel ?? "none"} history=${workbench.focus.history.join(" > ")}`,
-    regionSummary(workbench, "result-list"),
     "",
-    "Transcript stream",
-    "  No assistant turn is streaming yet.",
-    "  Use / to open commands, Tab to cycle panels, r/i/a/p to jump rails.",
-    "  Full-screen renderer owns layout only; runtime state remains in the shared workbench projection.",
+    "No assistant turn is streaming yet.",
+    "Type below. Use / for commands.",
     "",
-    `Activity: ${activityText(workbench.activityFeed)}`
+    panelSummaryText(workbench)
   ];
 }
 
 function reasoningLines(rail: ChatTuiReasoningRail): readonly string[] {
   if (!rail.enabled) {
     return [
+      "Idle",
       rail.statusText,
-      `records=${rail.recordCount} evidence=${rail.evidenceLinkCount}`,
-      "No visible reasoning records for this frame."
+      "Reasoning details appear here during a turn."
     ];
   }
   const steps = rail.steps.map((step) => {
@@ -156,7 +210,7 @@ function reasoningLines(rail: ChatTuiReasoningRail): readonly string[] {
 }
 
 function inspectorLines(inspector: ChatTuiInspectorState): readonly string[] {
-  if (inspector.items.length === 0) return [inspector.emptyReason, "Active target and evidence details appear here."];
+  if (inspector.items.length === 0) return ["Empty", "Targets and evidence appear here."];
   return [
     inspector.title,
     ...inspector.items.map((item) => `${item.source}: ${item.kind} ${item.label}`),
@@ -166,9 +220,9 @@ function inspectorLines(inspector: ChatTuiInspectorState): readonly string[] {
 
 function pluginLines(shelf: ChatTuiPluginShelf): readonly string[] {
   return [
-    `${shelf.readiness} plugins=${shelf.totalPlugins} contributions=${shelf.totalContributions}`,
-    `conflicts=${shelf.conflicts} diagnostics=${shelf.diagnostics}`,
-    ...shelf.items.map((item) => `${item.status} ${item.pluginId} ${item.activeContributionCount}/${item.contributionCount}${item.lastExecutionStatus ? ` last=${item.lastExecutionStatus}` : ""}`),
+    shelf.readiness === "disabled" ? "Plugins off" : "Plugins ready",
+    shelf.totalPlugins > 0 ? `${shelf.totalPlugins} plugins available` : "No plugin activity yet",
+    ...shelf.items.map((item) => `${item.status} ${item.pluginId}`),
     ...(shelf.overflowCount > 0 ? [`+${shelf.overflowCount} more plugins`] : [])
   ];
 }
@@ -208,25 +262,23 @@ function distributePanelHeights(totalRows: number, panelCount: number): readonly
 
 function renderExpandedWorkbench(workbench: ChatTuiWorkbench): readonly string[] {
   return [
-    `DeepSeek Workbench | layout=${workbench.layout} | focus=${workbench.focus.activePanel} | command=${commandBarStatus(workbench.commandBar)}`,
-    `Status | ${regionSummary(workbench, "status")} | ${regionSummary(workbench, "transcript")}`,
-    `Command | ${suggestionText(workbench.commandBar)}`,
-    `Reasoning | ${reasoningText(workbench.reasoningRail)}`,
-    `Inspector | ${inspectorText(workbench.inspector)}`,
-    `Activity | ${activityText(workbench.activityFeed)}`,
-    `Plugins | ${pluginShelfText(workbench.pluginShelf)}`,
-    `Keys | ${workbench.keyboardHints.map((hint) => `${hint.key} ${hint.label}`).join(" | ")}`
+    `Workbench [${workbenchModeLabel(workbench)}] | layout=${workbench.layout} | focus=${workbench.focus.activePanel}`,
+    `Main [transcript] | ${regionSummary(workbench, "transcript")}`,
+    `Focus | active=${workbench.focus.activePanel} | previous=${workbench.focus.previousPanel ?? "none"}`,
+    `Panels | ${panelSummaryText(workbench)}`,
+    `Activity | ${activityText(workbench.activityFeed, 3)}`,
+    `Keys | ${keyHintText(workbench)}`,
+    `Input | ${suggestionText(workbench.commandBar, 4)}`
   ];
 }
 
 function renderCompactWorkbench(workbench: ChatTuiWorkbench): readonly string[] {
   return [
-    `DeepSeek Workbench | compact | focus=${workbench.focus.activePanel}`,
-    `Status | ${regionSummary(workbench, "status")}`,
-    `Command | ${suggestionText(workbench.commandBar)}`,
-    `Reasoning | ${reasoningText(workbench.reasoningRail)}`,
-    `Inspector | ${inspectorText(workbench.inspector)}`,
-    `Plugins | ${pluginShelfText(workbench.pluginShelf)}`
+    `Workbench [${workbenchModeLabel(workbench)}] | focus=${workbench.focus.activePanel}`,
+    `Main | ${regionSummary(workbench, "transcript")}`,
+    activeAreaText(workbench),
+    `Keys | ${keyHintText(workbench)}`,
+    `Input | ${suggestionText(workbench.commandBar, 3)}`
   ];
 }
 
@@ -238,29 +290,79 @@ function commandBarStatus(commandBar: ChatTuiCommandBarState): string {
   return `${commandBar.open ? "open" : "ready"}:${commandBar.mode} suggestions=${commandBar.suggestions.length}/${commandBar.totalSuggestionCount}`;
 }
 
-function suggestionText(commandBar: ChatTuiCommandBarState): string {
-  const names = commandBar.suggestions.map((entry) => entry.title).join(", ");
-  return `${commandBar.open ? "open" : "ready"} ${names || commandBar.placeholder}${commandBar.overflowCount > 0 ? ` (+${commandBar.overflowCount})` : ""}`;
+function workbenchModeLabel(workbench: ChatTuiWorkbench): string {
+  return workbench.commandBar.open ? "command" : "ready";
 }
 
-function reasoningText(rail: ChatTuiReasoningRail): string {
+function suggestionText(commandBar: ChatTuiCommandBarState, maxSuggestions: number): string {
+  if (!commandBar.open) return "deepseek> _";
+  const active = commandBar.suggestions.find((entry) => entry.id === commandBar.activeSuggestionId);
+  const names = commandBar.suggestions
+    .slice(0, maxSuggestions)
+    .map((entry) => `${entry.id === commandBar.activeSuggestionId ? ">" : ""}${boundSegment(entry.title, 22)}`)
+    .join(", ");
+  const overflow = Math.max(0, commandBar.overflowCount + Math.max(0, commandBar.suggestions.length - maxSuggestions));
+  return [
+    `/${commandBar.query}_`,
+    `suggestions=${names || "none"}`,
+    `selected=${active ? boundSegment(active.title, 22) : "none"}`,
+    `count=${commandBar.suggestions.length}/${commandBar.totalSuggestionCount}${overflow > 0 ? ` +${overflow}` : ""}`
+  ].join(" | ");
+}
+
+function activeAreaText(workbench: ChatTuiWorkbench): string {
+  if (workbench.focus.activePanel === "command-bar") {
+    return `Active | command suggestions=${workbench.commandBar.suggestions.length}/${workbench.commandBar.totalSuggestionCount}`;
+  }
+  if (workbench.focus.activePanel === "reasoning") return `Active | reasoning ${reasoningText(workbench.reasoningRail, 2)}`;
+  if (workbench.focus.activePanel === "inspector") return `Active | inspect ${inspectorText(workbench.inspector, 2)}`;
+  if (workbench.focus.activePanel === "plugins") return `Active | plugins ${pluginShelfText(workbench.pluginShelf, 1)}`;
+  return `Panels | ${panelSummaryText(workbench)}`;
+}
+
+function panelSummaryText(workbench: ChatTuiWorkbench): string {
+  return [
+    `reasoning=${workbench.reasoningRail.enabled ? "ready" : "idle"}`,
+    `inspect=${workbench.inspector.items.length > 0 ? "ready" : "empty"}`,
+    `plugins=${workbench.pluginShelf.readiness === "disabled" ? "off" : "ready"}`
+  ].join(" | ");
+}
+
+function keyHintText(workbench: ChatTuiWorkbench): string {
+  if (workbench.commandBar.open) return "Tab suggestions | Enter accept | Esc close | Ctrl+C exit";
+  return "/ commands | Tab next panel | Shift+Tab previous | Ctrl+C exit";
+}
+
+function reasoningText(rail: ChatTuiReasoningRail, maxSteps: number): string {
   if (!rail.enabled) return `${rail.statusText} records=${rail.recordCount} evidence=${rail.evidenceLinkCount}`;
-  const steps = rail.steps.map((step) => `${step.active ? "*" : ""}${step.order}:${step.stepKind}/${step.status}/${step.certainty}/e${step.evidenceCount}`).join(", ");
-  return `${steps || "empty"}${rail.overflowCount > 0 ? ` (+${rail.overflowCount})` : ""}`;
+  const steps = rail.steps
+    .slice(0, maxSteps)
+    .map((step) => `${step.active ? "*" : ""}${step.order}:${step.stepKind}/${step.status}/${step.certainty}/e${step.evidenceCount}`)
+    .join(", ");
+  const overflow = Math.max(0, rail.overflowCount + Math.max(0, rail.steps.length - maxSteps));
+  return `${steps || "empty"}${overflow > 0 ? ` (+${overflow})` : ""}`;
 }
 
-function inspectorText(inspector: ChatTuiInspectorState): string {
+function inspectorText(inspector: ChatTuiInspectorState, maxItems: number): string {
   if (inspector.items.length === 0) return inspector.emptyReason;
-  return `${inspector.title} -> ${inspector.items.map((item) => `${item.kind}:${item.label}`).join(", ")}${inspector.overflowCount > 0 ? ` (+${inspector.overflowCount})` : ""}`;
+  const items = inspector.items.slice(0, maxItems).map((item) => `${item.kind}:${boundSegment(item.label, 20)}`).join(", ");
+  const overflow = Math.max(0, inspector.overflowCount + Math.max(0, inspector.items.length - maxItems));
+  return `${inspector.title} -> ${items}${overflow > 0 ? ` (+${overflow})` : ""}`;
 }
 
-function activityText(feed: ChatTuiActivityFeed): string {
-  return `${feed.records.map((entry) => `${entry.kind}:${entry.status}`).join(", ")}${feed.overflowCount > 0 ? ` (+${feed.overflowCount})` : ""}`;
+function activityText(feed: ChatTuiActivityFeed, maxRecords = feed.records.length): string {
+  const records = feed.records.slice(0, maxRecords).map((entry) => `${entry.kind}:${entry.status}`).join(", ");
+  const overflow = Math.max(0, feed.overflowCount + Math.max(0, feed.records.length - maxRecords));
+  return `${records || "empty"}${overflow > 0 ? ` (+${overflow})` : ""}`;
 }
 
-function pluginShelfText(shelf: ChatTuiPluginShelf): string {
-  const top = shelf.items.map((item) => `${item.pluginId}=${item.activeContributionCount}/${item.contributionCount} perms=${item.permissionPreview.length} results=${item.resultListCount}${item.lastExecutionStatus ? ` last=${item.lastExecutionStatus}` : ""}`).join(", ");
-  return `${shelf.readiness} plugins=${shelf.totalPlugins} contributions=${shelf.totalContributions} explanations=${shelf.explanations.length} conflicts=${shelf.conflicts} diagnostics=${shelf.diagnostics}${top ? ` top=${top}` : ""}${shelf.overflowCount > 0 ? ` (+${shelf.overflowCount})` : ""}`;
+function pluginShelfText(shelf: ChatTuiPluginShelf, maxItems: number): string {
+  const top = shelf.items
+    .slice(0, maxItems)
+    .map((item) => `${boundSegment(item.pluginId, 18)}=${item.activeContributionCount}/${item.contributionCount} results=${item.resultListCount}${item.lastExecutionStatus ? ` last=${item.lastExecutionStatus}` : ""}`)
+    .join(", ");
+  const overflow = Math.max(0, shelf.overflowCount + Math.max(0, shelf.items.length - maxItems));
+  return `${shelf.readiness} plugins=${shelf.totalPlugins} contributions=${shelf.totalContributions} conflicts=${shelf.conflicts} diagnostics=${shelf.diagnostics}${top ? ` top=${top}` : ""}${overflow > 0 ? ` (+${overflow})` : ""}`;
 }
 
 function statusLine(workbench: ChatTuiWorkbench): string {
@@ -301,4 +403,92 @@ function borderLine(columns: number, char: string): string {
 function boundLine(line: string, maxWidth: number): string {
   if (line.length <= maxWidth) return line;
   return `${line.slice(0, Math.max(0, maxWidth - 3))}...`;
+}
+
+function boundSegment(text: string, maxWidth: number): string {
+  return boundLine(text.replace(/\s+/g, " ").trim(), maxWidth);
+}
+
+function formatInputAnchor(text: string, maxColumns?: number): string {
+  const prefix = "deepseek> ";
+  const suffix = "_";
+  const safeText = sanitizeInputTextForDisplay(text);
+  if (maxColumns === undefined) return `${prefix}${safeText}${suffix}`;
+  const contentBudget = Math.max(0, maxColumns - displayWidth(prefix) - displayWidth(suffix));
+  return `${prefix}${tailByDisplayWidth(safeText, contentBudget)}${suffix}`;
+}
+
+function createPromptPreviewLines(text: string, maxLines: number, maxColumns: number): readonly string[] {
+  if (maxLines <= 0 || !hasMultipleDisplayLines(text)) return [];
+  const lines = text.split(/\r\n|\n|\r/);
+  const tailCount = Math.max(1, maxLines - 1);
+  const tail = lines.slice(-tailCount).map((line) => tailByDisplayWidth(sanitizeInputTextForDisplay(line), maxColumns));
+  return [`${lines.length} lines pasted, showing tail`, ...tail];
+}
+
+function hasMultipleDisplayLines(text: string): boolean {
+  return /[\r\n]/.test(text);
+}
+
+function sanitizeInputTextForDisplay(text: string): string {
+  let safe = "";
+  for (const char of Array.from(text)) {
+    const code = char.codePointAt(0) ?? 0;
+    if (char === "\n") safe += "\\n";
+    else if (char === "\r") safe += "\\r";
+    else if (char === "\t") safe += "\\t";
+    else if (code === 0x1b) safe += "\\x1b";
+    else if (code < 32 || (code >= 0x7f && code < 0xa0)) safe += controlByteText(code);
+    else safe += char;
+  }
+  return safe;
+}
+
+function controlByteText(code: number): string {
+  if (code >= 1 && code <= 26) return `^${String.fromCharCode(64 + code)}`;
+  return `\\x${code.toString(16).padStart(2, "0")}`;
+}
+
+function tailByDisplayWidth(text: string, maxColumns: number): string {
+  if (displayWidth(text) <= maxColumns) return text;
+  const marker = "...";
+  if (maxColumns <= displayWidth(marker)) return takeTailByDisplayWidth(text, maxColumns);
+  return `${marker}${takeTailByDisplayWidth(text, maxColumns - displayWidth(marker))}`;
+}
+
+function takeTailByDisplayWidth(text: string, maxColumns: number): string {
+  const tail: string[] = [];
+  let used = 0;
+  for (const char of Array.from(text).reverse()) {
+    const width = displayWidth(char);
+    if (used + width > maxColumns) break;
+    tail.unshift(char);
+    used += width;
+  }
+  return tail.join("");
+}
+
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of Array.from(text)) width += charDisplayWidth(char);
+  return width;
+}
+
+function charDisplayWidth(char: string): number {
+  const code = char.codePointAt(0) ?? 0;
+  if (code === 0) return 0;
+  if (code < 32 || (code >= 0x7f && code < 0xa0)) return 0;
+  if (code >= 0x300 && code <= 0x36f) return 0;
+  if (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2329 && code <= 0x232a) ||
+    (code >= 0x2e80 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6)
+  ) return 2;
+  return 1;
 }

@@ -3,6 +3,7 @@ import type { ChatTuiCommandSuggestion, ChatTuiCommandSuggestionKind } from "./c
 
 const CORE_COMMANDS: readonly ChatTuiCommandSuggestion[] = [
   suggestion("control.help", "/help", "control", "builtin", 0, "/help"),
+  suggestion("control.exit", "/exit", "control", "builtin", 1, "/exit"),
   suggestion("control.palette", "/palette", "palette", "builtin", 1, "/palette"),
   suggestion("control.context", "/context status", "context", "builtin", 2, "/context status"),
   suggestion("control.refs", "/palette refs list", "reference", "builtin", 3, "/palette refs list"),

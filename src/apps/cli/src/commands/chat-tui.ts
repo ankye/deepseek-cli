@@ -27,7 +27,7 @@ import { createChatTuiWorkbench, dispatchChatTuiWorkbenchKey } from "./chat-tui-
 import { renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
 import type { ChatTuiCommandBarState, ChatTuiFocusState, ChatTuiWorkbench } from "./chat-tui-workbench.js";
 
-export { createChatTuiFullscreenLifecycle, renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
+export { createChatTuiFullscreenLifecycle, createChatTuiInputFrame, renderChatTuiFullscreenFrame, renderChatTuiWorkbench } from "./chat-tui-workbench-renderer.js";
 export { attachPluginWorkbenchExecutionToChatTuiState, executeChatTuiPluginRoute } from "./chat-tui-plugin-execution.js";
 export type { ChatTuiActivityFeed, ChatTuiCommandBarState, ChatTuiCommandSuggestion, ChatTuiFocusState, ChatTuiInspectorState, ChatTuiPluginShelf, ChatTuiReasoningRail, ChatTuiWorkbench, ChatTuiWorkbenchPanelId } from "./chat-tui-workbench.js";
 
@@ -429,10 +429,7 @@ export function dispatchChatTuiInputEvent(state: ChatTuiStateSnapshot, event: Cl
 }
 
 export function renderChatTuiStartup(state: ChatTuiStateSnapshot): readonly string[] {
-  return [
-    ...renderChatTuiWorkbench(state.workbench),
-    `Input | keymap=${state.keymapProfile} | / command | Tab panels | Ctrl+C cancel/exit`
-  ];
+  return renderChatTuiWorkbench(state.workbench);
 }
 
 export function renderChatTuiStatus(state: ChatTuiStateSnapshot): readonly string[] {

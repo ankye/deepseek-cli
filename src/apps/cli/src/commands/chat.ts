@@ -63,7 +63,7 @@ import { accumulateChatUsage } from "./chat-usage.js";
 import { applyRevert, parseRevertApplyArgs, parseRevertPreviewArgs, previewRevert, renderRevertApply, renderRevertPreview } from "./revert.js";
 import { emitAgentLoop, finalAgentLoopEvent, renderFinalJsonIfNeeded, resumeHint, statusTelemetryFromEvents, visibleReasoningProjectionFromEvents } from "../renderers/runtime-events.js";
 import type { ChatHistoryEntry, ChatRevertReviewEntry, ChatSessionState } from "./chat-state.js";
-import { createBasicChatTui, renderChatTuiFullscreenFrame } from "./chat-tui.js";
+import { createBasicChatTui, createChatTuiInputFrame, renderChatTuiFullscreenFrame } from "./chat-tui.js";
 import { dispatchRawInputToTui } from "./chat-raw-input.js";
 
 export async function runChatCommand(
@@ -110,6 +110,7 @@ export async function runChatCommand(
   });
   const rawInputSession = enterCliRawInputSession(input, terminalProfile.inputStrategy === "raw");
   const sigintHandler = makeSigintHandler(state, write, options.output);
+  let commandBarFrameVisible = false;
   process.on("SIGINT", sigintHandler);
   try {
     const resumed = await hydrateChatSession(options, state, terminalProfile, write);
@@ -120,7 +121,32 @@ export async function runChatCommand(
     } else if (options.output === "text") {
       await write("DeepSeek chat");
     }
-    for await (const line of readCliChatPrompts(input, terminalProfile.inputStrategy, (event, context) => dispatchRawInputToTui(basicTui, event, context))) {
+    for await (const line of readCliChatPrompts(
+      input,
+      terminalProfile.inputStrategy,
+      (event, context) => dispatchRawInputToTui(basicTui, event, context),
+      async (update) => {
+        if (!basicTui.enabled || terminalProfile.inputStrategy !== "raw") return;
+        if (basicTui.snapshot().viewportProfile === "full-screen") {
+          if (update.submitted) {
+            commandBarFrameVisible = false;
+            return;
+          }
+          for (const chunk of renderChatTuiFullscreenFrame({ workbench: basicTui.snapshot().workbench, pending: update.pending, phase: "repaint" }).chunks) {
+            await writeInline(chunk);
+          }
+          return;
+        }
+        if (update.submitted) {
+          commandBarFrameVisible = false;
+          await writeInline("\n");
+          return;
+        }
+        const rendered = renderRawTuiPromptUpdate(basicTui, update.pending, commandBarFrameVisible);
+        commandBarFrameVisible = isCommandBarInputVisible(basicTui);
+        await writeInline(rendered);
+      }
+    )) {
       const prompt = line.trim();
       if (!prompt) {
         await basicTui.renderPrompt();
@@ -181,6 +207,35 @@ export async function runChatCommand(
     }
     await runtime.kernel.shutdown("cli-chat-completed");
   }
+}
+
+function renderRawTuiPromptUpdate(tui: ReturnType<typeof createBasicChatTui>, pending: string, commandBarFrameVisible: boolean): string {
+  const snapshot = tui.snapshot();
+  const inputFrame = createChatTuiInputFrame(snapshot.workbench, {
+    pending,
+    maxSuggestions: 3,
+    maxInputColumns: Math.max(24, Math.min(snapshot.workbench.columns ?? 100, 100))
+  });
+  if (isCommandBarInputVisible(tui)) {
+    const suggestionsLine = clearCurrentInputLine(inputFrame.compactSuggestionLine ?? "Suggestions | no matches");
+    const inputLine = clearCurrentInputLine(inputFrame.inputLine);
+    return commandBarFrameVisible
+      ? `\x1b[1A${suggestionsLine}\n${inputLine}`
+      : `${suggestionsLine}\n${inputLine}`;
+  }
+  if (commandBarFrameVisible) {
+    return `\x1b[1A${clearCurrentInputLine("")}\n${clearCurrentInputLine(inputFrame.inputLine)}`;
+  }
+  return clearCurrentInputLine(inputFrame.inputLine);
+}
+
+function clearCurrentInputLine(text: string): string {
+  return `\r\x1b[2K${text}`;
+}
+
+function isCommandBarInputVisible(tui: ReturnType<typeof createBasicChatTui>): boolean {
+  const snapshot = tui.snapshot();
+  return snapshot.workbench.commandBar.open && snapshot.workbench.focus.activePanel === "command-bar";
 }
 
 async function hydrateChatSession(options: CliOptions, state: ChatSessionState, terminalProfile: CliTerminalCapabilityProfile, write: (line: string) => Promise<void>): Promise<boolean> {

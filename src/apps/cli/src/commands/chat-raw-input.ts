@@ -11,12 +11,24 @@ export function dispatchRawInputToTui(
   if (!tui.enabled) return false;
   const key = rawInputEventToKeyName(event);
   if (!key) return true;
+  if (key === "Ctrl+c") {
+    return {
+      handled: true,
+      submitText: "/exit"
+    };
+  }
   const snapshot = tui.snapshot();
   if (snapshot.mode === "prompt" && key === "/" && context.pending.length === 0) {
     const result = tui.dispatchKey("/");
     return result.ok || result.kind !== "diagnostic";
   }
-  if (snapshot.mode === "prompt" && key !== "Tab" && key !== "Shift+Tab" && key !== "BackTab" && key !== "S-Tab" && key !== "Escape") return false;
+  if (snapshot.mode === "prompt") {
+    if (key === "Tab" || key === "Shift+Tab" || key === "BackTab" || key === "S-Tab" || key === "Escape") {
+      const result = tui.dispatchKey(key);
+      return result.ok || result.kind !== "diagnostic";
+    }
+    return false;
+  }
   const result = tui.dispatchInputEvent(event);
   if (result.kind === "command" && result.commandSuggestionId) {
     const bridge = bridgeCommandBarAcceptance(result.commandName, result.previewText);
@@ -24,6 +36,9 @@ export function dispatchRawInputToTui(
       tui.dispatchKey("Escape");
       return bridge;
     }
+  }
+  if (result.kind === "diagnostic" && result.state.workbench.focus.activePanel === "command-bar") {
+    return true;
   }
   return result.ok || result.kind !== "diagnostic";
 }
